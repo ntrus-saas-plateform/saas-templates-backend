@@ -1,0 +1,150 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform_control
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U platform']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-tenant-a:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: tenant_a_secret
+      POSTGRES_DB: tenant_a
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_tenant_a:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U platform']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-tenant-b:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: tenant_b_secret
+      POSTGRES_DB: tenant_b
+    ports:
+      - '5434:5432'
+    volumes:
+      - postgres_tenant_b:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U platform']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: platform
+      RABBITMQ_DEFAULT_PASS: platform
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'check_running']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Optional: HashiCorp Vault (dev mode). Use SECRET_PROVIDER=vault + VAULT_* on the API.
+  vault:
+    image: hashicorp/vault:1.17
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - '8200:8200'
+    command: server -dev
+    healthcheck:
+      test: ['CMD', 'vault', 'status', '-address=http://127.0.0.1:8200']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/platform_control
+      KC_DB_USERNAME: platform
+      KC_DB_PASSWORD: platform
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_FEATURES: organization
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./docker/keycloak:/opt/keycloak/data/import
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      CONTROL_PLANE_DB_HOST: postgres
+      CONTROL_PLANE_DB_PORT: 5432
+      CONTROL_PLANE_DB_NAME: platform_control
+      CONTROL_PLANE_DB_USER: platform
+      CONTROL_PLANE_DB_PASSWORD: platform
+      TENANT_DB_PASSWORD: platform
+      SECRET_PROVIDER: env
+      SECRET_ENCRYPTION_KEY: dev-secret-encryption-key-change-me
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://platform:platform@rabbitmq:5672
+      KEYCLOAK_ISSUER: http://keycloak:8080/realms/platform
+      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/platform/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: platform-api
+      KEYCLOAK_CLIENT_ID: platform-api
+      RABBITMQ_EXCHANGE: platform.events
+      RABBITMQ_CONSUMER_ENABLED: 'true'
+      SWAGGER_ENABLED: 'true'
+      METRICS_AUTH_TOKEN: dev-metrics-token
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  postgres_tenant_a:
+  postgres_tenant_b:

@@ -1,0 +1,338 @@
+{
+  "startedAt": "2026-09-25T15:52:21.493Z",
+  "host": "DESKTOP-7VLQLDO",
+  "platform": "win32",
+  "scope": "local drill, not a production certificate",
+  "migrations": {
+    "ok": true,
+    "applied": 76
+  },
+  "race": {
+    "writers": [
+      {
+        "label": "a",
+        "versionRead": 1,
+        "rows": 1
+      },
+      {
+        "label": "b",
+        "versionRead": 1,
+        "rows": 0
+      }
+    ],
+    "winnerCount": 1,
+    "loserCount": 1,
+    "stored": {
+      "status": "PLANNED",
+      "version": 2
+    },
+    "staleRepositoryCall": "CONFLICT"
+  },
+  "latency": {
+    "operation": "SELECT fashion_collections by organization",
+    "n": 200,
+    "unit": "ms",
+    "p50": 0.325,
+    "p95": 0.829,
+    "p99": 1.552,
+    "max": 2.14
+  },
+  "backup": {
+    "ok": true,
+    "dumpMs": 634.332,
+    "restoreStatus": 0,
+    "restoreStderr": "",
+    "rowsBefore": 1,
+    "rowsAfter": 1,
+    "raceRowRestored": true
+  },
+  "import": {
+    "file": "test/fixtures/p5-products.json",
+    "status": "IMPORTED",
+    "created": [
+      "c4bfd6b9-9763-4ae9-9340-17d70392a5b7",
+      "0e657cf7-30c5-4ffe-a2f6-ee73fb7586a6"
+    ],
+    "codes": [
+      "P5-CAP",
+      "P5-TEE"
+    ],
+    "durationMs": 55.202,
+    "failedBatchStatus": "FAILED",
+    "rolledBackRowAbsent": true
+  },
+  "mcp": {
+    "port": 56834,
+    "deniedStatus": 403,
+    "deniedCode": "FORBIDDEN",
+    "unconfirmedStatus": 422,
+    "unconfirmedCode": "VALIDATION_ERROR",
+    "createdStatus": 200,
+    "stored": {
+      "code": "MCP1",
+      "status": "DRAFT"
+    }
+  },
+  "blockers": {
+    "timings": {
+      "barcode": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 355.12,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 2.687,
+        "p95": 4.031,
+        "p99": 5.473,
+        "max": 5.473
+      },
+      "sku": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 2115.149,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 0.426,
+        "p95": 0.732,
+        "p99": 1.355,
+        "max": 1.355
+      },
+      "variant": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 1658.217,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 0.473,
+        "p95": 1.295,
+        "p99": 1.917,
+        "max": 1.917
+      },
+      "productSearch": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 823.368,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 1.094,
+        "p95": 2.329,
+        "p99": 3.247,
+        "max": 3.247
+      },
+      "posSelection": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 543.173,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 1.56,
+        "p95": 3.08,
+        "p99": 4.02,
+        "max": 4.02
+      },
+      "stock": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 330.841,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 2.736,
+        "p95": 5.51,
+        "p99": 15.51,
+        "max": 15.51
+      },
+      "price": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 371.031,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 1.891,
+        "p95": 3.351,
+        "p99": 52.4,
+        "max": 52.4
+      },
+      "promotion": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 391.766,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 2.422,
+        "p95": 4.244,
+        "p99": 7.564,
+        "max": 7.564
+      },
+      "checkoutStockHold": {
+        "ok": true,
+        "n": 12,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 84.369,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 6.683,
+        "p95": 61.171,
+        "p99": 61.171,
+        "max": 61.171
+      },
+      "return": {
+        "ok": true,
+        "n": 12,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 194.588,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 3.859,
+        "p95": 17.369,
+        "p99": 17.369,
+        "max": 17.369
+      },
+      "exchange": {
+        "ok": true,
+        "n": 80,
+        "errors": 0,
+        "errorRate": 0,
+        "throughputPerSec": 522.98,
+        "lastError": "",
+        "unit": "ms",
+        "p50": 1.493,
+        "p95": 3.791,
+        "p99": 8.837,
+        "max": 8.837
+      }
+    },
+    "checkout": {
+      "ok": false,
+      "reason": "PosCheckoutUseCase was not constructed. checkoutStockHold is ReserveStockUseCase ACTIVE, the stock hold that checkout calls."
+    },
+    "races": {
+      "barcode": {
+        "inserted": 1,
+        "rejected": 1,
+        "results": [
+          "la valeur d'une clé dupliquée rompt la contrainte unique « product_barcodes_barcode_key »",
+          "inserted"
+        ]
+      },
+      "lastUnitSale": {
+        "reserved": 1,
+        "rejected": 1,
+        "results": [
+          "reserved",
+          "INSUFFICIENT_STOCK"
+        ]
+      },
+      "lastUnitReservation": {
+        "reserved": 1,
+        "rejected": 1,
+        "results": [
+          "reserved",
+          "VALIDATION_ERROR"
+        ]
+      },
+      "priceUpdate": {
+        "wrote": 1,
+        "lost": 1
+      }
+    },
+    "rabbit": {
+      "live": {
+        "connected": true,
+        "publishConsumeMs": 71.646,
+        "payloadMatched": true
+      },
+      "deadPort": {
+        "refusedOrTimedOut": true,
+        "error": "connect ECONNREFUSED 127.0.0.1:1",
+        "ms": 3.025
+      },
+      "postgresStillServed": true
+    },
+    "guards": {
+      "missingBearerRejected": true,
+      "missingBearerMessage": "Missing bearer token",
+      "invalidBearer": {
+        "configured": true,
+        "rejected": true,
+        "message": "Invalid or expired token"
+      },
+      "forgedJwtPermissionsRefused": {
+        "pricing:create": "forbidden",
+        "promotions:update": "forbidden",
+        "catalog:fashion.manage": "forbidden",
+        "returns:create": "forbidden"
+      },
+      "markdownWithoutManage": "FORBIDDEN"
+    },
+    "acquirer": {
+      "declinedResponseApproved": false,
+      "declinedContacted": true,
+      "unreachableApproved": false,
+      "unreachableContacted": false
+    },
+    "offline": {
+      "postgresPortRefused": true,
+      "error": "connect ECONNREFUSED 127.0.0.1:1",
+      "ms": 4.681,
+      "replay": {
+        "ok": false,
+        "reason": "SyncOfflineOperationUseCase was not constructed. Checkout, session, and customer dependencies are not wired in this drill. The port-1 client above is the outage."
+      }
+    },
+    "alerts": [
+      {
+        "name": "rabbitmq_port_refused",
+        "detail": "connect ECONNREFUSED 127.0.0.1:1",
+        "at": "2026-09-25T15:52:31.281Z",
+        "channel": "stderr"
+      },
+      {
+        "name": "postgres_port_refused",
+        "detail": "connect ECONNREFUSED 127.0.0.1:1",
+        "at": "2026-09-25T15:52:31.286Z",
+        "channel": "stderr"
+      }
+    ],
+    "alerting": {
+      "service": "none",
+      "hook": "stderr JSON line named alert",
+      "emitted": 2
+    },
+    "rollback": {
+      "strategy": "forward-fix",
+      "downMigrationExecuted": false
+    }
+  },
+  "redis": {
+    "keyAStored": true,
+    "storeBRead": null,
+    "scopeRejected": true
+  },
+  "outage": {
+    "redisFailOpenReturnedNull": true,
+    "redisFailOpenMs": 0.49,
+    "databaseStillServed": true,
+    "databaseStillMs": 1.419,
+    "postgresPortRefused": true,
+    "postgresDownMs": 0.991
+  },
+  "finishedAt": "2026-09-25T15:52:33.145Z"
+}
