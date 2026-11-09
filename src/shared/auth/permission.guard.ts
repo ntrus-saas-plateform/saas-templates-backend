@@ -1,6 +1,12 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Inject } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY, PERMISSIONS_KEY, ROLES_KEY, IS_CUSTOMER_ROUTE_KEY } from './decorators.js';
+import {
+  IS_PUBLIC_KEY,
+  PERMISSIONS_KEY,
+  ROLES_KEY,
+  IS_CUSTOMER_ROUTE_KEY,
+  IS_EDGE_ROUTE_KEY,
+} from './decorators.js';
 import { TenantContextService } from '../tenancy/tenant-context.service.js';
 import { AuthorizationService } from '../authorization/authorization.service.js';
 import { IdentityMetricsService } from '../observability/identity-metrics.service.js';
@@ -29,6 +35,12 @@ export class PermissionGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isCustomerRoute) return true;
+
+    const isEdgeRoute = this.reflector.getAllAndOverride<boolean>(IS_EDGE_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isEdgeRoute) return true;
 
     const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
       context.getHandler(),

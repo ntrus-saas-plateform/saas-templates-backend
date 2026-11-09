@@ -35,3 +35,14 @@ export const REQUIRE_CAPABILITY_KEY = 'requireCapability';
 /** Requires the named business capability to be ENABLED on the active organization. */
 export const RequiresCapability = (capabilityCode: string) =>
   SetMetadata(REQUIRE_CAPABILITY_KEY, capabilityCode);
+
+export const IS_EDGE_ROUTE_KEY = 'isEdgeRoute';
+/** Okapi Edge Admin routes — skip ERP tenant JWT path; use EdgeAuthGuard instead. */
+export const EdgeRoute = () => SetMetadata(IS_EDGE_ROUTE_KEY, true);
+
+export const EDGE_PERMISSIONS_KEY = 'edgePermissions';
+export const RequireEdgePermissions = (...permissions: string[]) =>
+  SetMetadata(EDGE_PERMISSIONS_KEY, permissions);
+
+export const REQUIRE_EDGE_WORKSPACE_KEY = 'requireEdgeWorkspace';
+export const RequireEdgeWorkspace = () => SetMetadata(REQUIRE_EDGE_WORKSPACE_KEY, true);

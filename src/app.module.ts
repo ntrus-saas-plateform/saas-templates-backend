@@ -20,6 +20,7 @@ import { CsrfMiddleware } from './shared/security/csrf.middleware.js';
 import { RequestLoggingMiddleware } from './shared/logging/request-logging.middleware.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
+import { EdgeModule } from './modules/edge/edge.module.js';
 import { AuthorizationModule } from './shared/authorization/authorization.module.js';
 import { KeycloakModule } from './shared/keycloak/keycloak.module.js';
 import { FeatureFlagsModule } from './shared/feature-flags/feature-flags.module.js';
@@ -53,6 +54,7 @@ import { FeatureFlagsModule } from './shared/feature-flags/feature-flags.module.
     SchedulingModule,
     PlatformModule,
     IdentityModule,
+    EdgeModule,
   ],
   controllers: [],
   providers: [

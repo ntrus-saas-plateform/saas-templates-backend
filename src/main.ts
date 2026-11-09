@@ -25,7 +25,15 @@ async function bootstrap(): Promise<void> {
   const publicBaseUrl = resolvePublicBaseUrl(config);
 
   app.enableShutdownHooks();
-  app.use(express.json({ limit: config.MAX_PAYLOAD_SIZE }));
+  app.use(
+    express.json({
+      limit: config.MAX_PAYLOAD_SIZE,
+      verify: (req, _res, buf) => {
+        // Preserve raw bytes for Svix/Resend webhook signature verification.
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: config.MAX_PAYLOAD_SIZE }));
 
   const logger = app.get(LoggerService);

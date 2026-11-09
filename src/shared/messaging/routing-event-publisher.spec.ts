@@ -63,4 +63,19 @@ describe('RoutingEventPublisher', () => {
     expect(tenantOutboxTransaction.runWithOutbox).toHaveBeenCalled();
     expect(controlPlaneOutboxTransaction.runWithOutbox).not.toHaveBeenCalled();
   });
+
+  it('routes marketing and sales events to control-plane outbox', async () => {
+    await publisher.publish('t1', {
+      ...baseEvent,
+      eventType: 'marketing.lead.qualified.v1',
+    });
+    expect(controlPlaneOutboxTransaction.runWithOutbox).toHaveBeenCalled();
+    vi.clearAllMocks();
+    await publisher.publish('t1', {
+      ...baseEvent,
+      eventType: 'sales.lead.received.v1',
+    });
+    expect(controlPlaneOutboxTransaction.runWithOutbox).toHaveBeenCalled();
+  });
 });
+

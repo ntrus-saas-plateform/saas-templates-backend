@@ -6,7 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY, REQUIRE_WRITABLE_TENANT_KEY } from './decorators.js';
+import { IS_PUBLIC_KEY, REQUIRE_WRITABLE_TENANT_KEY, IS_EDGE_ROUTE_KEY } from './decorators.js';
 import { TenantContextService } from '../tenancy/tenant-context.service.js';
 import { TENANT_REGISTRY_PORT } from '../../modules/identity/domain/ports/tenant-registry.port.js';
 import type { TenantRegistryPort } from '../../modules/identity/domain/ports/tenant-registry.port.js';
@@ -28,6 +28,12 @@ export class TenantWritableGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) return true;
+
+    const isEdgeRoute = this.reflector.getAllAndOverride<boolean>(IS_EDGE_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isEdgeRoute) return true;
 
     const requiresWritable = this.reflector.getAllAndOverride<boolean>(
       REQUIRE_WRITABLE_TENANT_KEY,

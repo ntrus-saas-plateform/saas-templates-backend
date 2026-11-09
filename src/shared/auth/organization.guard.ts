@@ -1,6 +1,11 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY, REQUIRE_ORGANIZATION_KEY, IS_CUSTOMER_ROUTE_KEY } from './decorators.js';
+import {
+  IS_PUBLIC_KEY,
+  REQUIRE_ORGANIZATION_KEY,
+  IS_CUSTOMER_ROUTE_KEY,
+  IS_EDGE_ROUTE_KEY,
+} from './decorators.js';
 import { TenantContextService } from '../tenancy/tenant-context.service.js';
 import { ORGANIZATION_REPOSITORY_PORT } from '../../modules/identity/domain/ports/organization-repository.port.js';
 import type { OrganizationRepositoryPort } from '../../modules/identity/domain/ports/organization-repository.port.js';
@@ -28,6 +33,12 @@ export class OrganizationGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isCustomerRoute) return true;
+
+    const isEdgeRoute = this.reflector.getAllAndOverride<boolean>(IS_EDGE_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isEdgeRoute) return true;
 
     const requiresOrganization = this.reflector.getAllAndOverride<boolean>(
       REQUIRE_ORGANIZATION_KEY,

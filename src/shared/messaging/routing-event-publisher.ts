@@ -9,7 +9,10 @@ function isControlPlaneOutboxEvent(eventType: string): boolean {
     eventType.startsWith('customer.') ||
     eventType.startsWith('membership.') ||
     eventType.startsWith('organization.') ||
-    eventType.startsWith('user.')
+    eventType.startsWith('user.') ||
+    eventType.startsWith('commercial.') ||
+    eventType.startsWith('marketing.') ||
+    eventType.startsWith('sales.')
   );
 }
 

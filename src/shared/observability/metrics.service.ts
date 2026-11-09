@@ -63,6 +63,19 @@ export class MetricsService {
   readonly boutiqueReservations: Counter;
   readonly customer360Latency: Histogram;
 
+  /** Okapi Edge Platform metrics (low-cardinality labels only). */
+  readonly edgeInvitationsTotal: Counter<'result'>;
+  readonly edgeInvitationDeliveryFailures: Counter;
+  readonly edgeAdministratorSuspensions: Counter;
+  readonly edgeMembershipMutations: Counter<'operation'>;
+  readonly edgeWorkspaceSwitches: Counter<'result'>;
+  readonly edgeAuthorizationDenials: Counter;
+  readonly edgeInvalidWorkspaceContexts: Counter;
+  readonly edgeSessionMutations: Counter<'operation'>;
+  readonly edgeKeycloakSyncFailures: Counter;
+  readonly edgeReconciliationDrifts: Counter<'drift_type'>;
+  readonly edgeAuditPersistenceFailures: Counter;
+
   constructor() {
     collectDefaultMetrics({ register: this.registry });
 
@@ -358,6 +371,67 @@ export class MetricsService {
       name: 'customer_360_latency_seconds',
       help: 'Customer 360 enrichment latency',
       buckets: [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2],
+      registers: [this.registry],
+    });
+
+    this.edgeInvitationsTotal = new Counter({
+      name: 'edge_invitations_total',
+      help: 'Edge administrator invitations by result',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.edgeInvitationDeliveryFailures = new Counter({
+      name: 'edge_invitation_delivery_failures_total',
+      help: 'Edge invitation email delivery failures',
+      registers: [this.registry],
+    });
+    this.edgeAdministratorSuspensions = new Counter({
+      name: 'edge_administrator_suspensions_total',
+      help: 'Edge administrator suspension operations',
+      registers: [this.registry],
+    });
+    this.edgeMembershipMutations = new Counter({
+      name: 'edge_membership_mutations_total',
+      help: 'Edge membership lifecycle mutations',
+      labelNames: ['operation'],
+      registers: [this.registry],
+    });
+    this.edgeWorkspaceSwitches = new Counter({
+      name: 'edge_workspace_switches_total',
+      help: 'Edge workspace switch attempts by result',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.edgeAuthorizationDenials = new Counter({
+      name: 'edge_authorization_denials_total',
+      help: 'Edge permission guard denials',
+      registers: [this.registry],
+    });
+    this.edgeInvalidWorkspaceContexts = new Counter({
+      name: 'edge_invalid_workspace_contexts_total',
+      help: 'Invalid or stale Edge workspace session presentations',
+      registers: [this.registry],
+    });
+    this.edgeSessionMutations = new Counter({
+      name: 'edge_session_mutations_total',
+      help: 'Edge workspace session create/revoke operations',
+      labelNames: ['operation'],
+      registers: [this.registry],
+    });
+    this.edgeKeycloakSyncFailures = new Counter({
+      name: 'edge_keycloak_sync_failures_total',
+      help: 'Edge Keycloak synchronization failures',
+      registers: [this.registry],
+    });
+    this.edgeReconciliationDrifts = new Counter({
+      name: 'edge_reconciliation_drifts_total',
+      help: 'Edge identity reconciliation drift detections',
+      labelNames: ['drift_type'],
+      registers: [this.registry],
+    });
+    this.edgeAuditPersistenceFailures = new Counter({
+      name: 'edge_audit_persistence_failures_total',
+      help: 'Failures persisting Edge audit events',
       registers: [this.registry],
     });
   }

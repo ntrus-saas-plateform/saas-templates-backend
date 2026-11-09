@@ -19,6 +19,10 @@ describe('IntegrationEventDispatcher', () => {
     payload: {},
   };
 
+  const moduleRef = { get: vi.fn(() => {
+    throw new Error('not found');
+  }) };
+
   it('dispatches to matching handlers only', async () => {
     const matching: IntegrationEventHandler = {
       supports: (type) => type === event.eventType,
@@ -29,7 +33,11 @@ describe('IntegrationEventDispatcher', () => {
       handle: vi.fn(),
     };
 
-    const dispatcher = new IntegrationEventDispatcher([matching, other], null);
+    const dispatcher = new IntegrationEventDispatcher(
+      [matching, other],
+      moduleRef as never,
+      null,
+    );
     await dispatcher.dispatch(event);
 
     expect(matching.handle).toHaveBeenCalledWith(event);
@@ -45,7 +53,26 @@ describe('IntegrationEventDispatcher', () => {
       supports: (type) => type === event.eventType,
       handle: vi.fn(),
     };
-    const dispatcher = new IntegrationEventDispatcher([core], [extra]);
+    const dispatcher = new IntegrationEventDispatcher(
+      [core],
+      moduleRef as never,
+      [extra],
+    );
+    await dispatcher.dispatch(event);
+    expect(extra.handle).toHaveBeenCalledWith(event);
+  });
+
+  it('resolves EXTRA via ModuleRef when inject is absent', async () => {
+    const core: IntegrationEventHandler = {
+      supports: () => false,
+      handle: vi.fn(),
+    };
+    const extra: IntegrationEventHandler = {
+      supports: (type) => type === event.eventType,
+      handle: vi.fn(),
+    };
+    const ref = { get: vi.fn(() => [extra]) };
+    const dispatcher = new IntegrationEventDispatcher([core], ref as never, null);
     await dispatcher.dispatch(event);
     expect(extra.handle).toHaveBeenCalledWith(event);
   });

@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { IS_PUBLIC_KEY } from './decorators.js';
+import { IS_PUBLIC_KEY, IS_EDGE_ROUTE_KEY } from './decorators.js';
 import { TenantContextService } from '../tenancy/tenant-context.service.js';
 import { normalizeHostname } from '../tenancy/normalize-hostname.js';
 import { DOMAIN_REGISTRY_PORT } from '../../modules/identity/domain/ports/domain-registry.port.js';
@@ -42,6 +42,12 @@ export class TenantHostGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) return true;
+
+    const isEdgeRoute = this.reflector.getAllAndOverride<boolean>(IS_EDGE_ROUTE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isEdgeRoute) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
     const forwarded = request.headers['x-forwarded-host'] as string | undefined;

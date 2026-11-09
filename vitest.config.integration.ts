@@ -7,6 +7,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['test/integration/**/*.spec.ts'],
-    testTimeout: 30000,
+    // Control-plane migrations + Testcontainers startup exceed the default 30s.
+    testTimeout: 180_000,
+    hookTimeout: 300_000,
   },
 });

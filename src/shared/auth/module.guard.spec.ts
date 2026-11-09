@@ -35,16 +35,26 @@ describe('ModuleGuard', () => {
 
   it('allows when no @RequireModule metadata', async () => {
     vi.mocked(reflector.getAllAndOverride)
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(undefined);
+      .mockReturnValueOnce(false) // isPublic
+      .mockReturnValueOnce(false) // isEdgeRoute
+      .mockReturnValueOnce(undefined); // requireModule
+    await expect(guard.canActivate(createContext())).resolves.toBe(true);
+    expect(capabilityResolver.assertModuleEnabled).not.toHaveBeenCalled();
+  });
+
+  it('allows Edge routes without module checks', async () => {
+    vi.mocked(reflector.getAllAndOverride)
+      .mockReturnValueOnce(false) // isPublic
+      .mockReturnValueOnce(true); // isEdgeRoute
     await expect(guard.canActivate(createContext())).resolves.toBe(true);
     expect(capabilityResolver.assertModuleEnabled).not.toHaveBeenCalled();
   });
 
   it('asserts module when metadata present', async () => {
     vi.mocked(reflector.getAllAndOverride)
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce('commerce');
+      .mockReturnValueOnce(false) // isPublic
+      .mockReturnValueOnce(false) // isEdgeRoute
+      .mockReturnValueOnce('commerce'); // requireModule
     tenantContext.get.mockReturnValue({ tenantId: 't1' });
     capabilityResolver.assertModuleEnabled.mockResolvedValue(undefined);
 
@@ -54,8 +64,9 @@ describe('ModuleGuard', () => {
 
   it('propagates DomainError when module disabled', async () => {
     vi.mocked(reflector.getAllAndOverride)
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce('pharmacy');
+      .mockReturnValueOnce(false) // isPublic
+      .mockReturnValueOnce(false) // isEdgeRoute
+      .mockReturnValueOnce('pharmacy'); // requireModule
     tenantContext.get.mockReturnValue({ tenantId: 't1' });
     capabilityResolver.assertModuleEnabled.mockRejectedValue(
       new DomainError(ErrorCode.FORBIDDEN, "Module 'pharmacy' is not enabled for this tenant"),

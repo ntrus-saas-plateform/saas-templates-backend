@@ -9,19 +9,19 @@ function mockReflector(meta: Record<string, unknown>) {
 }
 
 describe('CapabilityGuard', () => {
-  it('allows when no capability metadata', async () => {
+  it('allows when no capability metadata', () => {
     const guard = new CapabilityGuard(mockReflector({}) as never);
-    await expect(
+    expect(
       guard.canActivate({ getHandler: () => ({}), getClass: () => ({}) } as never),
-    ).resolves.toBe(true);
+    ).toBe(true);
   });
 
-  it('does not block on a leftover capability marker', async () => {
+  it('does not block on a leftover capability marker', () => {
     const guard = new CapabilityGuard(
       mockReflector({ [REQUIRE_CAPABILITY_KEY]: 'FEFO' }) as never,
     );
-    await expect(
+    expect(
       guard.canActivate({ getHandler: () => ({}), getClass: () => ({}) } as never),
-    ).resolves.toBe(true);
+    ).toBe(true);
   });
 });

@@ -78,6 +78,23 @@ export const environmentSchema = z.object({
   KEYCLOAK_ADMIN_CLIENT_ID: z.string().min(1).default('platform-admin'),
   KEYCLOAK_ADMIN_CLIENT_SECRET: z.string().default('platform-admin-secret'),
 
+  // Okapi Edge Admin realm (isolated from ERP platform realm)
+  EDGE_KEYCLOAK_ISSUER: z
+    .string()
+    .url()
+    .default('http://localhost:8181/realms/edge-admin'),
+  EDGE_KEYCLOAK_JWKS_URI: z
+    .string()
+    .url()
+    .default('http://localhost:8181/realms/edge-admin/protocol/openid-connect/certs'),
+  EDGE_KEYCLOAK_AUDIENCE: z.string().min(1).default('edge-admin-api'),
+  EDGE_KEYCLOAK_ADMIN_REALM: z.string().min(1).default('edge-admin'),
+  EDGE_KEYCLOAK_ADMIN_CLIENT_ID: z.string().min(1).default('edge-admin-api'),
+  EDGE_KEYCLOAK_ADMIN_CLIENT_SECRET: z.string().default('edge-admin-api-secret'),
+  EDGE_WORKSPACE_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(28800),
+  EDGE_INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
+  PUBLIC_EDGE_APP_URL: z.string().url().default('http://localhost:3001/edge'),
+
   // OPA external policy engine (optional)
   OPA_ENABLED: z
     .string()
@@ -162,6 +179,16 @@ export const environmentSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  /** Svix signing secret from Resend webhook endpoint (`whsec_…`). */
+  RESEND_WEBHOOK_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  /** Optional marketing From override; falls back to MAIL_FROM. */
+  MARKETING_RESEND_FROM: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
   SMTP_HOST: z
     .string()
     .optional()
@@ -192,6 +219,19 @@ export const environmentSchema = z.object({
 
   // Outbox
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+
+  // Edge marketing channel adapters + journey WAIT worker (P3)
+  MARKETING_CHANNEL_ADAPTER: z
+    .enum(['unavailable', 'logging_accepted', 'http_webhook', 'resend', 'auto'])
+    .default('unavailable'),
+  MARKETING_CHANNEL_WEBHOOK_URL: z.string().url().optional(),
+  MARKETING_CHANNEL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+  MARKETING_WAIT_WORKER_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('true'),
+  MARKETING_WAIT_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(15000),
+  MARKETING_WAIT_BATCH_SIZE: z.coerce.number().int().positive().default(50),
 
   // Push delivery (staff devices — FCM / Web Push / APNs stub)
   PUSH_DELIVERY_ENABLED: z
@@ -225,6 +265,16 @@ export const environmentSchema = z.object({
   /** Optional marketing/utility template for WHATSAPP campaigns. */
   WHATSAPP_CAMPAIGN_TEMPLATE_NAME: z.string().optional(),
   WHATSAPP_CAMPAIGN_TEMPLATE_LANGUAGE: z.string().default('en'),
+  /** Meta app secret for X-Hub-Signature-256 on marketing WhatsApp webhooks. */
+  WHATSAPP_APP_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  /** Verify token echoed during Meta webhook subscription handshake. */
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
 
   // Domain registry
   /**
