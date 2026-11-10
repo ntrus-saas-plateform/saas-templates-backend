@@ -2,14 +2,16 @@
 
 | OQ ID | OQ-02 |
 | Title | Default policy: reuse Product Tenant after terminate vs always new? |
-| Status | RECOMMENDATION_ISSUED / PENDING_HUMAN_DECISION |
+| Status | **ACCEPTED** |
 | Priority | P0 BLOCKING Gate A |
+| Final Decision | Conditional reuse — never automatic |
+| Decision record | `17-OQ-TECHNICAL-DECISION-PACKAGE.md` (2026-11-10) |
 
 ## Problem
 
 D-CARD-01 durable tenant needs explicit reuse after commercial end. Terminate ≠ purge ≠ decommission.
 
-## Recommended Decision — Option B: Conditional reuse
+## Final Decision — ACCEPTED (Option B: Conditional reuse)
 
 **Never automatic.** Eligibility engine checks ownership, product match, tenant state, retention, legal holds, debts policy (P5), technical readiness.
 

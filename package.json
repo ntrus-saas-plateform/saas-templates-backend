@@ -32,6 +32,8 @@
     "check:sales:migrations": "node --import tsx scripts/check-sales-migrations.ts",
     "check:subscriptions:migrations": "node --import tsx scripts/check-subscription-migrations.ts",
     "check:billing:migrations": "node --import tsx scripts/check-billing-migrations.ts",
+    "check:provisioning:migrations": "node --import tsx scripts/check-provisioning-migrations.ts",
+    "test:edge:provisioning": "vitest run src/modules/edge/domain/provisioning src/modules/edge/infrastructure/provisioning",
     "certify:billing": "node --import tsx scripts/certify-billing.ts",
     "migrate:tenant": "node --import tsx scripts/migrate-tenant.ts",
     "migrate:pharmacy-patients": "node --import tsx scripts/migrate-pharmacy-patients-to-customers.ts",

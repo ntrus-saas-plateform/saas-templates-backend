@@ -2,14 +2,16 @@
 
 | OQ ID | OQ-03 |
 | Title | Multi environment_slot per account+product — commercial offer? |
-| Status | RECOMMENDATION_ISSUED / PENDING_HUMAN_DECISION |
+| Status | **ACCEPTED** |
 | Priority | P0 BLOCKING Gate A |
+| Final Decision | One PROD slot by default; extra slots only via P5 entitlements |
+| Decision record | `17-OQ-TECHNICAL-DECISION-PACKAGE.md` (2026-11-10) |
 
 ## Problem
 
 Avoid equating Product Tenant with Runtime Environment. Commercial may sell staging/DR slots.
 
-## Recommended Decision — Option C (+ slots)
+## Final Decision — ACCEPTED (Option C + slots)
 
 **Product Tenant** = logical isolation (Account+Product).  
 **Runtime Environment / Deployment Instance / Database Binding** = technical placement.  

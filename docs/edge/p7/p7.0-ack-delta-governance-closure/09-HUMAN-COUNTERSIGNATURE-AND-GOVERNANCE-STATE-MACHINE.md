@@ -2,6 +2,7 @@
 
 | Document ID | P7.0-ACK-DELTA-GOV-09 |
 | Current state | **PENDING_HUMAN_COUNTERSIGNATURE** |
+| OQ technical content | **CLOSED** (`17`) — does not advance state alone |
 
 ## Required roles (no names invented)
 
@@ -29,7 +30,7 @@ One signature may cover multiple scopes **only if** listed explicitly on the for
 ```text
 ARCHITECTURE_ACK_ISSUED
   → PENDING_HUMAN_COUNTERSIGNATURE
-  → P7_1_AUTHORIZATION_EFFECTIVE   [Gate A met: sigs + C-09 + C-10 + blocking OQs]
+  → P7_1_AUTHORIZATION_EFFECTIVE   [Gate A met: sigs + C-09 + C-10 + OQs closed (done via 17)]
   → P7_1_IN_PROGRESS
   → G1_SUBMITTED → G1_ACCEPTED     [Gate B]
   or P7_1_BLOCKED / P7_1_REVOKED
@@ -37,4 +38,5 @@ ARCHITECTURE_ACK_ISSUED
 
 Countersignature alone **insufficient** without C-09/C-10 formal acceptance.
 
-Templates: `contracts/human-countersignature.template.md` (unsigned).
+Primary instrument: **`18-P7-1-GATE-A-SIGNATURE-AND-AUTHORIZATION-PACK.md`** (signature rows blank; NOT EFFECTIVE).  
+Working templates: `contracts/human-countersignature.template.md`, `c09|c10-approval-record.template.md`, `governance-decision-record.template.md`.

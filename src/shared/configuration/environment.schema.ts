@@ -287,6 +287,15 @@ export const environmentSchema = z.object({
   BILLING_PROCESS_DUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
   BILLING_OVERDUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(1800),
 
+  // P7.1 provisioning authorization — default-off (C-02); Unavailable until durable
+  EDGE_P7_PROVISIONING_ADAPTER: z.enum(['unavailable', 'durable']).default('unavailable'),
+  /** JSON array: [{ "keyId","algorithm","publicKeyPem" }] — never private keys */
+  EDGE_P7_AUTHORIZATION_PUBLIC_KEYS_JSON: z.string().optional(),
+  /** Comma-separated allowed issuers; empty = any issuer still needs signature */
+  EDGE_P7_AUTHORIZATION_ALLOWED_ISSUERS: z.string().optional(),
+  EDGE_P5_AUTHORIZATION_STATUS_URL: z.string().url().optional(),
+  EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+
   // Push delivery (staff devices — FCM / Web Push / APNs stub)
   PUSH_DELIVERY_ENABLED: z
     .string()

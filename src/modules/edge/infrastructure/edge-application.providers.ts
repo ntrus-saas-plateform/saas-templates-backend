@@ -152,6 +152,22 @@ import { SUBSCRIPTION_BILLING_COORDINATION_PORT } from '../domain/subscription/b
 import { SUBSCRIPTION_PROVISIONING_COORDINATION_PORT } from '../domain/subscription/provisioning-coordination.port.js';
 import { UnavailableSubscriptionBillingAdapter } from './subscription/unavailable-billing.adapter.js';
 import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unavailable-provisioning.adapter.js';
+import { PROVISIONING_REPOSITORY_PORT } from '../domain/provisioning/provisioning-repository.port.js';
+import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
+import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
+import { DurableSubscriptionProvisioningAdapter } from './provisioning/durable-provisioning.adapter.js';
+import { ResolvingSubscriptionProvisioningAdapter } from './provisioning/resolving-provisioning.adapter.js';
+import { loadProvisioningTrustMaterial } from './provisioning/trust-material.js';
+import {
+  AcceptProvisioningAuthorizationUseCase,
+  CancelProvisioningRequestUseCase,
+  GetProvisioningAuthorizationSummaryUseCase,
+  GetProvisioningRequestHistoryUseCase,
+  GetProvisioningRequestStatsUseCase,
+  GetProvisioningRequestUseCase,
+  HandleAuthorizationRevocationUseCase,
+  ListProvisioningRequestsUseCase,
+} from '../application/provisioning/provisioning.use-cases.js';
 import {
   ActivateSubscriptionUseCase,
   AddSubscriptionItemUseCase,
@@ -2411,9 +2427,84 @@ export const edgeApplicationProviders: Provider[] = [
     provide: SUBSCRIPTION_BILLING_COORDINATION_PORT,
     useClass: UnavailableSubscriptionBillingAdapter,
   },
+  UnavailableSubscriptionProvisioningAdapter,
+  FailClosedP5AuthorizationStatusAdapter,
+  {
+    provide: P5_AUTHORIZATION_STATUS_PORT,
+    useExisting: FailClosedP5AuthorizationStatusAdapter,
+  },
+  {
+    provide: AcceptProvisioningAuthorizationUseCase,
+    useFactory: (repo, p5, config, outbox, audit) =>
+      new AcceptProvisioningAuthorizationUseCase(
+        repo,
+        p5,
+        () => loadProvisioningTrustMaterial(config as EnvironmentConfig),
+        outbox,
+        audit,
+      ),
+    inject: [
+      PROVISIONING_REPOSITORY_PORT,
+      P5_AUTHORIZATION_STATUS_PORT,
+      APP_CONFIG,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: DurableSubscriptionProvisioningAdapter,
+    useFactory: (accept) => new DurableSubscriptionProvisioningAdapter(accept),
+    inject: [AcceptProvisioningAuthorizationUseCase],
+  },
+  ResolvingSubscriptionProvisioningAdapter,
   {
     provide: SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
-    useClass: UnavailableSubscriptionProvisioningAdapter,
+    useExisting: ResolvingSubscriptionProvisioningAdapter,
+  },
+  {
+    provide: ListProvisioningRequestsUseCase,
+    useFactory: (repo) => new ListProvisioningRequestsUseCase(repo),
+    inject: [PROVISIONING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetProvisioningRequestUseCase,
+    useFactory: (repo) => new GetProvisioningRequestUseCase(repo),
+    inject: [PROVISIONING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetProvisioningRequestHistoryUseCase,
+    useFactory: (repo) => new GetProvisioningRequestHistoryUseCase(repo),
+    inject: [PROVISIONING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetProvisioningRequestStatsUseCase,
+    useFactory: (repo) => new GetProvisioningRequestStatsUseCase(repo),
+    inject: [PROVISIONING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetProvisioningAuthorizationSummaryUseCase,
+    useFactory: (repo) => new GetProvisioningAuthorizationSummaryUseCase(repo),
+    inject: [PROVISIONING_REPOSITORY_PORT],
+  },
+  {
+    provide: CancelProvisioningRequestUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CancelProvisioningRequestUseCase(repo, outbox, audit),
+    inject: [
+      PROVISIONING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: HandleAuthorizationRevocationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new HandleAuthorizationRevocationUseCase(repo, outbox, audit),
+    inject: [
+      PROVISIONING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: GetSubscriptionOverviewUseCase,

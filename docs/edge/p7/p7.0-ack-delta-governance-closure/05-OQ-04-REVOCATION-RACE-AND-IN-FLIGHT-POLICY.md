@@ -2,8 +2,10 @@
 
 | OQ ID | OQ-04 |
 | Title | Sync revoke API path/SLA when P5 down during accept? |
-| Status | RECOMMENDATION_ISSUED / PENDING_HUMAN_DECISION |
+| Status | **ACCEPTED** |
 | Priority | P0 BLOCKING Gate A |
+| Final Decision | Sync verify + fail-closed if P5 unavailable; timeout **2s** (default DENY) |
+| Decision record | `17-OQ-TECHNICAL-DECISION-PACKAGE.md` (2026-11-10) |
 | Scope note | Extends original OQ-04 with race/in-flight policy required by D-REV-01 — **same ID** |
 
 ## Sync path when P5 down (core OQ)
@@ -12,7 +14,7 @@
 |--------|--------|
 | Accepting new Provisioning Request | **Fail-closed** if sync verify required and P5 unavailable |
 | Event-only lag | Local revoke cache + eventual sync; do not start if status unknown |
-| SLA (recommended) | Sync verify timeout ≤ 2s; on timeout → DENY start (configurable but default deny) |
+| SLA (**ACCEPTED**) | Sync verify timeout **≤ 2s**; on timeout → **DENY** start (configurable but default deny) |
 
 No implicit allow on P5 outage.
 

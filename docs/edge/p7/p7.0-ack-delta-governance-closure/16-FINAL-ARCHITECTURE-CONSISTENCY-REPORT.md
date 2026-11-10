@@ -16,7 +16,7 @@ Temporal associations · Conditional reuse · Slot model · Ownership auditabili
 
 ## Governance checks
 
-OQ titles preserved · OQ-06 added without ID clash · C-09/C-10 dossiers unsigned · Gate A≠Gate B · No simulated signatures · No code changes.
+OQ titles preserved · OQ-06 added without ID clash · OQ-01…06 technical content closed via package `17` · Gate A signature instrument pack `18` prepared with blank signer fields (NOT EFFECTIVE) · C-09/C-10 still unsigned · Gate A≠Gate B · No simulated multi-role signatures · No code changes.
 
 ## Verdict alignment
 

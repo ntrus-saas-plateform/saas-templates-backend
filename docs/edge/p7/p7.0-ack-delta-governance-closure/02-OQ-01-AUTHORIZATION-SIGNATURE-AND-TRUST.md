@@ -4,8 +4,10 @@
 |-------|-------|
 | OQ ID | OQ-01 |
 | Title | Asymmetric signature mandatory vs digest+S2S only in v1? |
-| Status | RECOMMENDATION_ISSUED / PENDING_HUMAN_DECISION |
+| Status | **ACCEPTED** |
 | Priority | P0 BLOCKING Gate A |
+| Final Decision | **Option C** — S2S + digest + asymmetric signature in production |
+| Decision record | `17-OQ-TECHNICAL-DECISION-PACKAGE.md` (2026-11-10) |
 
 ## Problem
 
@@ -32,10 +34,11 @@ Channel authenticity · Service authentication · Message authenticity · Messag
 | **C** | **Hybrid: S2S + payload_digest + asymmetric signature (EdDSA/ES256)** | Matches threat model | Key mgmt cost |
 | D | Digest-only v1, signature v1.1 | Faster start | Residual risk on broker path |
 
-## Recommended Decision (not organizationally accepted)
+## Final Decision — ACCEPTED
 
-**Option C for production-bound environments.**  
-**Phased Gate A allowance:** Security may approve **Option D for P7.1 lab/dev only** with written residual risk acceptance; production/staging require C before any real auth issuance.
+**Option C for production-bound environments:** S2S + payload digest + asymmetric signature.
+
+**Phased note:** Lab/dev may document residual risk if signature material is unavailable; any environment issuing real commercial authorizations requires Option C before auth issuance go-live.
 
 ### Controls
 
