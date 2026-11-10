@@ -42,6 +42,12 @@ import {
   EdgeCapacityController,
   EdgePlacementController,
 } from './presentation/controllers/placement.controller.js';
+import {
+  EdgeWorkflowController,
+  EdgeWorkflowTasksController,
+} from './presentation/controllers/workflow.controller.js';
+import { EdgeWorkflowWorkerController } from './presentation/controllers/workflow-worker.controller.js';
+import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
  * Okapi Edge Admin bounded context — Hexagonal / DDD layout:
@@ -79,6 +85,9 @@ import {
     EdgeRegistryController,
     EdgePlacementController,
     EdgeCapacityController,
+    EdgeWorkflowController,
+    EdgeWorkflowTasksController,
+    EdgeWorkflowWorkerController,
   ],
   providers: [
     ...edgeApplicationProviders,
@@ -86,6 +95,7 @@ import {
     SalesHandoffRequestedHandler,
     BillingCoordinationRequestedHandler,
     BillingJobsBootstrap,
+    WorkflowWorkerBootstrap,
     {
       provide: EXTRA_INTEGRATION_EVENT_HANDLERS,
       useFactory: (

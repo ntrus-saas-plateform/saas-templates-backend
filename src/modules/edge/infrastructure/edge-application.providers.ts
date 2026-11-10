@@ -192,6 +192,39 @@ import {
   SupersedeDecisionUseCase,
   UpsertCapacityInventoryUseCase,
 } from '../application/placement/placement.use-cases.js';
+import { WORKFLOW_REPOSITORY_PORT } from '../domain/workflow/workflow-repository.port.js';
+import { WORKFLOW_AUTHORIZATION_PORT } from '../domain/workflow/workflow-authorization.port.js';
+import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.port.js';
+import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
+import { WorkflowHandlerRegistry } from './workflow/workflow-handler.registry.js';
+import {
+  ApproveHumanTaskUseCase,
+  AssignHumanTaskUseCase,
+  CancelWorkflowUseCase,
+  ClaimStepUseCase,
+  CompleteCompensationUseCase,
+  CompleteHumanTaskUseCase,
+  CompleteStepUseCase,
+  CreateWorkflowDefinitionUseCase,
+  CreateWorkflowInstanceUseCase,
+  DeprecateWorkflowDefinitionUseCase,
+  ExecuteClaimedStepUseCase,
+  FailStepUseCase,
+  ListWorkflowResourcesUseCase,
+  PauseWorkflowUseCase,
+  PublishWorkflowDefinitionUseCase,
+  ReconcileWorkflowsUseCase,
+  ReconcileWorkflowUseCase,
+  RejectHumanTaskUseCase,
+  RenewLeaseUseCase,
+  ResumeWorkflowUseCase,
+  RetryWorkflowUseCase,
+  ScheduleRetryUseCase,
+  StartCompensationUseCase,
+  StartWorkflowUseCase,
+  ValidateWorkflowDefinitionUseCase,
+  WorkerHeartbeatUseCase,
+} from '../application/workflow/workflow.use-cases.js';
 import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
 import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
@@ -3415,5 +3448,174 @@ export const edgeApplicationProviders: Provider[] = [
     provide: UpsertRevenuePolicyUseCase,
     useFactory: (b) => new UpsertRevenuePolicyUseCase(b),
     inject: [BILLING_REPOSITORY_PORT],
+  },
+  { provide: WORKFLOW_HANDLER_REGISTRY, useClass: WorkflowHandlerRegistry },
+  {
+    provide: ListWorkflowResourcesUseCase,
+    useFactory: (repo) => new ListWorkflowResourcesUseCase(repo),
+    inject: [WORKFLOW_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateWorkflowDefinitionUseCase,
+    useFactory: (repo, outbox, audit) => new CreateWorkflowDefinitionUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ValidateWorkflowDefinitionUseCase,
+    useFactory: (repo, outbox, audit) => new ValidateWorkflowDefinitionUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: PublishWorkflowDefinitionUseCase,
+    useFactory: (repo, outbox, audit) => new PublishWorkflowDefinitionUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: DeprecateWorkflowDefinitionUseCase,
+    useFactory: (repo, outbox, audit) => new DeprecateWorkflowDefinitionUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateWorkflowInstanceUseCase,
+    useFactory: (repo, auth, placement, outbox, audit) =>
+      new CreateWorkflowInstanceUseCase(repo, auth, placement, outbox, audit),
+    inject: [
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      WORKFLOW_PLACEMENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: StartWorkflowUseCase,
+    useFactory: (repo, auth, placement, outbox, audit) =>
+      new StartWorkflowUseCase(repo, auth, placement, outbox, audit),
+    inject: [
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      WORKFLOW_PLACEMENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PauseWorkflowUseCase,
+    useFactory: (repo, outbox, audit) => new PauseWorkflowUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ResumeWorkflowUseCase,
+    useFactory: (repo, auth, outbox, audit) => new ResumeWorkflowUseCase(repo, auth, outbox, audit),
+    inject: [
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CancelWorkflowUseCase,
+    useFactory: (repo, outbox, audit) => new CancelWorkflowUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RetryWorkflowUseCase,
+    useFactory: (repo, auth, outbox, audit) => new RetryWorkflowUseCase(repo, auth, outbox, audit),
+    inject: [
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReconcileWorkflowsUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new ReconcileWorkflowsUseCase(repo, auth, outbox, audit),
+    inject: [
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReconcileWorkflowUseCase,
+    useFactory: (all) => new ReconcileWorkflowUseCase(all),
+    inject: [ReconcileWorkflowsUseCase],
+  },
+  {
+    provide: ClaimStepUseCase,
+    useFactory: (repo, outbox, audit) => new ClaimStepUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RenewLeaseUseCase,
+    useFactory: (repo) => new RenewLeaseUseCase(repo),
+    inject: [WORKFLOW_REPOSITORY_PORT],
+  },
+  {
+    provide: CompleteStepUseCase,
+    useFactory: (repo, outbox, audit) => new CompleteStepUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: FailStepUseCase,
+    useFactory: (repo, outbox, audit) => new FailStepUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ScheduleRetryUseCase,
+    useFactory: (repo, outbox, audit) => new ScheduleRetryUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: StartCompensationUseCase,
+    useFactory: (repo, outbox, audit) => new StartCompensationUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CompleteCompensationUseCase,
+    useFactory: (repo, outbox, audit) => new CompleteCompensationUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: AssignHumanTaskUseCase,
+    useFactory: (repo, outbox, audit) => new AssignHumanTaskUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ApproveHumanTaskUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveHumanTaskUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RejectHumanTaskUseCase,
+    useFactory: (repo, outbox, audit) => new RejectHumanTaskUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CompleteHumanTaskUseCase,
+    useFactory: (repo, outbox, audit) => new CompleteHumanTaskUseCase(repo, outbox, audit),
+    inject: [WORKFLOW_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: WorkerHeartbeatUseCase,
+    useFactory: (repo) => new WorkerHeartbeatUseCase(repo),
+    inject: [WORKFLOW_REPOSITORY_PORT],
+  },
+  {
+    provide: ExecuteClaimedStepUseCase,
+    useFactory: (handlers, complete, fail, repo, outbox, audit) =>
+      new ExecuteClaimedStepUseCase(handlers, complete, fail, repo, outbox, audit),
+    inject: [
+      WORKFLOW_HANDLER_REGISTRY,
+      CompleteStepUseCase,
+      FailStepUseCase,
+      WORKFLOW_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
 ];

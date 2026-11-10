@@ -33,11 +33,17 @@ import { PROVISIONING_REPOSITORY_PORT } from '../../domain/provisioning/provisio
 import { REGISTRY_REPOSITORY_PORT } from '../../domain/registry/registry-repository.port.js';
 import { PLACEMENT_REPOSITORY_PORT } from '../../domain/placement/placement-repository.port.js';
 import { PLACEMENT_AUTHORIZATION_VIEW_PORT } from '../../domain/placement/placement-authorization-view.port.js';
+import { WORKFLOW_REPOSITORY_PORT } from '../../domain/workflow/workflow-repository.port.js';
+import { WORKFLOW_AUTHORIZATION_PORT } from '../../domain/workflow/workflow-authorization.port.js';
+import { WORKFLOW_PLACEMENT_PORT } from '../../domain/workflow/workflow-placement.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
 import { PgPlacementRepository } from '../placement/pg-placement.repository.js';
 import { PgPlacementAuthorizationViewAdapter } from '../placement/pg-placement-authorization-view.adapter.js';
+import { PgWorkflowRepository } from '../workflow/pg-workflow.repository.js';
+import { PgWorkflowAuthorizationAdapter } from '../workflow/pg-workflow-authorization.adapter.js';
+import { PgWorkflowPlacementAdapter } from '../workflow/pg-workflow-placement.adapter.js';
 import { PgVerticalRepository } from './pg-vertical.repository.js';
 import { PgMembershipRepository } from './pg-membership.repository.js';
 import { PgInvitationRepository } from './pg-invitation.repository.js';
@@ -104,6 +110,9 @@ const providers = [
     provide: PLACEMENT_AUTHORIZATION_VIEW_PORT,
     useClass: PgPlacementAuthorizationViewAdapter,
   },
+  { provide: WORKFLOW_REPOSITORY_PORT, useClass: PgWorkflowRepository },
+  { provide: WORKFLOW_AUTHORIZATION_PORT, useClass: PgWorkflowAuthorizationAdapter },
+  { provide: WORKFLOW_PLACEMENT_PORT, useClass: PgWorkflowPlacementAdapter },
 ];
 
 @Module({
