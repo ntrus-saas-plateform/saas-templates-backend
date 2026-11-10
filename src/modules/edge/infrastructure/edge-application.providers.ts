@@ -153,6 +153,28 @@ import { SUBSCRIPTION_PROVISIONING_COORDINATION_PORT } from '../domain/subscript
 import { UnavailableSubscriptionBillingAdapter } from './subscription/unavailable-billing.adapter.js';
 import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unavailable-provisioning.adapter.js';
 import { PROVISIONING_REPOSITORY_PORT } from '../domain/provisioning/provisioning-repository.port.js';
+import { REGISTRY_REPOSITORY_PORT } from '../domain/registry/registry-repository.port.js';
+import {
+  CreateControlContractUseCase,
+  CreateTechnicalVersionUseCase,
+  EvaluateCompatibilityUseCase,
+  ListRegistryResourcesUseCase,
+  RegisterEnvironmentUseCase,
+  RegisterPlatformUseCase,
+  RegisterProductUseCase,
+  TransitionControlContractUseCase,
+  TransitionDeploymentProfileUseCase,
+  TransitionEnvironmentUseCase,
+  TransitionPlatformUseCase,
+  TransitionProductRegistryUseCase,
+  TransitionTechnicalVersionUseCase,
+  UpdateControlContractDraftUseCase,
+  UpdateDeploymentProfileUseCase,
+  UpdateEnvironmentUseCase,
+  UpdatePlatformUseCase,
+  UpdateProductRegistryUseCase,
+  UpdateTechnicalVersionDraftUseCase,
+} from '../application/registry/registry.use-cases.js';
 import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
 import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
@@ -2507,6 +2529,102 @@ export const edgeApplicationProviders: Provider[] = [
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
     ],
+  },
+  {
+    provide: ListRegistryResourcesUseCase,
+    useFactory: (repo) => new ListRegistryResourcesUseCase(repo),
+    inject: [REGISTRY_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterProductUseCase,
+    useFactory: (repo, outbox, audit) => new RegisterProductUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateProductRegistryUseCase,
+    useFactory: (repo, outbox, audit) => new UpdateProductRegistryUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionProductRegistryUseCase,
+    useFactory: (repo, outbox, audit) => new TransitionProductRegistryUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateTechnicalVersionUseCase,
+    useFactory: (repo, audit) => new CreateTechnicalVersionUseCase(repo, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateTechnicalVersionDraftUseCase,
+    useFactory: (repo) => new UpdateTechnicalVersionDraftUseCase(repo),
+    inject: [REGISTRY_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionTechnicalVersionUseCase,
+    useFactory: (repo, audit) => new TransitionTechnicalVersionUseCase(repo, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterPlatformUseCase,
+    useFactory: (repo, outbox, audit) => new RegisterPlatformUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdatePlatformUseCase,
+    useFactory: (repo, audit) => new UpdatePlatformUseCase(repo, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionPlatformUseCase,
+    useFactory: (repo, outbox, audit) => new TransitionPlatformUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterEnvironmentUseCase,
+    useFactory: (repo, outbox, audit) => new RegisterEnvironmentUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateEnvironmentUseCase,
+    useFactory: (repo) => new UpdateEnvironmentUseCase(repo),
+    inject: [REGISTRY_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionEnvironmentUseCase,
+    useFactory: (repo, audit) => new TransitionEnvironmentUseCase(repo, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateDeploymentProfileUseCase,
+    useFactory: (repo, outbox, audit) => new UpdateDeploymentProfileUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionDeploymentProfileUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new TransitionDeploymentProfileUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateControlContractUseCase,
+    useFactory: (repo, audit) => new CreateControlContractUseCase(repo, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateControlContractDraftUseCase,
+    useFactory: (repo) => new UpdateControlContractDraftUseCase(repo),
+    inject: [REGISTRY_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionControlContractUseCase,
+    useFactory: (repo, outbox, audit) => new TransitionControlContractUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: EvaluateCompatibilityUseCase,
+    useFactory: (repo, outbox, audit) => new EvaluateCompatibilityUseCase(repo, outbox, audit),
+    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
   },
   {
     provide: GetSubscriptionOverviewUseCase,

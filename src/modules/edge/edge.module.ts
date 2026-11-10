@@ -37,6 +37,7 @@ import { EdgeSubscriptionController } from './presentation/controllers/subscript
 import { EdgeBillingController } from './presentation/controllers/billing.controller.js';
 import { EdgeProvisioningController } from './presentation/controllers/provisioning.controller.js';
 import { EdgeP5ProvisioningIntegrationController } from './presentation/controllers/p5-provisioning-integration.controller.js';
+import { EdgeRegistryController } from './presentation/controllers/registry.controller.js';
 
 /**
  * Okapi Edge Admin bounded context — Hexagonal / DDD layout:
@@ -71,6 +72,7 @@ import { EdgeP5ProvisioningIntegrationController } from './presentation/controll
     EdgeBillingController,
     EdgeProvisioningController,
     EdgeP5ProvisioningIntegrationController,
+    EdgeRegistryController,
   ],
   providers: [
     ...edgeApplicationProviders,

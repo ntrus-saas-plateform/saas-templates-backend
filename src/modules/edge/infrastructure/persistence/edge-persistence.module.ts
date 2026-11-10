@@ -30,8 +30,10 @@ import { SALES_PLATFORM_REPOSITORY_PORT } from '../../domain/ports/sales-platfor
 import { SUBSCRIPTION_REPOSITORY_PORT } from '../../domain/ports/subscription-repository.port.js';
 import { BILLING_REPOSITORY_PORT } from '../../domain/ports/billing-repository.port.js';
 import { PROVISIONING_REPOSITORY_PORT } from '../../domain/provisioning/provisioning-repository.port.js';
+import { REGISTRY_REPOSITORY_PORT } from '../../domain/registry/registry-repository.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
+import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
 import { PgVerticalRepository } from './pg-vertical.repository.js';
 import { PgMembershipRepository } from './pg-membership.repository.js';
 import { PgInvitationRepository } from './pg-invitation.repository.js';
@@ -92,6 +94,7 @@ const providers = [
   { provide: SUBSCRIPTION_REPOSITORY_PORT, useClass: PgSubscriptionRepository },
   { provide: BILLING_REPOSITORY_PORT, useClass: PgBillingRepository },
   { provide: PROVISIONING_REPOSITORY_PORT, useClass: PgProvisioningRepository },
+  { provide: REGISTRY_REPOSITORY_PORT, useClass: PgRegistryRepository },
 ];
 
 @Module({
