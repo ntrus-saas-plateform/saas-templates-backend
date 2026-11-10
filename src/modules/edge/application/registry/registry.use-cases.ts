@@ -50,15 +50,6 @@ import {
 } from '../../domain/registry/registry.types.js';
 import { EDGE_P7_OUTBOX_TENANT } from '../../domain/provisioning/provisioning.events.js';
 
-async function enqueue(
-  outbox: ControlPlaneOutboxTransactionService,
-  event: IntegrationEvent<unknown>,
-): Promise<void> {
-  await outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (_c, enq) => {
-    await enq(event);
-  });
-}
-
 async function requireAudit(
   audit: AuditEventRepositoryPort,
   input: {
@@ -68,9 +59,10 @@ async function requireAudit(
     subjectId: string;
     details: Record<string, unknown>;
   },
+  client: unknown,
 ): Promise<void> {
   try {
-    await audit.create(input);
+    await audit.create(input, client);
   } catch (err) {
     throw new DomainError(
       ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -109,52 +101,63 @@ export class RegisterProductUseCase {
     if (existing) {
       throw new DomainError(ErrorCode.CONFLICT, 'Product already registered in P7.2 registry');
     }
-    const record = await this.repo.createProductRegistry({
-      productId: input.productId,
-      code: input.code.trim(),
-      name: input.name.trim(),
-      description: input.description ?? null,
-      verticalCategory: input.verticalCategory ?? null,
-      registryStatus: RegistryLifecycleStatus.DRAFT,
-      certificationStatus: CertificationStatus.UNCERTIFIED,
-      technicalConstraints: {},
-      declaredCapabilities: [],
-      compatiblePlatformIds: [],
-      compatibleEnvironmentIds: [],
-      compatibleProfileIds: [],
-      compatibleContractIds: [],
-      metadata: {},
-      createdBy: input.actorId,
-      updatedBy: input.actorId,
-    });
     const correlationId = randomUUID();
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_REGISTRY,
-      resourceId: record.id,
-      fromStatus: null,
-      toStatus: record.registryStatus,
-      action: 'REGISTER',
-      reason: null,
-      actorId: input.actorId,
-      details: { productId: input.productId },
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const record = await this.repo.createProductRegistry(
+        {
+          productId: input.productId,
+          code: input.code.trim(),
+          name: input.name.trim(),
+          description: input.description ?? null,
+          verticalCategory: input.verticalCategory ?? null,
+          registryStatus: RegistryLifecycleStatus.DRAFT,
+          certificationStatus: CertificationStatus.UNCERTIFIED,
+          technicalConstraints: {},
+          declaredCapabilities: [],
+          compatiblePlatformIds: [],
+          compatibleEnvironmentIds: [],
+          compatibleProfileIds: [],
+          compatibleContractIds: [],
+          metadata: {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_REGISTRY,
+          resourceId: record.id,
+          fromStatus: null,
+          toStatus: record.registryStatus,
+          action: 'REGISTER',
+          reason: null,
+          actorId: input.actorId,
+          details: { productId: input.productId },
+        },
+        client,
+      );
+      await enqueue(
+        createProductRegisteredEvent({
+          actorId: input.actorId,
+          correlationId,
+          productRegistryId: record.id,
+          productId: input.productId,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.product.registered',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_REGISTRY',
+          subjectId: record.id,
+          details: { productId: input.productId, code: record.code },
+        },
+        client,
+      );
+      return record;
     });
-    await enqueue(
-      this.outbox,
-      createProductRegisteredEvent({
-        actorId: input.actorId,
-        correlationId,
-        productRegistryId: record.id,
-        productId: input.productId,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.product.registered',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_REGISTRY',
-      subjectId: record.id,
-      details: { productId: input.productId, code: record.code },
-    });
-    return record;
   }
 }
 
@@ -196,27 +199,33 @@ export class UpdateProductRegistryUseCase {
         'Cannot update deprecated/retired product registry',
       );
     }
-    const updated = await this.repo.updateProductRegistry(
-      input.id,
-      { ...input.patch, updatedBy: input.actorId },
-      input.expectedVersion,
-    );
-    await enqueue(
-      this.outbox,
-      createProductUpdatedEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        productRegistryId: updated.id,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.product.updated',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_REGISTRY',
-      subjectId: updated.id,
-      details: { version: updated.version },
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateProductRegistry(
+        input.id,
+        { ...input.patch, updatedBy: input.actorId },
+        input.expectedVersion,
+        client,
+      );
+      await enqueue(
+        createProductUpdatedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          productRegistryId: updated.id,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.product.updated',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_REGISTRY',
+          subjectId: updated.id,
+          details: { version: updated.version },
+        },
+        client,
+      );
+      return updated;
     });
-    return updated;
   }
 }
 
@@ -253,70 +262,74 @@ export class TransitionProductRegistryUseCase {
     }
 
     const provisionable = isProvisionable(input.toStatus, certificationStatus);
-    const updated = await this.repo.updateProductRegistry(
-      input.id,
-      {
-        registryStatus: input.toStatus,
-        certificationStatus,
-        provisionable,
-        updatedBy: input.actorId,
-      },
-      current.version,
-    );
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_REGISTRY,
-      resourceId: updated.id,
-      fromStatus: current.registryStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: input.reason ?? null,
-      actorId: input.actorId,
-      details: { provisionable },
-    });
-
     const correlationId = randomUUID();
-    if (input.toStatus === RegistryLifecycleStatus.CERTIFIED) {
-      await enqueue(
-        this.outbox,
-        createProductCertifiedEvent({
+
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateProductRegistry(
+        input.id,
+        {
+          registryStatus: input.toStatus,
+          certificationStatus,
+          provisionable,
+          updatedBy: input.actorId,
+        },
+        current.version,
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_REGISTRY,
+          resourceId: updated.id,
+          fromStatus: current.registryStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: input.reason ?? null,
+          actorId: input.actorId,
+          details: { provisionable },
+        },
+        client,
+      );
+
+      let event: IntegrationEvent<unknown>;
+      if (input.toStatus === RegistryLifecycleStatus.CERTIFIED) {
+        event = createProductCertifiedEvent({
           actorId: input.actorId,
           correlationId,
           productRegistryId: updated.id,
-        }),
-      );
-    } else if (input.toStatus === RegistryLifecycleStatus.DEPRECATED) {
-      await enqueue(
-        this.outbox,
-        createProductDeprecatedEvent({
+        });
+      } else if (input.toStatus === RegistryLifecycleStatus.DEPRECATED) {
+        event = createProductDeprecatedEvent({
           actorId: input.actorId,
           correlationId,
           productRegistryId: updated.id,
           reason: input.reason ?? '',
-        }),
-      );
-    } else {
-      await enqueue(
-        this.outbox,
-        createProductUpdatedEvent({
+        });
+      } else {
+        event = createProductUpdatedEvent({
           actorId: input.actorId,
           correlationId,
           productRegistryId: updated.id,
-        }),
+        });
+      }
+      await enqueue(event);
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.product.transitioned',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_REGISTRY',
+          subjectId: updated.id,
+          details: {
+            from: current.registryStatus,
+            to: input.toStatus,
+            reason: input.reason ?? null,
+            provisionable,
+          },
+        },
+        client,
       );
-    }
-    await requireAudit(this.audit, {
-      eventType: 'registry.product.transitioned',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_REGISTRY',
-      subjectId: updated.id,
-      details: {
-        from: current.registryStatus,
-        to: input.toStatus,
-        reason: input.reason ?? null,
-        provisionable,
-      },
+      return updated;
     });
-    return updated;
   }
 }
 
@@ -345,53 +358,64 @@ export class CreateTechnicalVersionUseCase {
         `Invalid release channel ${input.releaseChannel}; expected DEV|BETA|STABLE|LTS|HOTFIX`,
       );
     }
-    const version = await this.repo.createTechnicalVersion({
-      productRegistryId: input.productRegistryId,
-      technicalVersion: input.technicalVersion.trim(),
-      releaseChannel: channel,
-      versionStatus: TechnicalVersionStatus.DRAFT,
-      compatibleContractVersions: [],
-      compatibleProfileCodes: [],
-      compatibleRuntimeTypes: [],
-      schemaCompatibility: {},
-      apiCompatibility: {},
-      availableFrom: null,
-      supportEndsAt: null,
-      certificationMetadata: {},
-      changeSummary: input.changeSummary ?? null,
-      immutableAfterPublish: true,
-      metadata: {},
-      createdBy: input.actorId,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const version = await this.repo.createTechnicalVersion(
+        {
+          productRegistryId: input.productRegistryId,
+          technicalVersion: input.technicalVersion.trim(),
+          releaseChannel: channel,
+          versionStatus: TechnicalVersionStatus.DRAFT,
+          compatibleContractVersions: [],
+          compatibleProfileCodes: [],
+          compatibleRuntimeTypes: [],
+          schemaCompatibility: {},
+          apiCompatibility: {},
+          availableFrom: null,
+          supportEndsAt: null,
+          certificationMetadata: {},
+          changeSummary: input.changeSummary ?? null,
+          immutableAfterPublish: true,
+          metadata: {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_TECHNICAL_VERSION,
+          resourceId: version.id,
+          fromStatus: null,
+          toStatus: version.versionStatus,
+          action: 'REGISTER',
+          reason: null,
+          actorId: input.actorId,
+          details: { technicalVersion: version.technicalVersion },
+        },
+        client,
+      );
+      await enqueue(
+        createTechnicalVersionRegisteredEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          versionId: version.id,
+          productRegistryId: input.productRegistryId,
+          technicalVersion: version.technicalVersion,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.technical_version.created',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_TECHNICAL_VERSION',
+          subjectId: version.id,
+          details: { productRegistryId: input.productRegistryId },
+        },
+        client,
+      );
+      return version;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_TECHNICAL_VERSION,
-      resourceId: version.id,
-      fromStatus: null,
-      toStatus: version.versionStatus,
-      action: 'REGISTER',
-      reason: null,
-      actorId: input.actorId,
-      details: { technicalVersion: version.technicalVersion },
-    });
-    await enqueue(
-      this.outbox,
-      createTechnicalVersionRegisteredEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        versionId: version.id,
-        productRegistryId: input.productRegistryId,
-        technicalVersion: version.technicalVersion,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.technical_version.created',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_TECHNICAL_VERSION',
-      subjectId: version.id,
-      details: { productRegistryId: input.productRegistryId },
-    });
-    return version;
   }
 }
 
@@ -410,45 +434,63 @@ export class TransitionTechnicalVersionUseCase {
     const current = await this.repo.getTechnicalVersion(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Technical version not found');
     assertTechnicalVersionTransition(current.versionStatus, input.toStatus);
-    const updated = await this.repo.updateTechnicalVersion(input.id, {
-      versionStatus: input.toStatus,
-      updatedBy: input.actorId,
-      availableFrom:
-        input.toStatus === TechnicalVersionStatus.PUBLISHED ? new Date() : current.availableFrom,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateTechnicalVersion(
+        input.id,
+        {
+          versionStatus: input.toStatus,
+          updatedBy: input.actorId,
+          availableFrom:
+            input.toStatus === TechnicalVersionStatus.PUBLISHED
+              ? new Date()
+              : current.availableFrom,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_TECHNICAL_VERSION,
+          resourceId: updated.id,
+          fromStatus: current.versionStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: null,
+          actorId: input.actorId,
+          details: {},
+        },
+        client,
+      );
+      await enqueue(
+        createTechnicalVersionTransitionedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          versionId: updated.id,
+          fromStatus: current.versionStatus,
+          toStatus: input.toStatus,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.technical_version.transitioned',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_TECHNICAL_VERSION',
+          subjectId: updated.id,
+          details: { from: current.versionStatus, to: input.toStatus },
+        },
+        client,
+      );
+      return updated;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_TECHNICAL_VERSION,
-      resourceId: updated.id,
-      fromStatus: current.versionStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: null,
-      actorId: input.actorId,
-      details: {},
-    });
-    await enqueue(
-      this.outbox,
-      createTechnicalVersionTransitionedEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        versionId: updated.id,
-        fromStatus: current.versionStatus,
-        toStatus: input.toStatus,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.technical_version.transitioned',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_TECHNICAL_VERSION',
-      subjectId: updated.id,
-      details: { from: current.versionStatus, to: input.toStatus },
-    });
-    return updated;
   }
 }
 
 export class UpdateTechnicalVersionDraftUseCase {
-  constructor(private readonly repo: RegistryRepositoryPort) {}
+  constructor(
+    private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
 
   async execute(input: {
     actorId: string;
@@ -458,9 +500,49 @@ export class UpdateTechnicalVersionDraftUseCase {
     const current = await this.repo.getTechnicalVersion(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Technical version not found');
     assertMutableTechnicalVersion(current.versionStatus);
-    return this.repo.updateTechnicalVersion(input.id, {
-      ...input.patch,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateTechnicalVersion(
+        input.id,
+        {
+          ...input.patch,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_TECHNICAL_VERSION,
+          resourceId: updated.id,
+          fromStatus: current.versionStatus,
+          toStatus: updated.versionStatus,
+          action: 'UPDATE',
+          reason: null,
+          actorId: input.actorId,
+          details: {},
+        },
+        client,
+      );
+      await enqueue(
+        createTechnicalVersionTransitionedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          versionId: updated.id,
+          fromStatus: current.versionStatus,
+          toStatus: updated.versionStatus,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.technical_version.updated',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_TECHNICAL_VERSION',
+          subjectId: updated.id,
+          details: { technicalVersion: updated.technicalVersion },
+        },
+        client,
+      );
+      return updated;
     });
   }
 }
@@ -485,54 +567,65 @@ export class RegisterPlatformUseCase {
     connectivityReference?: string | null;
     secureConfigRef?: string | null;
   }) {
-    const platform = await this.repo.createPlatform({
-      code: input.code.trim(),
-      name: input.name.trim(),
-      description: input.description ?? null,
-      platformType: input.platformType,
-      businessBackendId: input.businessBackendId ?? null,
-      allowedProductIds: input.allowedProductIds ?? [],
-      supportedEnvironmentTypes: input.supportedEnvironmentTypes ?? [],
-      supportedProfileCodes: input.supportedProfileCodes ?? [],
-      connectivityReference: input.connectivityReference ?? null,
-      secureConfigRef: input.secureConfigRef ?? null,
-      integrationProtocolVersion: null,
-      controlContractVersion: null,
-      certificationStatus: CertificationStatus.UNCERTIFIED,
-      operationalStatus: PlatformOperationalStatus.DRAFT,
-      declaredCapabilities: [],
-      constraints: {},
-      metadata: {},
-      createdBy: input.actorId,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const platform = await this.repo.createPlatform(
+        {
+          code: input.code.trim(),
+          name: input.name.trim(),
+          description: input.description ?? null,
+          platformType: input.platformType,
+          businessBackendId: input.businessBackendId ?? null,
+          allowedProductIds: input.allowedProductIds ?? [],
+          supportedEnvironmentTypes: input.supportedEnvironmentTypes ?? [],
+          supportedProfileCodes: input.supportedProfileCodes ?? [],
+          connectivityReference: input.connectivityReference ?? null,
+          secureConfigRef: input.secureConfigRef ?? null,
+          integrationProtocolVersion: null,
+          controlContractVersion: null,
+          certificationStatus: CertificationStatus.UNCERTIFIED,
+          operationalStatus: PlatformOperationalStatus.DRAFT,
+          declaredCapabilities: [],
+          constraints: {},
+          metadata: {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_PLATFORM,
+          resourceId: platform.id,
+          fromStatus: null,
+          toStatus: platform.operationalStatus,
+          action: 'REGISTER',
+          reason: null,
+          actorId: input.actorId,
+          details: { code: platform.code },
+        },
+        client,
+      );
+      await enqueue(
+        createPlatformRegisteredEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          platformId: platform.id,
+          code: platform.code,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.platform.registered',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_PLATFORM',
+          subjectId: platform.id,
+          details: { code: platform.code },
+        },
+        client,
+      );
+      return platform;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_PLATFORM,
-      resourceId: platform.id,
-      fromStatus: null,
-      toStatus: platform.operationalStatus,
-      action: 'REGISTER',
-      reason: null,
-      actorId: input.actorId,
-      details: { code: platform.code },
-    });
-    await enqueue(
-      this.outbox,
-      createPlatformRegisteredEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        platformId: platform.id,
-        code: platform.code,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.platform.registered',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_PLATFORM',
-      subjectId: platform.id,
-      details: { code: platform.code },
-    });
-    return platform;
   }
 }
 
@@ -574,48 +667,58 @@ export class TransitionPlatformUseCase {
       certificationStatus = CertificationStatus.PENDING;
     }
 
-    const updated = await this.repo.updatePlatform(
-      input.id,
-      {
-        operationalStatus: input.toStatus,
-        certificationStatus,
-        updatedBy: input.actorId,
-      },
-      current.version,
-    );
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_PLATFORM,
-      resourceId: updated.id,
-      fromStatus: current.operationalStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: input.reason ?? null,
-      actorId: input.actorId,
-      details: {},
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updatePlatform(
+        input.id,
+        {
+          operationalStatus: input.toStatus,
+          certificationStatus,
+          updatedBy: input.actorId,
+        },
+        current.version,
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_PLATFORM,
+          resourceId: updated.id,
+          fromStatus: current.operationalStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: input.reason ?? null,
+          actorId: input.actorId,
+          details: {},
+        },
+        client,
+      );
+      await enqueue(
+        createPlatformRegisteredEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          platformId: updated.id,
+          code: updated.code,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.platform.transitioned',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_PLATFORM',
+          subjectId: updated.id,
+          details: { from: current.operationalStatus, to: input.toStatus },
+        },
+        client,
+      );
+      return updated;
     });
-    await enqueue(
-      this.outbox,
-      createPlatformRegisteredEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        platformId: updated.id,
-        code: updated.code,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.platform.transitioned',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_PLATFORM',
-      subjectId: updated.id,
-      details: { from: current.operationalStatus, to: input.toStatus },
-    });
-    return updated;
   }
 }
 
 export class UpdatePlatformUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
@@ -627,19 +730,26 @@ export class UpdatePlatformUseCase {
   }) {
     const current = await this.repo.getPlatform(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Platform not found');
-    const updated = await this.repo.updatePlatform(
-      input.id,
-      { ...input.patch, updatedBy: input.actorId },
-      input.expectedVersion,
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.platform.updated',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_PLATFORM',
-      subjectId: updated.id,
-      details: { version: updated.version },
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, _enqueue) => {
+      const updated = await this.repo.updatePlatform(
+        input.id,
+        { ...input.patch, updatedBy: input.actorId },
+        input.expectedVersion,
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.platform.updated',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_PLATFORM',
+          subjectId: updated.id,
+          details: { version: updated.version },
+        },
+        client,
+      );
+      return updated;
     });
-    return updated;
   }
 }
 
@@ -665,59 +775,71 @@ export class RegisterEnvironmentUseCase {
   }) {
     const platform = await this.repo.getPlatform(input.platformId);
     if (!platform) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Platform not found');
-    const env = await this.repo.createEnvironment({
-      platformId: input.platformId,
-      code: input.code.trim(),
-      name: input.name.trim(),
-      environmentType: input.environmentType,
-      region: input.region ?? null,
-      geoZone: input.geoZone ?? null,
-      securityClassification: input.securityClassification ?? null,
-      dataClassification: input.dataClassification ?? null,
-      availableCapabilities: [],
-      dataResidencyConstraints: input.dataResidencyConstraints ?? {},
-      backupPolicy: {},
-      availabilityPolicy: {},
-      allowedProfileCodes: input.allowedProfileCodes ?? [],
-      environmentStatus: EnvironmentStatus.DRAFT,
-      governanceMetadata: {},
-      metadata: {},
-      createdBy: input.actorId,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const env = await this.repo.createEnvironment(
+        {
+          platformId: input.platformId,
+          code: input.code.trim(),
+          name: input.name.trim(),
+          environmentType: input.environmentType,
+          region: input.region ?? null,
+          geoZone: input.geoZone ?? null,
+          securityClassification: input.securityClassification ?? null,
+          dataClassification: input.dataClassification ?? null,
+          availableCapabilities: [],
+          dataResidencyConstraints: input.dataResidencyConstraints ?? {},
+          backupPolicy: {},
+          availabilityPolicy: {},
+          allowedProfileCodes: input.allowedProfileCodes ?? [],
+          environmentStatus: EnvironmentStatus.DRAFT,
+          governanceMetadata: {},
+          metadata: {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.RUNTIME_ENVIRONMENT,
+          resourceId: env.id,
+          fromStatus: null,
+          toStatus: env.environmentStatus,
+          action: 'REGISTER',
+          reason: null,
+          actorId: input.actorId,
+          details: { platformId: input.platformId },
+        },
+        client,
+      );
+      await enqueue(
+        createEnvironmentRegisteredEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          environmentId: env.id,
+          platformId: input.platformId,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.environment.registered',
+          actorId: input.actorId,
+          subjectType: 'RUNTIME_ENVIRONMENT',
+          subjectId: env.id,
+          details: { code: env.code },
+        },
+        client,
+      );
+      return env;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.RUNTIME_ENVIRONMENT,
-      resourceId: env.id,
-      fromStatus: null,
-      toStatus: env.environmentStatus,
-      action: 'REGISTER',
-      reason: null,
-      actorId: input.actorId,
-      details: { platformId: input.platformId },
-    });
-    await enqueue(
-      this.outbox,
-      createEnvironmentRegisteredEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        environmentId: env.id,
-        platformId: input.platformId,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.environment.registered',
-      actorId: input.actorId,
-      subjectType: 'RUNTIME_ENVIRONMENT',
-      subjectId: env.id,
-      details: { code: env.code },
-    });
-    return env;
   }
 }
 
 export class TransitionEnvironmentUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
@@ -730,34 +852,48 @@ export class TransitionEnvironmentUseCase {
     const current = await this.repo.getEnvironment(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Environment not found');
     assertEnvironmentTransition(current.environmentStatus, input.toStatus, input.reason);
-    const updated = await this.repo.updateEnvironment(
-      input.id,
-      { environmentStatus: input.toStatus, updatedBy: input.actorId },
-      current.version,
-    );
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.RUNTIME_ENVIRONMENT,
-      resourceId: updated.id,
-      fromStatus: current.environmentStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: input.reason ?? null,
-      actorId: input.actorId,
-      details: {},
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, _enqueue) => {
+      const updated = await this.repo.updateEnvironment(
+        input.id,
+        { environmentStatus: input.toStatus, updatedBy: input.actorId },
+        current.version,
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.RUNTIME_ENVIRONMENT,
+          resourceId: updated.id,
+          fromStatus: current.environmentStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: input.reason ?? null,
+          actorId: input.actorId,
+          details: {},
+        },
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.environment.transitioned',
+          actorId: input.actorId,
+          subjectType: 'RUNTIME_ENVIRONMENT',
+          subjectId: updated.id,
+          details: { from: current.environmentStatus, to: input.toStatus },
+        },
+        client,
+      );
+      return updated;
     });
-    await requireAudit(this.audit, {
-      eventType: 'registry.environment.transitioned',
-      actorId: input.actorId,
-      subjectType: 'RUNTIME_ENVIRONMENT',
-      subjectId: updated.id,
-      details: { from: current.environmentStatus, to: input.toStatus },
-    });
-    return updated;
   }
 }
 
 export class UpdateEnvironmentUseCase {
-  constructor(private readonly repo: RegistryRepositoryPort) {}
+  constructor(
+    private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
 
   async execute(input: {
     actorId: string;
@@ -765,11 +901,26 @@ export class UpdateEnvironmentUseCase {
     expectedVersion: number;
     patch: Partial<RuntimeEnvironment>;
   }) {
-    return this.repo.updateEnvironment(
-      input.id,
-      { ...input.patch, updatedBy: input.actorId },
-      input.expectedVersion,
-    );
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, _enqueue) => {
+      const updated = await this.repo.updateEnvironment(
+        input.id,
+        { ...input.patch, updatedBy: input.actorId },
+        input.expectedVersion,
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.environment.updated',
+          actorId: input.actorId,
+          subjectType: 'RUNTIME_ENVIRONMENT',
+          subjectId: updated.id,
+          details: { version: updated.version },
+        },
+        client,
+      );
+      return updated;
+    });
   }
 }
 
@@ -787,27 +938,36 @@ export class UpdateDeploymentProfileUseCase {
   }) {
     const current = await this.repo.getProfile(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Profile not found');
-    const updated = await this.repo.updateProfile(input.id, {
-      ...input.patch,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateProfile(
+        input.id,
+        {
+          ...input.patch,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await enqueue(
+        createDeploymentProfileUpdatedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          profileId: updated.id,
+          code: String(updated.code),
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.deployment_profile.updated',
+          actorId: input.actorId,
+          subjectType: 'DEPLOYMENT_PROFILE',
+          subjectId: updated.id,
+          details: { code: updated.code },
+        },
+        client,
+      );
+      return updated;
     });
-    await enqueue(
-      this.outbox,
-      createDeploymentProfileUpdatedEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        profileId: updated.id,
-        code: String(updated.code),
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.deployment_profile.updated',
-      actorId: input.actorId,
-      subjectType: 'DEPLOYMENT_PROFILE',
-      subjectId: updated.id,
-      details: { code: updated.code },
-    });
-    return updated;
   }
 }
 
@@ -827,48 +987,58 @@ export class TransitionDeploymentProfileUseCase {
     const current = await this.repo.getProfile(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Profile not found');
     assertProfileTransition(current.profileStatus, input.toStatus, input.reason);
-    const certificationStatus =
-      input.toStatus === ProfileStatus.ACTIVE
-        ? CertificationStatus.CERTIFIED
-        : current.certificationStatus;
-    const updated = await this.repo.updateProfile(input.id, {
-      profileStatus: input.toStatus,
-      certificationStatus,
-      updatedBy: input.actorId,
+    // ACTIVE ≠ CERTIFIED: availability in registry is independent of certification.
+    // Certification requires an explicit certify path with evidence — never auto-set here.
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateProfile(
+        input.id,
+        {
+          profileStatus: input.toStatus,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.DEPLOYMENT_PROFILE,
+          resourceId: updated.id,
+          fromStatus: current.profileStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: input.reason ?? null,
+          actorId: input.actorId,
+          details: {},
+        },
+        client,
+      );
+      await enqueue(
+        createDeploymentProfileUpdatedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          profileId: updated.id,
+          code: String(updated.code),
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.deployment_profile.transitioned',
+          actorId: input.actorId,
+          subjectType: 'DEPLOYMENT_PROFILE',
+          subjectId: updated.id,
+          details: { from: current.profileStatus, to: input.toStatus },
+        },
+        client,
+      );
+      return updated;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.DEPLOYMENT_PROFILE,
-      resourceId: updated.id,
-      fromStatus: current.profileStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: input.reason ?? null,
-      actorId: input.actorId,
-      details: {},
-    });
-    await enqueue(
-      this.outbox,
-      createDeploymentProfileUpdatedEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        profileId: updated.id,
-        code: String(updated.code),
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.deployment_profile.transitioned',
-      actorId: input.actorId,
-      subjectType: 'DEPLOYMENT_PROFILE',
-      subjectId: updated.id,
-      details: { from: current.profileStatus, to: input.toStatus },
-    });
-    return updated;
   }
 }
 
 export class CreateControlContractUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
@@ -886,49 +1056,61 @@ export class CreateControlContractUseCase {
   }) {
     const platform = await this.repo.getPlatform(input.platformId);
     if (!platform) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Platform not found');
-    const contract = await this.repo.createContract({
-      productId: input.productId,
-      platformId: input.platformId,
-      contractCode: input.contractCode.trim(),
-      contractVersion: input.contractVersion.trim(),
-      schemaVersion: input.schemaVersion.trim(),
-      supportedCapabilities: input.supportedCapabilities ?? [],
-      supportedControlOperations: input.supportedControlOperations ?? [],
-      connectivityModel: input.connectivityModel,
-      s2sAuthPolicy: input.s2sAuthPolicy ?? {},
-      signatureRequirements: {},
-      publishedEvents: [],
-      consumedEvents: [],
-      backwardCompatible: true,
-      forwardCompatible: false,
-      versioningPolicy: {},
-      effectiveFrom: null,
-      deprecatedAt: null,
-      contractStatus: ControlContractStatus.DRAFT,
-      certificationEvidence: {},
-      immutable: false,
-      metadata: {},
-      createdBy: input.actorId,
-      updatedBy: input.actorId,
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, _enqueue) => {
+      const contract = await this.repo.createContract(
+        {
+          productId: input.productId,
+          platformId: input.platformId,
+          contractCode: input.contractCode.trim(),
+          contractVersion: input.contractVersion.trim(),
+          schemaVersion: input.schemaVersion.trim(),
+          supportedCapabilities: input.supportedCapabilities ?? [],
+          supportedControlOperations: input.supportedControlOperations ?? [],
+          connectivityModel: input.connectivityModel,
+          s2sAuthPolicy: input.s2sAuthPolicy ?? {},
+          signatureRequirements: {},
+          publishedEvents: [],
+          consumedEvents: [],
+          backwardCompatible: true,
+          forwardCompatible: false,
+          versioningPolicy: {},
+          effectiveFrom: null,
+          deprecatedAt: null,
+          contractStatus: ControlContractStatus.DRAFT,
+          certificationEvidence: {},
+          immutable: false,
+          metadata: {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        },
+        client,
+      );
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_CONTROL_CONTRACT,
+          resourceId: contract.id,
+          fromStatus: null,
+          toStatus: contract.contractStatus,
+          action: 'REGISTER',
+          reason: null,
+          actorId: input.actorId,
+          details: { contractVersion: contract.contractVersion },
+        },
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.control_contract.created',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_CONTROL_CONTRACT',
+          subjectId: contract.id,
+          details: { contractCode: contract.contractCode },
+        },
+        client,
+      );
+      return contract;
     });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_CONTROL_CONTRACT,
-      resourceId: contract.id,
-      fromStatus: null,
-      toStatus: contract.contractStatus,
-      action: 'REGISTER',
-      reason: null,
-      actorId: input.actorId,
-      details: { contractVersion: contract.contractVersion },
-    });
-    await requireAudit(this.audit, {
-      eventType: 'registry.control_contract.created',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_CONTROL_CONTRACT',
-      subjectId: contract.id,
-      details: { contractCode: contract.contractCode },
-    });
-    return contract;
   }
 }
 
@@ -952,49 +1134,69 @@ export class TransitionControlContractUseCase {
       input.toStatus === ControlContractStatus.PUBLISHED ||
       input.toStatus === ControlContractStatus.DEPRECATED ||
       input.toStatus === ControlContractStatus.RETIRED;
-    const updated = await this.repo.updateContract(input.id, {
-      contractStatus: input.toStatus,
-      immutable,
-      effectiveFrom:
-        input.toStatus === ControlContractStatus.PUBLISHED ? new Date() : current.effectiveFrom,
-      deprecatedAt:
-        input.toStatus === ControlContractStatus.DEPRECATED ? new Date() : current.deprecatedAt,
-      updatedBy: input.actorId,
-    });
-    await this.repo.appendHistory({
-      resourceType: RegistryResourceType.PRODUCT_CONTROL_CONTRACT,
-      resourceId: updated.id,
-      fromStatus: current.contractStatus,
-      toStatus: input.toStatus,
-      action: 'TRANSITION',
-      reason: input.reason ?? null,
-      actorId: input.actorId,
-      details: { immutable },
-    });
-    if (input.toStatus === ControlContractStatus.PUBLISHED) {
-      await enqueue(
-        this.outbox,
-        createControlContractPublishedEvent({
-          actorId: input.actorId,
-          correlationId: randomUUID(),
-          contractId: updated.id,
-          contractVersion: updated.contractVersion,
-        }),
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateContract(
+        input.id,
+        {
+          contractStatus: input.toStatus,
+          immutable,
+          effectiveFrom:
+            input.toStatus === ControlContractStatus.PUBLISHED
+              ? new Date()
+              : current.effectiveFrom,
+          deprecatedAt:
+            input.toStatus === ControlContractStatus.DEPRECATED
+              ? new Date()
+              : current.deprecatedAt,
+          updatedBy: input.actorId,
+        },
+        client,
       );
-    }
-    await requireAudit(this.audit, {
-      eventType: 'registry.control_contract.transitioned',
-      actorId: input.actorId,
-      subjectType: 'PRODUCT_CONTROL_CONTRACT',
-      subjectId: updated.id,
-      details: { from: current.contractStatus, to: input.toStatus },
+      await this.repo.appendHistory(
+        {
+          resourceType: RegistryResourceType.PRODUCT_CONTROL_CONTRACT,
+          resourceId: updated.id,
+          fromStatus: current.contractStatus,
+          toStatus: input.toStatus,
+          action: 'TRANSITION',
+          reason: input.reason ?? null,
+          actorId: input.actorId,
+          details: { immutable },
+        },
+        client,
+      );
+      if (input.toStatus === ControlContractStatus.PUBLISHED) {
+        await enqueue(
+          createControlContractPublishedEvent({
+            actorId: input.actorId,
+            correlationId: randomUUID(),
+            contractId: updated.id,
+            contractVersion: updated.contractVersion,
+          }),
+        );
+      }
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.control_contract.transitioned',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_CONTROL_CONTRACT',
+          subjectId: updated.id,
+          details: { from: current.contractStatus, to: input.toStatus },
+        },
+        client,
+      );
+      return updated;
     });
-    return updated;
   }
 }
 
 export class UpdateControlContractDraftUseCase {
-  constructor(private readonly repo: RegistryRepositoryPort) {}
+  constructor(
+    private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
 
   async execute(input: {
     actorId: string;
@@ -1004,7 +1206,25 @@ export class UpdateControlContractDraftUseCase {
     const current = await this.repo.getContract(input.id);
     if (!current) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Control contract not found');
     assertMutableContract(current.immutable, current.contractStatus);
-    return this.repo.updateContract(input.id, { ...input.patch, updatedBy: input.actorId });
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, _enqueue) => {
+      const updated = await this.repo.updateContract(
+        input.id,
+        { ...input.patch, updatedBy: input.actorId },
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.control_contract.updated',
+          actorId: input.actorId,
+          subjectType: 'PRODUCT_CONTROL_CONTRACT',
+          subjectId: updated.id,
+          details: { contractCode: updated.contractCode },
+        },
+        client,
+      );
+      return updated;
+    });
   }
 }
 
@@ -1060,24 +1280,29 @@ export class EvaluateCompatibilityUseCase {
       evaluatedBy: input.actorId,
       correlationId: input.correlationId,
     });
-    const saved = await this.repo.saveCompatibilityEvaluation(evaluation);
-    await enqueue(
-      this.outbox,
-      createCompatibilityEvaluatedEvent({
-        actorId: input.actorId,
-        correlationId: saved.correlationId,
-        evaluationId: saved.id,
-        result: saved.result,
-      }),
-    );
-    await requireAudit(this.audit, {
-      eventType: 'registry.compatibility.evaluated',
-      actorId: input.actorId,
-      subjectType: 'COMPATIBILITY_EVALUATION',
-      subjectId: saved.id,
-      details: { result: saved.result, reasons: saved.reasons },
+    return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
+      const saved = await this.repo.saveCompatibilityEvaluation(evaluation, client);
+      await enqueue(
+        createCompatibilityEvaluatedEvent({
+          actorId: input.actorId,
+          correlationId: saved.correlationId,
+          evaluationId: saved.id,
+          result: saved.result,
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: 'registry.compatibility.evaluated',
+          actorId: input.actorId,
+          subjectType: 'COMPATIBILITY_EVALUATION',
+          subjectId: saved.id,
+          details: { result: saved.result, reasons: saved.reasons },
+        },
+        client,
+      );
+      return saved;
     });
-    return saved;
   }
 }
 

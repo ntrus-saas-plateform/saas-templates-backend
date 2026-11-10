@@ -3,6 +3,7 @@ import {
   CreateTechnicalVersionUseCase,
   EvaluateCompatibilityUseCase,
   RegisterProductUseCase,
+  TransitionDeploymentProfileUseCase,
   TransitionProductRegistryUseCase,
 } from './registry.use-cases.js';
 import {
@@ -19,10 +20,14 @@ import {
   TechnicalVersionStatus,
 } from '../../domain/registry/registry.types.js';
 
+const FAKE_CLIENT = { kind: 'tx-client' };
+
 function outboxOk() {
+  const enqueue = vi.fn(async () => 'outbox-id');
   return {
-    runWithOutbox: vi.fn(async (_t: string, fn: (c: unknown, enqueue: unknown) => Promise<void>) =>
-      fn(null, vi.fn()),
+    enqueue,
+    runWithOutbox: vi.fn(async (_t: string, fn: (c: unknown, enqueue: unknown) => Promise<unknown>) =>
+      fn(FAKE_CLIENT, enqueue),
     ),
   };
 }
@@ -55,7 +60,7 @@ describe('P7.2 registry use-cases', () => {
     expect(repo.createProductRegistry).not.toHaveBeenCalled();
   });
 
-  it('registers product, publishes outbox and requires audit', async () => {
+  it('registers product atomically in a single runWithOutbox', async () => {
     const created = {
       id: 'reg-1',
       productId: 'prod-1',
@@ -85,8 +90,14 @@ describe('P7.2 registry use-cases', () => {
       name: 'CRM',
     });
     expect(result.id).toBe('reg-1');
-    expect(outbox.runWithOutbox).toHaveBeenCalled();
-    expect(audit.create).toHaveBeenCalled();
+    expect(outbox.runWithOutbox).toHaveBeenCalledTimes(1);
+    expect(repo.createProductRegistry).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
+    expect(repo.appendHistory).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
+    expect(outbox.enqueue).toHaveBeenCalledTimes(1);
+    expect(audit.create).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'registry.product.registered' }),
+      FAKE_CLIENT,
+    );
   });
 
   it('fails closed when audit is unavailable after register', async () => {
@@ -134,10 +145,12 @@ describe('P7.2 registry use-cases', () => {
       })),
       appendHistory: vi.fn(async () => ({})),
     };
+    const outbox = outboxOk();
+    const audit = auditOk();
     const uc = new TransitionProductRegistryUseCase(
       repo as never,
-      outboxOk() as never,
-      auditOk() as never,
+      outbox as never,
+      audit as never,
     );
     const updated = await uc.execute({
       actorId: 'a1',
@@ -145,6 +158,7 @@ describe('P7.2 registry use-cases', () => {
       toStatus: RegistryLifecycleStatus.CERTIFIED,
     });
     expect(updated.provisionable).toBe(true);
+    expect(outbox.runWithOutbox).toHaveBeenCalledTimes(1);
     expect(repo.updateProductRegistry).toHaveBeenCalledWith(
       'reg-1',
       expect.objectContaining({
@@ -153,7 +167,9 @@ describe('P7.2 registry use-cases', () => {
         provisionable: true,
       }),
       1,
+      FAKE_CLIENT,
     );
+    expect(audit.create).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
   });
 
   it('rejects uncertified product as provisionable via transition rules', async () => {
@@ -194,10 +210,11 @@ describe('P7.2 registry use-cases', () => {
       appendHistory: vi.fn(async () => ({})),
     };
     const outbox = outboxOk();
+    const audit = auditOk();
     const uc = new CreateTechnicalVersionUseCase(
       repo as never,
       outbox as never,
-      auditOk() as never,
+      audit as never,
     );
     const version = await uc.execute({
       actorId: 'a1',
@@ -206,7 +223,9 @@ describe('P7.2 registry use-cases', () => {
       releaseChannel: 'stable',
     });
     expect(version.releaseChannel).toBe('STABLE');
-    expect(outbox.runWithOutbox).toHaveBeenCalled();
+    expect(outbox.runWithOutbox).toHaveBeenCalledTimes(1);
+    expect(repo.createTechnicalVersion).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
+    expect(audit.create).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
   });
 
   it('evaluates compatibility and refuses retired contracts in result', async () => {
@@ -274,10 +293,12 @@ describe('P7.2 registry use-cases', () => {
       getContract: vi.fn(async () => contract),
       saveCompatibilityEvaluation: vi.fn(async (e) => ({ id: 'eval-1', ...e })),
     };
+    const outbox = outboxOk();
+    const audit = auditOk();
     const uc = new EvaluateCompatibilityUseCase(
       repo as never,
-      outboxOk() as never,
-      auditOk() as never,
+      outbox as never,
+      audit as never,
     );
     const result = await uc.execute({
       actorId: 'a1',
@@ -289,5 +310,44 @@ describe('P7.2 registry use-cases', () => {
       contractId: 'ctr-1',
     });
     expect(result.result).toBe(CompatibilityResult.INCOMPATIBLE);
+    expect(outbox.runWithOutbox).toHaveBeenCalledTimes(1);
+    expect(repo.saveCompatibilityEvaluation).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
+    expect(audit.create).toHaveBeenCalledWith(expect.any(Object), FAKE_CLIENT);
+  });
+
+  it('does not auto-certify deployment profile when transitioning to ACTIVE', async () => {
+    const current = {
+      id: 'prof-1',
+      code: DeploymentProfileCode.SHARED_SAAS,
+      profileStatus: ProfileStatus.VALIDATING,
+      certificationStatus: CertificationStatus.UNCERTIFIED,
+    };
+    const repo = {
+      getProfile: vi.fn(async () => current),
+      updateProfile: vi.fn(async (_id, patch) => ({ ...current, ...patch })),
+      appendHistory: vi.fn(async () => ({})),
+    };
+    const outbox = outboxOk();
+    const audit = auditOk();
+    const uc = new TransitionDeploymentProfileUseCase(
+      repo as never,
+      outbox as never,
+      audit as never,
+    );
+    await uc.execute({
+      actorId: 'a1',
+      id: 'prof-1',
+      toStatus: ProfileStatus.ACTIVE,
+    });
+    expect(repo.updateProfile).toHaveBeenCalledWith(
+      'prof-1',
+      expect.objectContaining({
+        profileStatus: ProfileStatus.ACTIVE,
+        updatedBy: 'a1',
+      }),
+      FAKE_CLIENT,
+    );
+    const patch = repo.updateProfile.mock.calls[0][1] as Record<string, unknown>;
+    expect(patch).not.toHaveProperty('certificationStatus');
   });
 });

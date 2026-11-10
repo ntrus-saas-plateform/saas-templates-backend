@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { ControlPlaneDatabaseService } from '../../../../shared/database/control-plane-database.service.js';
 import type { RegistryRepositoryPort } from '../../domain/registry/registry-repository.port.js';
@@ -40,15 +40,17 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
   private async q<T extends Record<string, unknown> = Record<string, unknown>>(
     sql: string,
     params: unknown[] = [],
+    client?: unknown,
   ) {
-    const res = await this.pool.query(sql, params);
+    const executor = client ? (client as PoolClient) : this.pool;
+    const res = await executor.query(sql, params);
     return res.rows as T[];
   }
 
   async createProductRegistry(input: Omit<
     ProductRegistryRecord,
     'id' | 'createdAt' | 'updatedAt' | 'version' | 'provisionable'
-  > & { provisionable?: boolean }): Promise<ProductRegistryRecord> {
+  > & { provisionable?: boolean }, client?: unknown): Promise<ProductRegistryRecord> {
     const rows = await this.q(
       `INSERT INTO edge_p7_product_registry (
          product_id, code, name, description, vertical_category, registry_status,
@@ -75,6 +77,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
       ],
+      client,
     );
     return this.mapProduct(rows[0]!);
   }
@@ -83,6 +86,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     id: string,
     patch: Partial<ProductRegistryRecord>,
     expectedVersion: number,
+    client?: unknown,
   ): Promise<ProductRegistryRecord> {
     const rows = await this.q(
       `UPDATE edge_p7_product_registry SET
@@ -122,6 +126,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) {
       throw new DomainError(ErrorCode.CONFLICT, 'Product registry version conflict or missing');
@@ -170,6 +175,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
 
   async createTechnicalVersion(
     input: Omit<ProductTechnicalVersion, 'id' | 'createdAt' | 'updatedAt'>,
+    client?: unknown,
   ) {
     const rows = await this.q(
       `INSERT INTO edge_p7_product_technical_versions (
@@ -200,11 +206,12 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
       ],
+      client,
     );
     return this.mapVersion(rows[0]!);
   }
 
-  async updateTechnicalVersion(id: string, patch: Partial<ProductTechnicalVersion>) {
+  async updateTechnicalVersion(id: string, patch: Partial<ProductTechnicalVersion>, client?: unknown) {
     const rows = await this.q(
       `UPDATE edge_p7_product_technical_versions SET
          release_channel = COALESCE($2, release_channel),
@@ -240,6 +247,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Technical version not found');
     return this.mapVersion(rows[0]);
@@ -277,7 +285,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return { items: rows.map((r) => this.mapVersion(r)), total: Number(count[0]?.c ?? 0) };
   }
 
-  async createPlatform(input: Omit<ProductPlatform, 'id' | 'createdAt' | 'updatedAt' | 'version'>) {
+  async createPlatform(input: Omit<ProductPlatform, 'id' | 'createdAt' | 'updatedAt' | 'version'>, client?: unknown) {
     const rows = await this.q(
       `INSERT INTO edge_p7_product_platforms (
          code, name, description, platform_type, business_backend_id, allowed_product_ids,
@@ -308,11 +316,12 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
       ],
+      client,
     );
     return this.mapPlatform(rows[0]!);
   }
 
-  async updatePlatform(id: string, patch: Partial<ProductPlatform>, expectedVersion: number) {
+  async updatePlatform(id: string, patch: Partial<ProductPlatform>, expectedVersion: number, client?: unknown) {
     const rows = await this.q(
       `UPDATE edge_p7_product_platforms SET
          name = COALESCE($3, name),
@@ -355,6 +364,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) throw new DomainError(ErrorCode.CONFLICT, 'Platform version conflict or missing');
     return this.mapPlatform(rows[0]);
@@ -392,7 +402,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return { items: rows.map((r) => this.mapPlatform(r)), total: Number(count[0]?.c ?? 0) };
   }
 
-  async countActiveDependenciesOnPlatform(platformId: string) {
+  async countActiveDependenciesOnPlatform(platformId: string, client?: unknown) {
     const rows = await this.q<{ c: string }>(
       `SELECT (
          (SELECT COUNT(*) FROM edge_p7_runtime_environments
@@ -402,12 +412,14 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
            WHERE platform_id = $1 AND contract_status IN ('CERTIFIED','PUBLISHED'))
        )::text AS c`,
       [platformId],
+      client,
     );
     return Number(rows[0]?.c ?? 0);
   }
 
   async createEnvironment(
     input: Omit<RuntimeEnvironment, 'id' | 'createdAt' | 'updatedAt' | 'version'>,
+    client?: unknown,
   ) {
     const rows = await this.q(
       `INSERT INTO edge_p7_runtime_environments (
@@ -438,6 +450,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
       ],
+      client,
     );
     return this.mapEnv(rows[0]!);
   }
@@ -446,6 +459,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     id: string,
     patch: Partial<RuntimeEnvironment>,
     expectedVersion: number,
+    client?: unknown,
   ) {
     const rows = await this.q(
       `UPDATE edge_p7_runtime_environments SET
@@ -487,6 +501,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) {
       throw new DomainError(ErrorCode.CONFLICT, 'Environment version conflict or missing');
@@ -536,7 +551,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return { items: rows.map((r) => this.mapEnv(r)), total: Number(count[0]?.c ?? 0) };
   }
 
-  async updateProfile(id: string, patch: Partial<DeploymentProfile>) {
+  async updateProfile(id: string, patch: Partial<DeploymentProfile>, client?: unknown) {
     const rows = await this.q(
       `UPDATE edge_p7_deployment_profiles SET
          name = COALESCE($2, name),
@@ -591,6 +606,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Deployment profile not found');
     return this.mapProfile(rows[0]);
@@ -633,7 +649,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return { items: rows.map((r) => this.mapProfile(r)), total: Number(count[0]?.c ?? 0) };
   }
 
-  async createContract(input: Omit<ProductControlContract, 'id' | 'createdAt' | 'updatedAt'>) {
+  async createContract(input: Omit<ProductControlContract, 'id' | 'createdAt' | 'updatedAt'>, client?: unknown) {
     const rows = await this.q(
       `INSERT INTO edge_p7_product_control_contracts (
          product_id, platform_id, contract_code, contract_version, schema_version,
@@ -670,11 +686,12 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
       ],
+      client,
     );
     return this.mapContract(rows[0]!);
   }
 
-  async updateContract(id: string, patch: Partial<ProductControlContract>) {
+  async updateContract(id: string, patch: Partial<ProductControlContract>, client?: unknown) {
     const rows = await this.q(
       `UPDATE edge_p7_product_control_contracts SET
          supported_capabilities = COALESCE($2::jsonb, supported_capabilities),
@@ -718,6 +735,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         patch.metadata ? JSON.stringify(patch.metadata) : null,
         patch.updatedBy ?? null,
       ],
+      client,
     );
     if (!rows[0]) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Control contract not found');
     return this.mapContract(rows[0]);
@@ -772,16 +790,17 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return { items: rows.map((r) => this.mapContract(r)), total: Number(count[0]?.c ?? 0) };
   }
 
-  async countPublishedContractsForPlatform(platformId: string) {
+  async countPublishedContractsForPlatform(platformId: string, client?: unknown) {
     const rows = await this.q<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM edge_p7_product_control_contracts
        WHERE platform_id = $1 AND contract_status IN ('CERTIFIED','PUBLISHED')`,
       [platformId],
+      client,
     );
     return Number(rows[0]?.c ?? 0);
   }
 
-  async saveCompatibilityEvaluation(input: Omit<CompatibilityEvaluation, 'id' | 'createdAt'>) {
+  async saveCompatibilityEvaluation(input: Omit<CompatibilityEvaluation, 'id' | 'createdAt'>, client?: unknown) {
     const rows = await this.q(
       `INSERT INTO edge_p7_compatibility_evaluations (
          correlation_id, product_registry_id, technical_version_id, platform_id,
@@ -805,6 +824,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         input.evaluatedBy,
         input.evaluatedAt,
       ],
+      client,
     );
     return this.mapEval(rows[0]!);
   }
@@ -843,7 +863,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
     return rows[0] ? this.mapEval(rows[0]) : null;
   }
 
-  async appendHistory(entry: Omit<RegistryHistoryEntry, 'id' | 'createdAt'>) {
+  async appendHistory(entry: Omit<RegistryHistoryEntry, 'id' | 'createdAt'>, client?: unknown) {
     const rows = await this.q(
       `INSERT INTO edge_p7_registry_history (
          resource_type, resource_id, from_status, to_status, action, reason, actor_id, details
@@ -858,6 +878,7 @@ export class PgRegistryRepository implements RegistryRepositoryPort {
         entry.actorId,
         JSON.stringify(entry.details ?? {}),
       ],
+      client,
     );
     return this.mapHistory(rows[0]!);
   }

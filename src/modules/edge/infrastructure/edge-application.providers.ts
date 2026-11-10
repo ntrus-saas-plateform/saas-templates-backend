@@ -2567,8 +2567,13 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: UpdateTechnicalVersionDraftUseCase,
-    useFactory: (repo) => new UpdateTechnicalVersionDraftUseCase(repo),
-    inject: [REGISTRY_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) =>
+      new UpdateTechnicalVersionDraftUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: TransitionTechnicalVersionUseCase,
@@ -2587,8 +2592,12 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: UpdatePlatformUseCase,
-    useFactory: (repo, audit) => new UpdatePlatformUseCase(repo, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) => new UpdatePlatformUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: TransitionPlatformUseCase,
@@ -2602,13 +2611,21 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: UpdateEnvironmentUseCase,
-    useFactory: (repo) => new UpdateEnvironmentUseCase(repo),
-    inject: [REGISTRY_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) => new UpdateEnvironmentUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: TransitionEnvironmentUseCase,
-    useFactory: (repo, audit) => new TransitionEnvironmentUseCase(repo, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) => new TransitionEnvironmentUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: UpdateDeploymentProfileUseCase,
@@ -2623,13 +2640,22 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: CreateControlContractUseCase,
-    useFactory: (repo, audit) => new CreateControlContractUseCase(repo, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) => new CreateControlContractUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: UpdateControlContractDraftUseCase,
-    useFactory: (repo) => new UpdateControlContractDraftUseCase(repo),
-    inject: [REGISTRY_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) =>
+      new UpdateControlContractDraftUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: TransitionControlContractUseCase,

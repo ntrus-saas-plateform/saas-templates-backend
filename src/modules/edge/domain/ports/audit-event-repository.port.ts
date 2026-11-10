@@ -19,7 +19,7 @@ export interface CreateAuditEventParams {
 }
 
 export interface AuditEventRepositoryPort {
-  create(params: CreateAuditEventParams): Promise<EdgeAuditEvent>;
+  create(params: CreateAuditEventParams, client?: unknown): Promise<EdgeAuditEvent>;
   list(params: {
     page: number;
     limit: number;

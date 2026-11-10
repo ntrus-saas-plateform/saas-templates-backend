@@ -14,11 +14,26 @@ import {
   CreateControlContractDto,
   CreateTechnicalVersionDto,
   EvaluateCompatibilityDto,
-  PatchWithVersionDto,
+  PatchControlContractDraftDto,
+  PatchDeploymentProfileDto,
+  PatchEnvironmentDto,
+  PatchPlatformDto,
+  PatchProductRegistryDto,
+  PatchTechnicalVersionDraftDto,
+  pickDefinedPatch,
   RegisterEnvironmentDto,
   RegisterPlatformDto,
   RegisterProductDto,
-  TransitionStatusDto,
+  RegistryContractsQueryDto,
+  RegistryEnvironmentsQueryDto,
+  RegistryHistoryQueryDto,
+  RegistryPaginationQueryDto,
+  TransitionControlContractStatusDto,
+  TransitionDeploymentProfileStatusDto,
+  TransitionEnvironmentStatusDto,
+  TransitionPlatformStatusDto,
+  TransitionProductRegistryStatusDto,
+  TransitionTechnicalVersionStatusDto,
 } from '../dto/registry.dto.js';
 import { EdgeRoute, RequireEdgePermissions } from '../../../../shared/auth/decorators.js';
 import { EdgeAuthGuard } from '../../../../shared/auth/edge-auth.guard.js';
@@ -46,16 +61,6 @@ import {
   UpdateProductRegistryUseCase,
   UpdateTechnicalVersionDraftUseCase,
 } from '../../application/registry/registry.use-cases.js';
-import {
-  ControlContractStatus,
-  EnvironmentStatus,
-  PlatformOperationalStatus,
-  PlatformType,
-  ProfileStatus,
-  RegistryLifecycleStatus,
-  RuntimeEnvironmentType,
-  TechnicalVersionStatus,
-} from '../../domain/registry/registry.types.js';
 
 type EdgeRequest = { user?: { sub?: string; id?: string } };
 
@@ -94,17 +99,12 @@ export class EdgeRegistryController {
   // ---- Products ----
   @Get('products')
   @RequireEdgePermissions('platform:product_registry:read')
-  listProducts(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-  ) {
+  listProducts(@Query() query: RegistryPaginationQueryDto) {
     return this.lists.listProducts({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
-      q,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
     });
   }
 
@@ -127,49 +127,45 @@ export class EdgeRegistryController {
   @Patch('products/:id')
   @RequireEdgePermissions('platform:product_registry:manage')
   @ApiOperation({ summary: 'Update product registry metadata (optimistic concurrency)' })
-  @ApiBody({ type: PatchWithVersionDto })
+  @ApiBody({ type: PatchProductRegistryDto })
   patchProduct(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: PatchWithVersionDto,
+    @Body() body: PatchProductRegistryDto,
   ) {
+    const { expectedVersion, ...fields } = body;
     return this.updateProduct.execute({
       actorId: actorId(req),
       id,
-      expectedVersion: body.expectedVersion,
-      patch: body.patch as never,
+      expectedVersion,
+      patch: pickDefinedPatch(fields),
     });
   }
 
   @Post('products/:id/transition')
   @RequireEdgePermissions('platform:product_registry:certify')
   @ApiOperation({ summary: 'Transition product registry lifecycle (certify/suspend/deprecate/retire)' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionProductRegistryStatusDto })
   transitionProductStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionProductRegistryStatusDto,
   ) {
     return this.transitionProduct.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as RegistryLifecycleStatus,
+      toStatus: body.toStatus,
       reason: body.reason,
     });
   }
 
   @Get('products/:id/versions')
   @RequireEdgePermissions('platform:product_registry:read')
-  listVersions(
-    @Param('id') id: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-  ) {
+  listVersions(@Param('id') id: string, @Query() query: RegistryPaginationQueryDto) {
     return this.lists.listVersions(id, {
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
     });
   }
 
@@ -199,44 +195,49 @@ export class EdgeRegistryController {
 
   @Patch('versions/:id')
   @RequireEdgePermissions('platform:product_registry:manage')
+  @ApiBody({ type: PatchTechnicalVersionDraftDto })
   patchVersion(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: PatchTechnicalVersionDraftDto,
   ) {
-    return this.updateVersion.execute({ actorId: actorId(req), id, patch: body as never });
+    const { availableFrom, supportEndsAt, ...rest } = body;
+    return this.updateVersion.execute({
+      actorId: actorId(req),
+      id,
+      patch: {
+        ...pickDefinedPatch(rest),
+        ...(availableFrom !== undefined ? { availableFrom: new Date(availableFrom) } : {}),
+        ...(supportEndsAt !== undefined ? { supportEndsAt: new Date(supportEndsAt) } : {}),
+      },
+    });
   }
 
   @Post('versions/:id/transition')
   @RequireEdgePermissions('platform:product_registry:manage')
   @ApiOperation({ summary: 'Publish/deprecate/retire a technical version' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionTechnicalVersionStatusDto })
   transitionVersionStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionTechnicalVersionStatusDto,
   ) {
     return this.transitionVersion.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as TechnicalVersionStatus,
+      toStatus: body.toStatus,
     });
   }
 
   // ---- Platforms ----
   @Get('platforms')
   @RequireEdgePermissions('platform:product_platforms:read')
-  listPlatforms(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-  ) {
+  listPlatforms(@Query() query: RegistryPaginationQueryDto) {
     return this.lists.listPlatforms({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
-      q,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
     });
   }
 
@@ -256,38 +257,39 @@ export class EdgeRegistryController {
     return this.registerPlatform.execute({
       actorId: actorId(req),
       ...body,
-      platformType: body.platformType as PlatformType,
     });
   }
 
   @Patch('platforms/:id')
   @RequireEdgePermissions('platform:product_platforms:manage')
+  @ApiBody({ type: PatchPlatformDto })
   patchPlatform(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { expectedVersion: number; patch: Record<string, unknown> },
+    @Body() body: PatchPlatformDto,
   ) {
+    const { expectedVersion, ...fields } = body;
     return this.updatePlatform.execute({
       actorId: actorId(req),
       id,
-      expectedVersion: body.expectedVersion,
-      patch: body.patch as never,
+      expectedVersion,
+      patch: pickDefinedPatch(fields),
     });
   }
 
   @Post('platforms/:id/transition')
   @RequireEdgePermissions('platform:product_platforms:manage')
   @ApiOperation({ summary: 'Transition platform operational status with dependency checks' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionPlatformStatusDto })
   transitionPlatformStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionPlatformStatusDto,
   ) {
     return this.transitionPlatform.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as PlatformOperationalStatus,
+      toStatus: body.toStatus,
       reason: body.reason,
     });
   }
@@ -295,19 +297,13 @@ export class EdgeRegistryController {
   // ---- Environments ----
   @Get('environments')
   @RequireEdgePermissions('platform:runtime_environments:read')
-  listEnvironments(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-    @Query('platformId') platformId?: string,
-  ) {
+  listEnvironments(@Query() query: RegistryEnvironmentsQueryDto) {
     return this.lists.listEnvironments({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
-      q,
-      platformId,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
+      platformId: query.platformId,
     });
   }
 
@@ -327,38 +323,39 @@ export class EdgeRegistryController {
     return this.registerEnvironment.execute({
       actorId: actorId(req),
       ...body,
-      environmentType: body.environmentType as RuntimeEnvironmentType,
     });
   }
 
   @Patch('environments/:id')
   @RequireEdgePermissions('platform:runtime_environments:manage')
+  @ApiBody({ type: PatchEnvironmentDto })
   patchEnvironment(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { expectedVersion: number; patch: Record<string, unknown> },
+    @Body() body: PatchEnvironmentDto,
   ) {
+    const { expectedVersion, ...fields } = body;
     return this.updateEnvironment.execute({
       actorId: actorId(req),
       id,
-      expectedVersion: body.expectedVersion,
-      patch: body.patch as never,
+      expectedVersion,
+      patch: pickDefinedPatch(fields),
     });
   }
 
   @Post('environments/:id/transition')
   @RequireEdgePermissions('platform:runtime_environments:manage')
   @ApiOperation({ summary: 'Transition runtime environment status' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionEnvironmentStatusDto })
   transitionEnvironmentStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionEnvironmentStatusDto,
   ) {
     return this.transitionEnvironment.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as EnvironmentStatus,
+      toStatus: body.toStatus,
       reason: body.reason,
     });
   }
@@ -366,17 +363,12 @@ export class EdgeRegistryController {
   // ---- Profiles ----
   @Get('deployment-profiles')
   @RequireEdgePermissions('platform:deployment_profiles:read')
-  listProfiles(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-  ) {
+  listProfiles(@Query() query: RegistryPaginationQueryDto) {
     return this.lists.listProfiles({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
-      q,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
     });
   }
 
@@ -390,27 +382,32 @@ export class EdgeRegistryController {
 
   @Patch('deployment-profiles/:id')
   @RequireEdgePermissions('platform:deployment_profiles:manage')
+  @ApiBody({ type: PatchDeploymentProfileDto })
   patchProfile(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: PatchDeploymentProfileDto,
   ) {
-    return this.updateProfile.execute({ actorId: actorId(req), id, patch: body as never });
+    return this.updateProfile.execute({
+      actorId: actorId(req),
+      id,
+      patch: pickDefinedPatch(body),
+    });
   }
 
   @Post('deployment-profiles/:id/transition')
   @RequireEdgePermissions('platform:deployment_profiles:manage')
   @ApiOperation({ summary: 'Transition deployment profile status' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionDeploymentProfileStatusDto })
   transitionProfileStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionDeploymentProfileStatusDto,
   ) {
     return this.transitionProfile.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as ProfileStatus,
+      toStatus: body.toStatus,
       reason: body.reason,
     });
   }
@@ -418,21 +415,14 @@ export class EdgeRegistryController {
   // ---- Contracts ----
   @Get('control-contracts')
   @RequireEdgePermissions('platform:product_control_contracts:read')
-  listContracts(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-    @Query('productId') productId?: string,
-    @Query('platformId') platformId?: string,
-  ) {
+  listContracts(@Query() query: RegistryContractsQueryDto) {
     return this.lists.listContracts({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
-      q,
-      productId,
-      platformId,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
+      productId: query.productId,
+      platformId: query.platformId,
     });
   }
 
@@ -454,27 +444,32 @@ export class EdgeRegistryController {
 
   @Patch('control-contracts/:id')
   @RequireEdgePermissions('platform:product_control_contracts:manage')
+  @ApiBody({ type: PatchControlContractDraftDto })
   patchContract(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: PatchControlContractDraftDto,
   ) {
-    return this.updateContract.execute({ actorId: actorId(req), id, patch: body as never });
+    return this.updateContract.execute({
+      actorId: actorId(req),
+      id,
+      patch: pickDefinedPatch(body),
+    });
   }
 
   @Post('control-contracts/:id/transition')
   @RequireEdgePermissions('platform:product_control_contracts:certify')
   @ApiOperation({ summary: 'Certify/publish/deprecate a control contract' })
-  @ApiBody({ type: TransitionStatusDto })
+  @ApiBody({ type: TransitionControlContractStatusDto })
   transitionContractStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: TransitionStatusDto,
+    @Body() body: TransitionControlContractStatusDto,
   ) {
     return this.transitionContract.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus as ControlContractStatus,
+      toStatus: body.toStatus,
       reason: body.reason,
     });
   }
@@ -490,15 +485,11 @@ export class EdgeRegistryController {
 
   @Get('compatibility/evaluations')
   @RequireEdgePermissions('platform:registry_compatibility:evaluate')
-  listEvaluations(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('status') status?: string,
-  ) {
+  listEvaluations(@Query() query: RegistryPaginationQueryDto) {
     return this.lists.listEvaluations({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      status,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
     });
   }
 
@@ -512,17 +503,12 @@ export class EdgeRegistryController {
 
   @Get('history')
   @RequireEdgePermissions('platform:registry_history:read')
-  listHistory(
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('resourceType') resourceType?: string,
-    @Query('resourceId') resourceId?: string,
-  ) {
+  listHistory(@Query() query: RegistryHistoryQueryDto) {
     return this.lists.listHistory({
-      limit: limit ? Number(limit) : 20,
-      offset: offset ? Number(offset) : 0,
-      resourceType: resourceType as never,
-      resourceId,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      resourceType: query.resourceType,
+      resourceId: query.resourceId,
     });
   }
 }

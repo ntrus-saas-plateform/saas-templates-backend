@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { ControlPlaneDatabaseService } from '../../../../shared/database/control-plane-database.service.js';
 import type {
   AuditEventRepositoryPort,
@@ -27,9 +27,10 @@ export class PgAuditEventRepository implements AuditEventRepositoryPort {
     return this.controlPlaneDatabase.getPool();
   }
 
-  async create(params: CreateAuditEventParams): Promise<EdgeAuditEvent> {
+  async create(params: CreateAuditEventParams, client?: unknown): Promise<EdgeAuditEvent> {
     const id = randomUUID();
-    const result = await this.pool.query<Row>(
+    const executor = client ? (client as PoolClient) : this.pool;
+    const result = await executor.query<Row>(
       `INSERT INTO edge_audit_events (
          id, event_type, actor_id, subject_type, subject_id, vertical_id, details
        ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
