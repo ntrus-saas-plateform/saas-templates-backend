@@ -37,7 +37,9 @@ import { WORKFLOW_REPOSITORY_PORT } from '../../domain/workflow/workflow-reposit
 import { WORKFLOW_AUTHORIZATION_PORT } from '../../domain/workflow/workflow-authorization.port.js';
 import { WORKFLOW_PLACEMENT_PORT } from '../../domain/workflow/workflow-placement.port.js';
 import { PRODUCT_CONTROL_REPOSITORY_PORT } from '../../domain/product-control/product-control-repository.port.js';
+import { INFRASTRUCTURE_REPOSITORY_PORT } from '../../domain/infrastructure-provisioning/infrastructure-repository.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
+import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
 import { PgPlacementRepository } from '../placement/pg-placement.repository.js';
@@ -116,6 +118,7 @@ const providers = [
   { provide: WORKFLOW_AUTHORIZATION_PORT, useClass: PgWorkflowAuthorizationAdapter },
   { provide: WORKFLOW_PLACEMENT_PORT, useClass: PgWorkflowPlacementAdapter },
   { provide: PRODUCT_CONTROL_REPOSITORY_PORT, useClass: PgProductControlRepository },
+  { provide: INFRASTRUCTURE_REPOSITORY_PORT, useClass: PgInfrastructureRepository },
 ];
 
 @Module({

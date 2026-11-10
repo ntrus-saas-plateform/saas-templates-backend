@@ -5,6 +5,7 @@ import {
   registerOperationNotImplementedHandlers,
   registerProductControlFoundationHandlers,
 } from '../product-control/product-control-handlers.js';
+import { registerInfrastructureHandlers } from '../infrastructure-provisioning/infrastructure-handlers.js';
 import {
   FUTURE_PROVISIONING_HANDLER_KEYS,
   WorkflowErrorClass,
@@ -156,6 +157,8 @@ export function createDefaultWorkflowHandlerRegistry(): InMemoryWorkflowHandlerR
   registry.register(new NoopApproveHandler());
   registry.register(new NoopCheckpointHandler());
   registerProductControlFoundationHandlers(registry);
+  // P7.6 handlers registered without live executor → DEPENDENCY_UNAVAILABLE until wired.
+  registerInfrastructureHandlers(registry);
   registerUnavailableProvisioningHandlers(registry);
   // Explicit alias registration for mandate wording (same keys as FUTURE_*).
   registerOperationNotImplementedHandlers(

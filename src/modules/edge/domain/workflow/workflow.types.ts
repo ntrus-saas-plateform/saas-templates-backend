@@ -1,5 +1,7 @@
 /** P7.4 Durable Workflow domain types. */
 
+import { INFRASTRUCTURE_HANDLER_KEYS as P76_HANDLER_KEYS } from '../infrastructure-provisioning/infrastructure.types.js';
+
 export enum WorkflowDefinitionStatus {
   DRAFT = 'DRAFT',
   VALIDATED = 'VALIDATED',
@@ -350,8 +352,8 @@ export interface WorkflowWorkerRecord {
 }
 
 /**
- * Mutative / future infra keys — must stay OPERATION_NOT_IMPLEMENTED
- * (P7.5 foundation wires real product_control.* handlers separately).
+ * Legacy aliases + P7.7+ keys — stay OPERATION_NOT_IMPLEMENTED.
+ * Real P7.6 keys live in INFRASTRUCTURE_HANDLER_KEYS.
  */
 export const FUTURE_PROVISIONING_HANDLER_KEYS = [
   'unavailable:p75',
@@ -374,6 +376,8 @@ export {
   PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS,
 } from '../product-control/product-control.types.js';
 
+export { INFRASTRUCTURE_HANDLER_KEYS } from '../infrastructure-provisioning/infrastructure.types.js';
+
 export const KNOWN_HANDLER_KEYS = [
   'noop:approve',
   'noop:checkpoint',
@@ -383,6 +387,7 @@ export const KNOWN_HANDLER_KEYS = [
   'product_control.verify_connectivity',
   'product_control.verify_health',
   'product_control.verify_conformance',
+  ...P76_HANDLER_KEYS,
   ...FUTURE_PROVISIONING_HANDLER_KEYS,
 ] as const;
 

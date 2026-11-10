@@ -42,7 +42,7 @@ describe('UnavailableProvisioningHandler', () => {
     }
   });
 
-  it('default registry includes noop + product_control foundation + unimplemented', () => {
+  it('default registry includes noop + product_control + p7.6 + unimplemented', () => {
     const registry = createDefaultWorkflowHandlerRegistry();
     expect(registry.has('noop:approve')).toBe(true);
     expect(registry.has('noop:checkpoint')).toBe(true);
@@ -50,6 +50,8 @@ describe('UnavailableProvisioningHandler', () => {
     expect(registry.get('product_control.handshake')).toBeInstanceOf(
       ProductControlFoundationHandler,
     );
+    expect(registry.has('infrastructure.validate_plan')).toBe(true);
+    expect(registry.has('database.provision')).toBe(true);
     expect(registry.has('unavailable:p76')).toBe(true);
     expect(registry.has('unavailable:p77')).toBe(true);
   });

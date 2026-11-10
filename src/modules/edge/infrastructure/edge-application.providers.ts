@@ -197,6 +197,7 @@ import { WORKFLOW_AUTHORIZATION_PORT } from '../domain/workflow/workflow-authori
 import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.port.js';
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
 import {
+  INFRASTRUCTURE_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
@@ -220,6 +221,38 @@ import { EnvCredentialProvider } from './product-control/credential-provider.ada
 import { SignatureService } from './product-control/signature.service.js';
 import { HttpProductControlClient } from './product-control/http-product-control.client.js';
 import { createLiveProductControlExecutor } from './product-control/live-product-control.executor.js';
+import { INFRASTRUCTURE_REPOSITORY_PORT } from '../domain/infrastructure-provisioning/infrastructure-repository.port.js';
+import { SECRETS_PROVIDER_PORT } from '../domain/infrastructure-provisioning/secrets-provider.port.js';
+import {
+  DATABASE_ENGINE_ADAPTER_REGISTRY_PORT,
+} from '../domain/infrastructure-provisioning/database-engine.port.js';
+import {
+  INFRASTRUCTURE_PROVIDER_REGISTRY_PORT,
+} from '../domain/infrastructure-provisioning/database-provider.port.js';
+import {
+  ConfigureDatabaseBackupUseCase,
+  ConfigureDatabaseSecurityUseCase,
+  CreateDatabaseCredentialsUseCase,
+  CreateResourcePlanUseCase,
+  DeprovisionResourceUseCase,
+  ListInfrastructureResourcesUseCase,
+  ProvisionComputeUseCase,
+  ProvisionDatabaseUseCase,
+  ProvisionNetworkUseCase,
+  ProvisionStorageUseCase,
+  ReconcileResourceUseCase,
+  RotateDatabaseCredentialsUseCase,
+  ValidateResourcePlanUseCase,
+  VerifyBackupPolicyUseCase,
+  VerifyDatabaseConnectivityUseCase,
+  VerifyDatabaseIsolationUseCase,
+  VerifyResourcesUseCase,
+} from '../application/infrastructure-provisioning/infrastructure.use-cases.js';
+import { EncryptedSecretsProvider } from './infrastructure-provisioning/secrets-provider.adapter.js';
+import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
+import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
+import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
+import { createLiveInfrastructureExecutor } from './infrastructure-provisioning/live-infrastructure.executor.js';
 import {
   ApproveHumanTaskUseCase,
   AssignHumanTaskUseCase,
@@ -3613,10 +3646,191 @@ export const edgeApplicationProviders: Provider[] = [
       HealthCheckProductControlEndpointUseCase,
     ],
   },
+  { provide: SECRETS_PROVIDER_PORT, useFactory: () => new EncryptedSecretsProvider() },
+  {
+    provide: DATABASE_ENGINE_ADAPTER_REGISTRY_PORT,
+    useFactory: () => new DatabaseEngineAdapterRegistry(),
+  },
+  {
+    provide: INFRASTRUCTURE_PROVIDER_REGISTRY_PORT,
+    useFactory: (repo) =>
+      new LocalInfrastructureProviderRegistry(
+        repo,
+        new LocalManagedInfrastructureProvider({
+          postgresql: process.env.EDGE_P76_PG_ADMIN_URL,
+          mongodb: process.env.EDGE_P76_MONGO_ADMIN_URL,
+          surrealdb: process.env.EDGE_P76_SURREAL_ADMIN_URL,
+        }),
+      ),
+    inject: [INFRASTRUCTURE_REPOSITORY_PORT],
+  },
+  {
+    provide: ListInfrastructureResourcesUseCase,
+    useFactory: (repo) => new ListInfrastructureResourcesUseCase(repo),
+    inject: [INFRASTRUCTURE_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateResourcePlanUseCase,
+    useFactory: (repo, outbox, audit) => new CreateResourcePlanUseCase(repo, outbox, audit),
+    inject: [
+      INFRASTRUCTURE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ValidateResourcePlanUseCase,
+    useFactory: (repo, outbox, audit) => new ValidateResourcePlanUseCase(repo, outbox, audit),
+    inject: [
+      INFRASTRUCTURE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: 'INFRA_PROVISION_DEPS',
+    useFactory: (repo, providers, engines, secrets, outbox, audit) => ({
+      repo,
+      providers,
+      engines,
+      secrets,
+      outbox,
+      audit,
+    }),
+    inject: [
+      INFRASTRUCTURE_REPOSITORY_PORT,
+      INFRASTRUCTURE_PROVIDER_REGISTRY_PORT,
+      DATABASE_ENGINE_ADAPTER_REGISTRY_PORT,
+      SECRETS_PROVIDER_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ProvisionNetworkUseCase,
+    useFactory: (deps) => new ProvisionNetworkUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ProvisionStorageUseCase,
+    useFactory: (deps) => new ProvisionStorageUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ProvisionComputeUseCase,
+    useFactory: (deps) => new ProvisionComputeUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ProvisionDatabaseUseCase,
+    useFactory: (deps) => new ProvisionDatabaseUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ConfigureDatabaseSecurityUseCase,
+    useFactory: (deps) => new ConfigureDatabaseSecurityUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: CreateDatabaseCredentialsUseCase,
+    useFactory: (deps) => new CreateDatabaseCredentialsUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: VerifyDatabaseConnectivityUseCase,
+    useFactory: (deps) => new VerifyDatabaseConnectivityUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: VerifyDatabaseIsolationUseCase,
+    useFactory: (deps) => new VerifyDatabaseIsolationUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ConfigureDatabaseBackupUseCase,
+    useFactory: (deps) => new ConfigureDatabaseBackupUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: VerifyBackupPolicyUseCase,
+    useFactory: (deps) => new VerifyBackupPolicyUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: ReconcileResourceUseCase,
+    useFactory: (deps) => new ReconcileResourceUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: DeprovisionResourceUseCase,
+    useFactory: (deps) => new DeprovisionResourceUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: RotateDatabaseCredentialsUseCase,
+    useFactory: (deps) => new RotateDatabaseCredentialsUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: VerifyResourcesUseCase,
+    useFactory: (deps) => new VerifyResourcesUseCase(deps),
+    inject: ['INFRA_PROVISION_DEPS'],
+  },
+  {
+    provide: INFRASTRUCTURE_LIVE_EXECUTOR,
+    useFactory: (
+      validatePlan,
+      provisionNetwork,
+      provisionCompute,
+      provisionStorage,
+      verifyResources,
+      provisionDatabase,
+      configureSecurity,
+      createCredentials,
+      verifyConnectivity,
+      verifyIsolation,
+      configureBackup,
+      verifyBackupPolicy,
+      reconcile,
+      deprovision,
+    ) =>
+      createLiveInfrastructureExecutor({
+        validatePlan,
+        provisionNetwork,
+        provisionCompute,
+        provisionStorage,
+        verifyResources,
+        provisionDatabase,
+        configureSecurity,
+        createCredentials,
+        verifyConnectivity,
+        verifyIsolation,
+        configureBackup,
+        verifyBackupPolicy,
+        reconcile,
+        deprovision,
+      }),
+    inject: [
+      ValidateResourcePlanUseCase,
+      ProvisionNetworkUseCase,
+      ProvisionComputeUseCase,
+      ProvisionStorageUseCase,
+      VerifyResourcesUseCase,
+      ProvisionDatabaseUseCase,
+      ConfigureDatabaseSecurityUseCase,
+      CreateDatabaseCredentialsUseCase,
+      VerifyDatabaseConnectivityUseCase,
+      VerifyDatabaseIsolationUseCase,
+      ConfigureDatabaseBackupUseCase,
+      VerifyBackupPolicyUseCase,
+      ReconcileResourceUseCase,
+      DeprovisionResourceUseCase,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (live) => new WorkflowHandlerRegistry(live),
-    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR],
+    useFactory: (pci, infra) => new WorkflowHandlerRegistry(pci, infra),
+    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR, INFRASTRUCTURE_LIVE_EXECUTOR],
   },
   {
     provide: ListWorkflowResourcesUseCase,
