@@ -1,0 +1,67 @@
+{
+  "catalogVersion": "1.0.0",
+  "date": "2026-11-10",
+  "owners": {
+    "P5": ["subscription.provisioning.authorization.*"],
+    "P6": ["billing.*"],
+    "P7": ["tenant.provisioning.request.*"],
+    "P5_P6_bridge": ["subscription.billing_coordination.*"]
+  },
+  "events": [
+    {
+      "name": "subscription.provisioning.authorization.issued.v1",
+      "owner": "P5",
+      "status": "PROPOSED",
+      "schema": "p5-p7-authorization.schema.json"
+    },
+    {
+      "name": "subscription.provisioning.authorization.revoked.v1",
+      "owner": "P5",
+      "status": "PROPOSED",
+      "schema": "authorization-revocation.schema.json"
+    },
+    {
+      "name": "subscription.provisioning.authorization.expired.v1",
+      "owner": "P5",
+      "status": "PROPOSED"
+    },
+    {
+      "name": "subscription.provisioning.authorization.reissued.v1",
+      "owner": "P5",
+      "status": "PROPOSED"
+    },
+    {
+      "name": "tenant.provisioning.request.received.v1",
+      "owner": "P7",
+      "status": "PROPOSED",
+      "schema": "p7-provisioning-request-event.schema.json"
+    },
+    {
+      "name": "tenant.provisioning.request.accepted.v1",
+      "owner": "P7",
+      "status": "PROPOSED"
+    },
+    {
+      "name": "tenant.provisioning.request.rejected.v1",
+      "owner": "P7",
+      "status": "PROPOSED"
+    },
+    {
+      "name": "tenant.provisioning.request.cancelled.v1",
+      "owner": "P7",
+      "status": "PROPOSED"
+    },
+    {
+      "name": "subscription.provisioning.requested.v1",
+      "owner": "P5",
+      "status": "LEGACY_TRANSITIONAL",
+      "note": "VERIFIED_IN_CODE; must not be treated as full canonical authorization"
+    },
+    {
+      "name": "billing.payment.succeeded.v1",
+      "owner": "P6",
+      "status": "EXISTING",
+      "note": "Financial fact only — never provisioning authorization"
+    }
+  ]
+}

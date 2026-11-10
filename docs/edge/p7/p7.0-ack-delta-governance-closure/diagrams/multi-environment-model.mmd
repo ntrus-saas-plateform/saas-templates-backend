@@ -1,0 +1,10 @@
+flowchart TB
+  PT[Product Tenant]
+  SLOT[Environment Slot PROD STAGING DR]
+  RT[Runtime Environment]
+  DB[Database Binding]
+  PT --> SLOT
+  SLOT --> RT
+  RT --> DB
+  P5[P5 Entitlement] -->|authorizes slots| SLOT
+  P7[P7 Placement] -->|assigns| RT

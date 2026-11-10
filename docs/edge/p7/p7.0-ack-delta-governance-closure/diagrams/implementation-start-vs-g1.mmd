@@ -1,0 +1,5 @@
+flowchart LR
+  A[Gate A Start Auth] --> CODE[P7.1.01-07 coding]
+  CODE --> B[Gate B G1 Accept]
+  A -.->|requires| SIG[Signatures C09 C10 OQs]
+  B -.->|requires| EV[Tests zero side effects]

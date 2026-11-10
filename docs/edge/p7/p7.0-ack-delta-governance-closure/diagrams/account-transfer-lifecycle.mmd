@@ -1,0 +1,6 @@
+flowchart LR
+  REQ[Transfer request] --> P5A[P5 contract check]
+  P5A --> HUM[Human approval]
+  HUM --> P7T[P7 tenant ownership transfer]
+  P7T --> AUD[Audit before after]
+  HUM --> BB[BB org establishment if needed]

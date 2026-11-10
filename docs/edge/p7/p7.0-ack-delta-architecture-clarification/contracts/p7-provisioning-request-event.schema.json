@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://okapi.edge/schemas/p7.provisioning_request_event.v1.json",
+  "title": "P7ProvisioningRequestEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "request_id",
+    "authorization_id",
+    "authorization_version",
+    "account_id",
+    "subscription_id",
+    "product_id",
+    "status",
+    "occurred_at",
+    "correlation_id"
+  ],
+  "properties": {
+    "schema_version": { "const": "p7.provisioning_request_event.v1" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "tenant.provisioning.request.received.v1",
+        "tenant.provisioning.request.accepted.v1",
+        "tenant.provisioning.request.rejected.v1",
+        "tenant.provisioning.request.cancelled.v1"
+      ]
+    },
+    "request_id": { "type": "string", "format": "uuid" },
+    "authorization_id": { "type": "string", "format": "uuid" },
+    "authorization_version": { "type": "integer", "minimum": 1 },
+    "account_id": { "type": "string", "format": "uuid" },
+    "subscription_id": { "type": "string", "format": "uuid" },
+    "product_id": { "type": "string", "format": "uuid" },
+    "product_tenant_id": { "type": ["string", "null"], "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": [
+        "RECEIVED",
+        "ACCEPTED",
+        "REJECTED",
+        "CANCELLED",
+        "SUPERSEDED_BY_REVOKE"
+      ]
+    },
+    "reason_code": { "type": ["string", "null"] },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "causation_id": { "type": ["string", "null"], "format": "uuid" },
+    "actor": { "type": ["string", "null"] }
+  }
+}

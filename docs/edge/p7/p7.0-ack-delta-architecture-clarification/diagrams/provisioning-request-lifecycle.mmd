@@ -1,0 +1,11 @@
+stateDiagram-v2
+  [*] --> RECEIVED: auth verified
+  RECEIVED --> ACCEPTED: persist ok
+  RECEIVED --> REJECTED: fail-closed
+  ACCEPTED --> CANCELLED: operator cancel
+  ACCEPTED --> SUPERSEDED_BY_REVOKE: P5 revoke
+  RECEIVED --> SUPERSEDED_BY_REVOKE: P5 revoke
+  ACCEPTED --> QUEUED_FOR_WORKFLOW: future P7.4 only
+  REJECTED --> [*]
+  CANCELLED --> [*]
+  SUPERSEDED_BY_REVOKE --> [*]

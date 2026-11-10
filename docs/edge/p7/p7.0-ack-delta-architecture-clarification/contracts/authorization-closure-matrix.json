@@ -1,0 +1,96 @@
+{
+  "version": "1.0.0",
+  "date": "2026-11-10",
+  "deltaVerdict": "DELTA_ACCEPTED_WITH_CONDITIONS",
+  "p71OperationallyEffective": false,
+  "matrix": [
+    {
+      "requirement": "C-01",
+      "owner": "P5/P7",
+      "priority": "P0",
+      "status": "OPEN",
+      "blocksP71Start": true,
+      "evidence": "Contract defined; implementation pending"
+    },
+    {
+      "requirement": "C-02",
+      "owner": "P7",
+      "priority": "P0",
+      "status": "OPEN",
+      "blocksP71Start": true,
+      "evidence": "Design confirmed; config/tests pending"
+    },
+    {
+      "requirement": "C-03",
+      "owner": "P5/P7",
+      "priority": "P0",
+      "status": "OPEN",
+      "blocksP71Start": true,
+      "evidence": "Scenarios listed; tests pending"
+    },
+    {
+      "requirement": "C-04",
+      "owner": "Platform/Security",
+      "priority": "P1",
+      "status": "OPEN",
+      "blocksP71Start": false,
+      "evidence": "Live KC UNVERIFIED"
+    },
+    {
+      "requirement": "C-05",
+      "owner": "P7/BB",
+      "priority": "P1",
+      "status": "OPEN",
+      "blocksP71Start": false,
+      "evidence": "Before P7.5"
+    },
+    {
+      "requirement": "C-06",
+      "owner": "P7",
+      "priority": "P0",
+      "status": "OPEN",
+      "blocksP71Start": false,
+      "evidence": "Before P7.4 code"
+    },
+    {
+      "requirement": "C-07",
+      "owner": "P7",
+      "priority": "P0",
+      "status": "OPEN",
+      "blocksP71Start": true,
+      "evidence": "Policy accept + review checklist"
+    },
+    {
+      "requirement": "C-08",
+      "owner": "P6",
+      "priority": "P2",
+      "status": "OPEN",
+      "blocksP71Start": false,
+      "evidence": "Full commercial E2E only"
+    },
+    {
+      "requirement": "C-09",
+      "owner": "P5/P7 Architecture",
+      "priority": "P0",
+      "status": "OPEN_SPECIFIED",
+      "blocksP71Start": true,
+      "evidence": "Delta contracts pending formal accept"
+    },
+    {
+      "requirement": "C-10",
+      "owner": "P5/P7 Architecture",
+      "priority": "P0",
+      "status": "OPEN_SPECIFIED",
+      "blocksP71Start": true,
+      "evidence": "D-CARD-01 pending formal accept"
+    },
+    {
+      "requirement": "Human countersignature",
+      "owner": "Governance owners",
+      "priority": "P0",
+      "status": "PENDING",
+      "blocksP71Start": true,
+      "evidence": "Sign-off table empty"
+    }
+  ]
+}

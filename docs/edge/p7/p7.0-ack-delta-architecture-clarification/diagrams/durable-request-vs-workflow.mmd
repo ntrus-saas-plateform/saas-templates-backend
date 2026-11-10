@@ -1,0 +1,9 @@
+flowchart TB
+  AUTH[P5 Authorization]
+  REQ[P7.1 Durable Request]
+  WF[P7.4 Durable Workflow]
+  INFRA[Adapters Infra KC BB]
+  AUTH --> REQ
+  REQ -->|future start| WF
+  WF --> INFRA
+  REQ -.->|no side effects| X[No ACTIVE claim]

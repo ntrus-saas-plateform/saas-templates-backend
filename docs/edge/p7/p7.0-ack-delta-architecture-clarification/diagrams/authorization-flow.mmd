@@ -1,0 +1,11 @@
+sequenceDiagram
+  participant P6
+  participant P5
+  participant P7
+  P6->>P5: billing.payment.succeeded.v1 (fact)
+  P5->>P5: Evaluate contract and entitlements
+  P5->>P7: authorization.issued.v1 (ALLOW)
+  P7->>P7: Authenticate verify schema integrity status validity
+  P7->>P7: Persist ProvisioningRequest
+  P7-->>P5: request.accepted.v1
+  Note over P7: No infra KC BB side effects in P7.1

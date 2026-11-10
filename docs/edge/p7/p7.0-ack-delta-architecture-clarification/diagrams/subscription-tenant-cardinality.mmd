@@ -1,0 +1,15 @@
+flowchart TB
+  ACC[Account]
+  SUB[Subscription]
+  PT[Product Tenant]
+  PROD[Product]
+  ASSOC[SubscriptionTenantAssociation]
+
+  ACC -->|1:N| SUB
+  ACC -->|1:N| PT
+  PT -->|N:1| PROD
+  SUB -->|N:1| PROD
+  PT -->|1:N| ASSOC
+  SUB -->|1:N| ASSOC
+  ASSOC -->|valid time| VT[effective_from / effective_until]
+  ASSOC -->|transaction time| TT[recorded_at]

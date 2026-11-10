@@ -1,0 +1,78 @@
+{
+  "documentId": "P7.0-ACK-19",
+  "version": "1.0.0",
+  "date": "2026-11-10",
+  "ackDecision": "ACK_APPROVED_WITH_CONDITIONS",
+  "architectureFreeze": "APPROVED_WITH_CONDITIONS",
+  "freezeVersion": "1.0.0-freeze",
+  "p71ImplementationAuthorization": "AUTHORIZED_WITH_RESTRICTIONS",
+  "approvedScope": [
+    "P7.1.01",
+    "P7.1.02",
+    "P7.1.03",
+    "P7.1.04",
+    "P7.1.05",
+    "P7.1.06",
+    "P7.1.07",
+    "P7.2.design_docs_only"
+  ],
+  "blockedScope": [
+    "P7.2.runtime_implementation",
+    "P7.3",
+    "P7.4.code",
+    "P7.5",
+    "P7.6",
+    "P7.7",
+    "P7.8",
+    "P7.9",
+    "P7.10",
+    "P7.11",
+    "P7.12",
+    "P7.13",
+    "P7.14",
+    "P7.15",
+    "identity_orchestrator_as_p7_sot",
+    "p6_payment_as_activation",
+    "keycloak_topology_production_claim",
+    "real_business_backend_provisioning"
+  ],
+  "conditions": [
+    { "id": "C-01", "severity": "P0", "summary": "Full authorization field set in P7.1 model" },
+    { "id": "C-02", "severity": "P0", "summary": "Feature-flag adapter; Unavailable default" },
+    { "id": "C-03", "severity": "P0", "summary": "Fail-closed revocation/auth tests" },
+    { "id": "C-04", "severity": "P1", "summary": "Live Keycloak version verify before Mode prod" },
+    { "id": "C-05", "severity": "P1", "summary": "PCC schema + mock BB before P7.5 prod" },
+    { "id": "C-06", "severity": "P0", "summary": "Workflow engine design gate before P7.4 code" },
+    { "id": "C-07", "severity": "P0", "summary": "No Identity orchestrator/ERP UI as P7" },
+    { "id": "C-08", "severity": "P2", "summary": "P6 staging GO before full commercial E2E" }
+  ],
+  "criticalRisks": [
+    "ACK-R01",
+    "ACK-R03",
+    "ACK-R07",
+    "ACK-R11"
+  ],
+  "adrs": {
+    "accepted": ["ADR-P7-010"],
+    "acceptedWithConditions": [
+      "ADR-P7-001",
+      "ADR-P7-002",
+      "ADR-P7-003",
+      "ADR-P7-004",
+      "ADR-P7-005",
+      "ADR-P7-006",
+      "ADR-P7-007",
+      "ADR-P7-009",
+      "ADR-P7-011",
+      "ADR-P7-012"
+    ],
+    "deferred": ["ADR-P7-008"],
+    "rejected": []
+  },
+  "dependencies": {
+    "hardForP71": ["P5_port_extension", "edge_hexagonal", "outbox_patterns"],
+    "notBlockingP71": ["live_keycloak_version", "business_backend_repo", "p6_staging_go", "durable_engine_code"]
+  },
+  "humanCountersignatureRequired": true,
+  "implementationPerformedInThisGate": false
+}

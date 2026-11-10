@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://okapi.edge/schemas/p5.provisioning_authorization.v1.json",
+  "title": "P5ProvisioningAuthorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authorization_id",
+    "authorization_version",
+    "schema_version",
+    "authorization_type",
+    "operation",
+    "account_id",
+    "subscription_id",
+    "product_id",
+    "correlation_id",
+    "idempotency_key",
+    "decision",
+    "authorization_status",
+    "decision_timestamp",
+    "issued_at",
+    "entitlement_snapshot_reference",
+    "entitlement_version",
+    "issuer",
+    "audience",
+    "key_id",
+    "signature_algorithm",
+    "payload_digest",
+    "issued_by_service_identity",
+    "revocation_status"
+  ],
+  "properties": {
+    "authorization_id": { "type": "string", "format": "uuid" },
+    "authorization_version": { "type": "integer", "minimum": 1 },
+    "schema_version": { "const": "p5.provisioning_authorization.v1" },
+    "authorization_type": {
+      "type": "string",
+      "enum": ["PROVISION", "SUSPEND", "RESUME", "DECOMMISSION", "UPDATE", "MIGRATE"]
+    },
+    "operation": { "type": "string", "minLength": 1 },
+    "account_id": { "type": "string", "format": "uuid" },
+    "subscription_id": { "type": "string", "format": "uuid" },
+    "product_id": { "type": "string", "format": "uuid" },
+    "product_tenant_id": { "type": ["string", "null"], "format": "uuid" },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "causation_id": { "type": ["string", "null"], "format": "uuid" },
+    "idempotency_key": { "type": "string", "minLength": 8 },
+    "decision": { "type": "string", "enum": ["ALLOW", "DENY"] },
+    "authorization_status": {
+      "type": "string",
+      "enum": ["ISSUED", "ACTIVE", "REVOKED", "EXPIRED", "SUPERSEDED"]
+    },
+    "decision_reason_code": { "type": ["string", "null"] },
+    "decision_timestamp": { "type": "string", "format": "date-time" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "not_before": { "type": ["string", "null"], "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "entitlement_snapshot_reference": { "type": "string", "minLength": 1 },
+    "entitlement_version": { "type": "string", "minLength": 1 },
+    "subscription_version": { "type": ["string", "null"] },
+    "commercial_policy_version": { "type": ["string", "null"] },
+    "contract_reference": { "type": ["string", "null"] },
+    "billing_evaluation_reference": { "type": ["string", "null"] },
+    "issuer": { "type": "string", "minLength": 1 },
+    "audience": { "const": "okapi.edge.p7" },
+    "key_id": { "type": "string", "minLength": 1 },
+    "signature_algorithm": {
+      "type": "string",
+      "enum": ["EdDSA", "RS256", "ES256", "none_digest_only"]
+    },
+    "signature": { "type": ["string", "null"] },
+    "payload_digest": { "type": "string", "minLength": 32 },
+    "issued_by_service_identity": { "type": "string", "minLength": 1 },
+    "revocation_status": {
+      "type": "string",
+      "enum": ["NOT_REVOKED", "REVOKED"]
+    },
+    "revocation_version": { "type": ["integer", "null"], "minimum": 1 },
+    "revoked_at": { "type": ["string", "null"], "format": "date-time" },
+    "revocation_reason_code": { "type": ["string", "null"] },
+    "revocation_reference": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://okapi.edge/schemas/p5.provisioning_authorization_revoked.v1.json",
+  "title": "P5ProvisioningAuthorizationRevoked",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "authorization_id",
+    "authorization_version",
+    "revocation_version",
+    "revoked_at",
+    "reason_code",
+    "issuer",
+    "correlation_id",
+    "schema_version"
+  ],
+  "properties": {
+    "schema_version": { "const": "p5.provisioning_authorization_revoked.v1" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "authorization_id": { "type": "string", "format": "uuid" },
+    "authorization_version": { "type": "integer", "minimum": 1 },
+    "revocation_version": { "type": "integer", "minimum": 1 },
+    "revoked_at": { "type": "string", "format": "date-time" },
+    "reason_code": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "causation_id": { "type": ["string", "null"], "format": "uuid" },
+    "payload_digest": { "type": ["string", "null"] },
+    "signature": { "type": ["string", "null"] },
+    "key_id": { "type": ["string", "null"] }
+  }
+}

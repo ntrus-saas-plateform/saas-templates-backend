@@ -1,0 +1,8 @@
+flowchart LR
+  P6[P6 billing.* facts]
+  P5[P5 authorization.*]
+  P7[P7 request.*]
+  P6 -->|interpret only| P5
+  P5 -->|ALLOW auth| P7
+  P7 -->|request status| P5
+  P6 -.->|forbidden direct| P7

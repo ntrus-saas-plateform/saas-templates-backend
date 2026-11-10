@@ -1,0 +1,8 @@
+flowchart TD
+  TERM[Commercial terminate]
+  TEN[Product Tenant state]
+  TERM --> TEN
+  TEN -->|ACTIVE SUSPENDED ARCHIVED| COND[Conditional reuse check]
+  TEN -->|DECOMMISSIONED PURGED| NEW[New Product Tenant]
+  COND -->|pass| BIND[New association]
+  COND -->|fail| NEW

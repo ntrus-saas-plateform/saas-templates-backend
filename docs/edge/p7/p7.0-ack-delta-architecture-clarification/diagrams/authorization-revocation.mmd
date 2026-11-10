@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant P5
+  participant Bus as OutboxInbox
+  participant P7
+  P5->>Bus: authorization.revoked.v1
+  Bus->>P7: Deliver revoke
+  P7->>P7: Apply monotonic revocation_version
+  alt Request not started
+    P7->>P7: SUPERSEDED_BY_REVOKE
+  else Future in-flight workflow
+    P7->>P7: Stop new steps compensate per policy
+  else Already activated
+    P7->>P7: No auto destroy require lifecycle auth
+  end
+  P7->>P5: Optional sync verify before sensitive ops

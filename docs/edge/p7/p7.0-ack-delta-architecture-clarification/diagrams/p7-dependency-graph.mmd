@@ -1,0 +1,16 @@
+flowchart TD
+  ACK[P7.0 ACK plus Delta]
+  SIG[Human countersignature]
+  C910[C-09 C-10 accept]
+  P71[P7.1 Request Foundation]
+  P72[P7.2 Registry]
+  P74[P7.4 Workflow]
+  P75[P7.5 Product Control]
+  REST[P7.6 to P7.15]
+  ACK --> SIG
+  SIG --> C910
+  C910 --> P71
+  P71 --> P72
+  P72 --> P74
+  P74 --> P75
+  P75 --> REST

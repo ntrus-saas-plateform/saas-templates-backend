@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant P5
+  participant P7
+  Note over P7: Accept path
+  P7->>P5: Sync status verify
+  alt P5 down or REVOKED
+    P7->>P7: Fail-closed reject
+  else ACTIVE ALLOW
+    P7->>P7: Persist request
+  end
+  P5-->>P7: Later revoke event
+  P7->>P7: Monotonic apply SUPERSEDED_BY_REVOKE
