@@ -196,7 +196,30 @@ import { WORKFLOW_REPOSITORY_PORT } from '../domain/workflow/workflow-repository
 import { WORKFLOW_AUTHORIZATION_PORT } from '../domain/workflow/workflow-authorization.port.js';
 import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.port.js';
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
-import { WorkflowHandlerRegistry } from './workflow/workflow-handler.registry.js';
+import {
+  PRODUCT_CONTROL_LIVE_EXECUTOR,
+  WorkflowHandlerRegistry,
+} from './workflow/workflow-handler.registry.js';
+import { PRODUCT_CONTROL_REPOSITORY_PORT } from '../domain/product-control/product-control-repository.port.js';
+import { PRODUCT_CONTROL_CLIENT_PORT } from '../domain/product-control/product-control-client.port.js';
+import { CREDENTIAL_PROVIDER_PORT } from '../domain/product-control/credential-provider.port.js';
+import { SIGNATURE_VERIFIER_PORT } from '../domain/product-control/signature-verifier.port.js';
+import {
+  DiscoverProductControlCapabilitiesUseCase,
+  DiscoverProductControlContractUseCase,
+  HandshakeProductControlEndpointUseCase,
+  HealthCheckProductControlEndpointUseCase,
+  ListProductControlResourcesUseCase,
+  QuarantineProductControlEndpointUseCase,
+  ReceiveProductControlCallbackUseCase,
+  ReconcileProductControlExchangeUseCase,
+  RegisterProductControlEndpointUseCase,
+  ValidateProductControlEndpointUseCase,
+} from '../application/product-control/product-control.use-cases.js';
+import { EnvCredentialProvider } from './product-control/credential-provider.adapter.js';
+import { SignatureService } from './product-control/signature.service.js';
+import { HttpProductControlClient } from './product-control/http-product-control.client.js';
+import { createLiveProductControlExecutor } from './product-control/live-product-control.executor.js';
 import {
   ApproveHumanTaskUseCase,
   AssignHumanTaskUseCase,
@@ -3449,7 +3472,152 @@ export const edgeApplicationProviders: Provider[] = [
     useFactory: (b) => new UpsertRevenuePolicyUseCase(b),
     inject: [BILLING_REPOSITORY_PORT],
   },
-  { provide: WORKFLOW_HANDLER_REGISTRY, useClass: WorkflowHandlerRegistry },
+  {
+    provide: CREDENTIAL_PROVIDER_PORT,
+    useFactory: (config: EnvironmentConfig) =>
+      new EnvCredentialProvider(
+        (config as { EDGE_PCI_CREDENTIALS_JSON?: string }).EDGE_PCI_CREDENTIALS_JSON,
+      ),
+    inject: [APP_CONFIG],
+  },
+  {
+    provide: SIGNATURE_VERIFIER_PORT,
+    useFactory: (creds) => new SignatureService(creds),
+    inject: [CREDENTIAL_PROVIDER_PORT],
+  },
+  {
+    provide: PRODUCT_CONTROL_CLIENT_PORT,
+    useFactory: (creds, sigs, config: EnvironmentConfig) =>
+      new HttpProductControlClient(creds, sigs, {
+        allowInsecureHttp: Boolean(
+          (config as { EDGE_PCI_ALLOW_INSECURE_HTTP?: boolean }).EDGE_PCI_ALLOW_INSECURE_HTTP,
+        ),
+        timeoutMs:
+          (config as { EDGE_PCI_TIMEOUT_MS?: number }).EDGE_PCI_TIMEOUT_MS ?? 10_000,
+      }),
+    inject: [CREDENTIAL_PROVIDER_PORT, SIGNATURE_VERIFIER_PORT, APP_CONFIG],
+  },
+  {
+    provide: ListProductControlResourcesUseCase,
+    useFactory: (repo) => new ListProductControlResourcesUseCase(repo),
+    inject: [PRODUCT_CONTROL_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterProductControlEndpointUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RegisterProductControlEndpointUseCase(repo, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ValidateProductControlEndpointUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ValidateProductControlEndpointUseCase(repo, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: QuarantineProductControlEndpointUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new QuarantineProductControlEndpointUseCase(repo, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: HandshakeProductControlEndpointUseCase,
+    useFactory: (repo, client, outbox, audit) =>
+      new HandshakeProductControlEndpointUseCase(repo, client, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      PRODUCT_CONTROL_CLIENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: DiscoverProductControlContractUseCase,
+    useFactory: (repo, client, outbox, audit) =>
+      new DiscoverProductControlContractUseCase(repo, client, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      PRODUCT_CONTROL_CLIENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: DiscoverProductControlCapabilitiesUseCase,
+    useFactory: (repo, client, outbox, audit) =>
+      new DiscoverProductControlCapabilitiesUseCase(repo, client, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      PRODUCT_CONTROL_CLIENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: HealthCheckProductControlEndpointUseCase,
+    useFactory: (repo, client, outbox, audit) =>
+      new HealthCheckProductControlEndpointUseCase(repo, client, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      PRODUCT_CONTROL_CLIENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReconcileProductControlExchangeUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ReconcileProductControlExchangeUseCase(repo, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReceiveProductControlCallbackUseCase,
+    useFactory: (repo, sigs, outbox, audit) =>
+      new ReceiveProductControlCallbackUseCase(repo, sigs, outbox, audit),
+    inject: [
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      SIGNATURE_VERIFIER_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PRODUCT_CONTROL_LIVE_EXECUTOR,
+    useFactory: (handshake, discoverContract, discoverCapabilities, health) =>
+      createLiveProductControlExecutor({
+        handshake,
+        discoverContract,
+        discoverCapabilities,
+        health,
+      }),
+    inject: [
+      HandshakeProductControlEndpointUseCase,
+      DiscoverProductControlContractUseCase,
+      DiscoverProductControlCapabilitiesUseCase,
+      HealthCheckProductControlEndpointUseCase,
+    ],
+  },
+  {
+    provide: WORKFLOW_HANDLER_REGISTRY,
+    useFactory: (live) => new WorkflowHandlerRegistry(live),
+    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR],
+  },
   {
     provide: ListWorkflowResourcesUseCase,
     useFactory: (repo) => new ListWorkflowResourcesUseCase(repo),

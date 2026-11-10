@@ -1,4 +1,11 @@
 import {
+  PRODUCT_CONTROL_UNIMPLEMENTED_HANDLER_KEYS,
+} from '../product-control/product-control.types.js';
+import {
+  registerOperationNotImplementedHandlers,
+  registerProductControlFoundationHandlers,
+} from '../product-control/product-control-handlers.js';
+import {
   FUTURE_PROVISIONING_HANDLER_KEYS,
   WorkflowErrorClass,
   type FutureProvisioningHandlerKey,
@@ -77,8 +84,8 @@ export class InMemoryWorkflowHandlerRegistry implements WorkflowHandlerRegistryP
 }
 
 /**
- * Placeholder for future P7.5 / P7.6 / P7.7 provisioning keys.
- * ALWAYS fails with DEPENDENCY_UNAVAILABLE — never simulates success.
+ * Placeholder for mutative / future P7.6–P7.7 keys.
+ * ALWAYS fails with OPERATION_NOT_IMPLEMENTED — never simulates success.
  */
 export class UnavailableProvisioningHandler implements WorkflowStepHandler {
   readonly key: string;
@@ -91,9 +98,9 @@ export class UnavailableProvisioningHandler implements WorkflowStepHandler {
   async execute(_input: WorkflowHandlerInput): Promise<WorkflowHandlerOutcome> {
     return {
       status: 'FAILED',
-      errorClass: WorkflowErrorClass.DEPENDENCY_UNAVAILABLE,
-      message: `Handler "${this.key}" is not configured in P7.4; provisioning adapters arrive in P7.5+`,
-      retryable: true,
+      errorClass: 'OPERATION_NOT_IMPLEMENTED',
+      message: `Handler "${this.key}" is not implemented (mutative / future provisioning)`,
+      retryable: false,
       diagnostics: { handlerKey: this.key, available: false },
     };
   }
@@ -101,8 +108,8 @@ export class UnavailableProvisioningHandler implements WorkflowStepHandler {
   async compensate(_input: WorkflowHandlerInput): Promise<WorkflowHandlerOutcome> {
     return {
       status: 'FAILED',
-      errorClass: WorkflowErrorClass.DEPENDENCY_UNAVAILABLE,
-      message: `Compensation for "${this.key}" is unavailable in P7.4`,
+      errorClass: 'OPERATION_NOT_IMPLEMENTED',
+      message: `Compensation for "${this.key}" is not implemented`,
       retryable: false,
       diagnostics: { handlerKey: this.key, available: false },
     };
@@ -148,6 +155,14 @@ export function createDefaultWorkflowHandlerRegistry(): InMemoryWorkflowHandlerR
   const registry = new InMemoryWorkflowHandlerRegistry();
   registry.register(new NoopApproveHandler());
   registry.register(new NoopCheckpointHandler());
+  registerProductControlFoundationHandlers(registry);
   registerUnavailableProvisioningHandlers(registry);
+  // Explicit alias registration for mandate wording (same keys as FUTURE_*).
+  registerOperationNotImplementedHandlers(
+    registry,
+    PRODUCT_CONTROL_UNIMPLEMENTED_HANDLER_KEYS.filter(
+      (k) => !registry.has(k),
+    ),
+  );
   return registry;
 }

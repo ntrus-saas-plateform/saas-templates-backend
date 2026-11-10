@@ -47,6 +47,7 @@ import {
   EdgeWorkflowTasksController,
 } from './presentation/controllers/workflow.controller.js';
 import { EdgeWorkflowWorkerController } from './presentation/controllers/workflow-worker.controller.js';
+import { EdgeProductControlController } from './presentation/controllers/product-control.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -88,6 +89,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeWorkflowController,
     EdgeWorkflowTasksController,
     EdgeWorkflowWorkerController,
+    EdgeProductControlController,
   ],
   providers: [
     ...edgeApplicationProviders,

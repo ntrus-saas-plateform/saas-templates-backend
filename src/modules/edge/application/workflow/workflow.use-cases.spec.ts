@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { assertFencingToken } from '../../domain/workflow/fencing.js';
 import { WorkflowHandlerRegistry } from '../../infrastructure/workflow/workflow-handler.registry.js';
-import { WorkflowErrorClass } from '../../domain/workflow/workflow.types.js';
 import { CreateWorkflowDefinitionUseCase } from './workflow.use-cases.js';
 
 describe('workflow application', () => {
-  it('registers noop + unavailable handlers (never succeeds for p75/p76/p77)', async () => {
+  it('registers noop + product_control foundation + unimplemented mutative handlers', async () => {
     const registry = new WorkflowHandlerRegistry();
     expect(registry.has('noop:approve')).toBe(true);
     expect(registry.has('noop:checkpoint')).toBe(true);
+    expect(registry.has('product_control.handshake')).toBe(true);
     expect(registry.has('unavailable:p75')).toBe(true);
     expect(registry.has('unavailable:p76')).toBe(true);
     expect(registry.has('unavailable:p77')).toBe(true);
@@ -27,7 +27,7 @@ describe('workflow application', () => {
     });
     expect(outcome.status).toBe('FAILED');
     if (outcome.status === 'FAILED') {
-      expect(outcome.errorClass).toBe(WorkflowErrorClass.DEPENDENCY_UNAVAILABLE);
+      expect(outcome.errorClass).toBe('OPERATION_NOT_IMPLEMENTED');
     }
   });
 

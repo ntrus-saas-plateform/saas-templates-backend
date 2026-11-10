@@ -349,7 +349,10 @@ export interface WorkflowWorkerRecord {
   updatedAt: Date;
 }
 
-/** Future P7.5/P7.6/P7.7 keys — must never succeed in P7.4. */
+/**
+ * Mutative / future infra keys — must stay OPERATION_NOT_IMPLEMENTED
+ * (P7.5 foundation wires real product_control.* handlers separately).
+ */
 export const FUTURE_PROVISIONING_HANDLER_KEYS = [
   'unavailable:p75',
   'unavailable:p76',
@@ -366,9 +369,20 @@ export const FUTURE_PROVISIONING_HANDLER_KEYS = [
 export type FutureProvisioningHandlerKey =
   (typeof FUTURE_PROVISIONING_HANDLER_KEYS)[number];
 
+/** Re-export foundation keys so workflow definition validation stays aware. */
+export {
+  PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS,
+} from '../product-control/product-control.types.js';
+
 export const KNOWN_HANDLER_KEYS = [
   'noop:approve',
   'noop:checkpoint',
+  'product_control.handshake',
+  'product_control.discover_contract',
+  'product_control.discover_capabilities',
+  'product_control.verify_connectivity',
+  'product_control.verify_health',
+  'product_control.verify_conformance',
   ...FUTURE_PROVISIONING_HANDLER_KEYS,
 ] as const;
 
