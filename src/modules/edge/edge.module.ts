@@ -4,6 +4,9 @@ import { EXTRA_INTEGRATION_EVENT_HANDLERS } from '../../core/domain/ports/integr
 import { EdgePersistenceModule } from './infrastructure/persistence/edge-persistence.module.js';
 import { edgeApplicationProviders } from './infrastructure/edge-application.providers.js';
 import { MarketingLeadQualifiedSalesHandler } from './infrastructure/sales/marketing-lead-qualified.handler.js';
+import { SalesHandoffRequestedHandler } from './infrastructure/subscription/sales-handoff-requested.handler.js';
+import { BillingCoordinationRequestedHandler } from './infrastructure/billing/billing-coordination-requested.handler.js';
+import { BillingJobsBootstrap } from './infrastructure/billing/billing-jobs.bootstrap.js';
 import { ReceiveSalesLeadUseCase } from './application/sales/sales.use-cases.js';
 import {
   EdgeAdministratorsController,
@@ -29,6 +32,9 @@ import {
 import { EdgeCommercialController } from './presentation/controllers/commercial.controller.js';
 import { EdgeMarketingController } from './presentation/controllers/marketing.controller.js';
 import { EdgeSalesController } from './presentation/controllers/sales.controller.js';
+import { EdgeSalesPlatformController } from './presentation/controllers/sales-platform.controller.js';
+import { EdgeSubscriptionController } from './presentation/controllers/subscription.controller.js';
+import { EdgeBillingController } from './presentation/controllers/billing.controller.js';
 
 /**
  * Okapi Edge Admin bounded context — Hexagonal / DDD layout:
@@ -58,14 +64,28 @@ import { EdgeSalesController } from './presentation/controllers/sales.controller
     EdgeCommercialController,
     EdgeMarketingController,
     EdgeSalesController,
+    EdgeSalesPlatformController,
+    EdgeSubscriptionController,
+    EdgeBillingController,
   ],
   providers: [
     ...edgeApplicationProviders,
     MarketingLeadQualifiedSalesHandler,
+    SalesHandoffRequestedHandler,
+    BillingCoordinationRequestedHandler,
+    BillingJobsBootstrap,
     {
       provide: EXTRA_INTEGRATION_EVENT_HANDLERS,
-      useFactory: (handler: MarketingLeadQualifiedSalesHandler) => [handler],
-      inject: [MarketingLeadQualifiedSalesHandler],
+      useFactory: (
+        marketing: MarketingLeadQualifiedSalesHandler,
+        handoff: SalesHandoffRequestedHandler,
+        billingCoordination: BillingCoordinationRequestedHandler,
+      ) => [marketing, handoff, billingCoordination],
+      inject: [
+        MarketingLeadQualifiedSalesHandler,
+        SalesHandoffRequestedHandler,
+        BillingCoordinationRequestedHandler,
+      ],
     },
   ],
   exports: [
@@ -73,6 +93,8 @@ import { EdgeSalesController } from './presentation/controllers/sales.controller
     EXTRA_INTEGRATION_EVENT_HANDLERS,
     ReceiveSalesLeadUseCase,
     MarketingLeadQualifiedSalesHandler,
+    SalesHandoffRequestedHandler,
+    BillingCoordinationRequestedHandler,
   ],
 })
 export class EdgeModule {}

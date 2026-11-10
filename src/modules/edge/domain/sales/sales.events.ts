@@ -531,3 +531,153 @@ export function createProvisioningStatusReceivedEvent(params: {
     },
   });
 }
+
+export function createQuoteApprovedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  quoteId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.quote.approved.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SALES_QUOTE',
+    aggregateId: params.quoteId,
+    payload: { quoteId: params.quoteId },
+  });
+}
+
+export function createQuoteRejectedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  quoteId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.quote.rejected.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SALES_QUOTE',
+    aggregateId: params.quoteId,
+    payload: { quoteId: params.quoteId },
+  });
+}
+
+export function createContractApprovedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  contractId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.contract.approved.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'COMMERCIAL_CONTRACT',
+    aggregateId: params.contractId,
+    payload: { contractId: params.contractId },
+  });
+}
+
+export function createContractSentForSignatureEvent(params: {
+  actorId: string;
+  correlationId: string;
+  contractId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.contract.sent_for_signature.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'COMMERCIAL_CONTRACT',
+    aggregateId: params.contractId,
+    payload: { contractId: params.contractId },
+  });
+}
+
+export function createContractAmendedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  contractId: string;
+  amendmentId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.contract.amended.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'COMMERCIAL_CONTRACT',
+    aggregateId: params.contractId,
+    payload: {
+      contractId: params.contractId,
+      amendmentId: params.amendmentId,
+    },
+  });
+}
+
+export function createSalesOrderApprovedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  orderId: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.order.approved.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SALES_ORDER',
+    aggregateId: params.orderId,
+    payload: { orderId: params.orderId },
+  });
+}
+
+export function createSalesHandoffRejectedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  handoffId: string;
+  reason?: string | null;
+}) {
+  return salesEvent({
+    eventType: 'sales.handoff.rejected.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SALES_HANDOFF',
+    aggregateId: params.handoffId,
+    payload: { handoffId: params.handoffId, reason: params.reason ?? null },
+  });
+}
+
+export function createSolutionFitValidatedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  assessmentId: string;
+  opportunityId: string;
+  fitDecision: string | null;
+}) {
+  return salesEvent({
+    eventType: 'sales.solution_fit.validated.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'NEEDS_ASSESSMENT',
+    aggregateId: params.assessmentId,
+    payload: {
+      assessmentId: params.assessmentId,
+      opportunityId: params.opportunityId,
+      fitDecision: params.fitDecision,
+    },
+  });
+}
+
+export function createProposalDocumentGeneratedEvent(params: {
+  actorId: string;
+  correlationId: string;
+  proposalId: string;
+  documentRef: string;
+}) {
+  return salesEvent({
+    eventType: 'sales.proposal.document_generated.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SALES_PROPOSAL',
+    aggregateId: params.proposalId,
+    payload: {
+      proposalId: params.proposalId,
+      documentRef: params.documentRef,
+    },
+  });
+}

@@ -35,8 +35,13 @@ import {
   createProposalIssuedEvent,
   createProvisioningStatusReceivedEvent,
   createQuoteAcceptedEvent,
+  createQuoteApprovedEvent,
   createQuoteCreatedEvent,
   createQuoteIssuedEvent,
+  createQuoteRejectedEvent,
+  createContractApprovedEvent,
+  createContractSentForSignatureEvent,
+  createSalesOrderApprovedEvent,
   createSalesHandoffAcceptedEvent,
   createSalesHandoffRequestedEvent,
   createSalesOrderCreatedEvent,
@@ -49,6 +54,7 @@ import {
   OfferConfiguratorMode,
 } from '../../domain/commercial/offer-configurator.js';
 import type { IntegrationEvent } from '../../../../core/domain/events/integration-event.js';
+import type { SalesSignatureAdapterPort } from '../../domain/sales/signature-adapter.port.js';
 
 async function enqueueSales(
   outbox: ControlPlaneOutboxTransactionService | undefined,
@@ -404,6 +410,16 @@ export class TransitionSalesQuoteUseCase {
     }
     const updated = await this.commerce.transitionQuoteStatus(quote.id, input.toStatus);
     const correlationId = randomUUID();
+    if (input.toStatus === QuoteStatus.APPROVED) {
+      await enqueueSales(
+        this.outbox,
+        createQuoteApprovedEvent({
+          actorId: input.actorId,
+          correlationId,
+          quoteId: updated.id,
+        }),
+      );
+    }
     if (input.toStatus === QuoteStatus.ISSUED) {
       await enqueueSales(
         this.outbox,
@@ -419,6 +435,16 @@ export class TransitionSalesQuoteUseCase {
       await enqueueSales(
         this.outbox,
         createQuoteAcceptedEvent({
+          actorId: input.actorId,
+          correlationId,
+          quoteId: updated.id,
+        }),
+      );
+    }
+    if (input.toStatus === QuoteStatus.REJECTED) {
+      await enqueueSales(
+        this.outbox,
+        createQuoteRejectedEvent({
           actorId: input.actorId,
           correlationId,
           quoteId: updated.id,
@@ -795,6 +821,7 @@ export class TransitionSalesContractUseCase {
   constructor(
     private readonly commerce: SalesCommerceRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly signatures?: SalesSignatureAdapterPort,
   ) {}
   async execute(input: {
     actorId: string;
@@ -804,38 +831,149 @@ export class TransitionSalesContractUseCase {
     signatureProvider?: string | null;
     signatureExternalId?: string | null;
     providerEventId?: string | null;
+    signers?: { email: string; name?: string; role?: string }[];
   }) {
     const contract = await this.commerce.getContract(input.contractId);
     if (!contract) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Contract not found');
     assertContractStatusTransition(contract.status, input.toStatus);
-    assertContractExecutable({
-      toStatus: input.toStatus,
-      signatureProviderConfirmed: input.signatureProviderConfirmed,
-    });
+
+    let signatureProvider = input.signatureProvider ?? contract.signatureProvider;
+    let signatureExternalId = input.signatureExternalId;
+
+    if (input.toStatus === ContractStatus.SENT_FOR_SIGNATURE) {
+      if (this.signatures) {
+        const requested = await this.signatures.requestSignature({
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          signers: input.signers ?? [],
+          correlationId: randomUUID(),
+        });
+        if (requested.outcome === 'REQUESTED') {
+          signatureProvider = requested.provider;
+          signatureExternalId = requested.externalId;
+          await this.commerce.appendSignatureEvent({
+            contractId: contract.id,
+            eventType: 'REQUESTED',
+            provider: requested.provider,
+            providerEventId: requested.externalId,
+            payload: { requestedBy: input.actorId },
+          });
+        } else {
+          // Honest fallback: offline/manual signature process — not a fake e-sign.
+          signatureProvider = 'MANUAL_SIGNATURE_PROCESS';
+          signatureExternalId = `manual:${contract.id}`;
+          await this.commerce.appendSignatureEvent({
+            contractId: contract.id,
+            eventType: 'REQUESTED',
+            provider: signatureProvider,
+            providerEventId: signatureExternalId,
+            payload: {
+              requestedBy: input.actorId,
+              note: requested.failureMessage,
+              eSignConfigured: false,
+            },
+          });
+        }
+      } else {
+        signatureProvider = 'MANUAL_SIGNATURE_PROCESS';
+        signatureExternalId = `manual:${contract.id}`;
+      }
+    }
+
     if (input.toStatus === ContractStatus.EXECUTED) {
+      let providerConfirmed = false;
+      let confirmationPath: 'PROVIDER' | 'GOVERNED_MANUAL' | null = null;
+
+      if (this.signatures && signatureProvider && signatureExternalId) {
+        const confirmation = await this.signatures.confirmSignature({
+          contractId: contract.id,
+          provider: signatureProvider,
+          externalId: signatureExternalId,
+          providerEventId: input.providerEventId,
+        });
+        if (confirmation.outcome === 'CONFIRMED') {
+          providerConfirmed = true;
+          confirmationPath = 'PROVIDER';
+        } else if (confirmation.outcome === 'NOT_CONFIRMED') {
+          throw new DomainError(
+            ErrorCode.VALIDATION_ERROR,
+            confirmation.failureMessage,
+          );
+        }
+        // UNAVAILABLE → fall through to governed manual path
+      }
+
+      if (!providerConfirmed) {
+        const approved = await this.commerce.hasApprovedSubject(
+          'CONTRACT',
+          contract.id,
+        );
+        if (input.signatureProviderConfirmed && approved) {
+          providerConfirmed = true;
+          confirmationPath = 'GOVERNED_MANUAL';
+          signatureProvider = signatureProvider ?? 'GOVERNED_MANUAL';
+        }
+      }
+
+      assertContractExecutable({
+        toStatus: input.toStatus,
+        signatureProviderConfirmed: providerConfirmed,
+      });
       await this.commerce.appendSignatureEvent({
         contractId: contract.id,
-        eventType: 'PROVIDER_CONFIRMED',
-        provider: input.signatureProvider ?? contract.signatureProvider,
-        providerEventId: input.providerEventId ?? input.signatureExternalId,
-        payload: { confirmedBy: input.actorId },
+        eventType:
+          confirmationPath === 'GOVERNED_MANUAL'
+            ? 'COMPLETED'
+            : 'PROVIDER_CONFIRMED',
+        provider: signatureProvider,
+        providerEventId: input.providerEventId ?? signatureExternalId,
+        payload: {
+          confirmedBy: input.actorId,
+          confirmationPath,
+          note:
+            confirmationPath === 'GOVERNED_MANUAL'
+              ? 'Executed via governed approval — not an e-sign provider claim'
+              : 'Provider confirmed',
+        },
       });
     }
+
     const updated = await this.commerce.transitionContractStatus({
       id: contract.id,
       status: input.toStatus,
-      signatureProvider: input.signatureProvider,
-      signatureExternalId: input.signatureExternalId,
+      signatureProvider,
+      signatureExternalId,
       signatureConfirmedAt:
         input.toStatus === ContractStatus.EXECUTED ? new Date() : null,
       executedAt: input.toStatus === ContractStatus.EXECUTED ? new Date() : null,
     });
+    const correlationId = randomUUID();
+    if (input.toStatus === ContractStatus.APPROVED) {
+      await enqueueSales(
+        this.outbox,
+        createContractApprovedEvent({
+          actorId: input.actorId,
+          correlationId,
+          contractId: updated.id,
+        }),
+      );
+    }
+    if (input.toStatus === ContractStatus.SENT_FOR_SIGNATURE) {
+      await enqueueSales(
+        this.outbox,
+        createContractSentForSignatureEvent({
+          actorId: input.actorId,
+          correlationId,
+          contractId: updated.id,
+        }),
+      );
+    }
     if (input.toStatus === ContractStatus.EXECUTED) {
       await enqueueSales(
         this.outbox,
         createContractExecutedEvent({
           actorId: input.actorId,
-          correlationId: randomUUID(),
+          correlationId,
           contractId: updated.id,
         }),
       );
@@ -940,12 +1078,26 @@ export class ListSalesOrdersUseCase {
 }
 
 export class TransitionSalesOrderUseCase {
-  constructor(private readonly commerce: SalesCommerceRepositoryPort) {}
-  async execute(input: { orderId: string; toStatus: string }) {
+  constructor(
+    private readonly commerce: SalesCommerceRepositoryPort,
+    private readonly outbox?: ControlPlaneOutboxTransactionService,
+  ) {}
+  async execute(input: { actorId?: string; orderId: string; toStatus: string }) {
     const order = await this.commerce.getOrder(input.orderId);
     if (!order) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Sales order not found');
     assertSalesOrderStatusTransition(order.status, input.toStatus);
-    return this.commerce.transitionOrderStatus(order.id, input.toStatus);
+    const updated = await this.commerce.transitionOrderStatus(order.id, input.toStatus);
+    if (input.toStatus === SalesOrderStatus.APPROVED && input.actorId) {
+      await enqueueSales(
+        this.outbox,
+        createSalesOrderApprovedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          orderId: updated.id,
+        }),
+      );
+    }
+    return updated;
   }
 }
 

@@ -1164,7 +1164,11 @@ export class EdgeSalesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { toStatus: string },
   ) {
-    return this.transitionOrder.execute({ orderId: id, toStatus: body.toStatus });
+    return this.transitionOrder.execute({
+      actorId: this.actorId(),
+      orderId: id,
+      toStatus: body.toStatus,
+    });
   }
 
   @Get('handoffs')

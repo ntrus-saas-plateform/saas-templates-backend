@@ -413,3 +413,6 @@ INNER JOIN edge_permissions p ON p.code IN (
 )
 WHERE r.code IN ('VERTICAL_OWNER', 'VERTICAL_ADMIN')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO schema_migrations (version) VALUES ('081_edge_sales_crm_foundation')
+ON CONFLICT DO NOTHING;

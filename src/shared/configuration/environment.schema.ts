@@ -233,6 +233,60 @@ export const environmentSchema = z.object({
   MARKETING_WAIT_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(15000),
   MARKETING_WAIT_BATCH_SIZE: z.coerce.number().int().positive().default(50),
 
+  // Edge sales e-sign + calendar adapters (P4) — default UNAVAILABLE; never invent confirmation
+  SALES_SIGNATURE_ADAPTER: z
+    .enum(['unavailable', 'docusign', 'hellosign', 'auto'])
+    .default('unavailable'),
+  DOCUSIGN_ACCESS_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  DOCUSIGN_ACCOUNT_ID: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  DOCUSIGN_BASE_URL: z
+    .string()
+    .url()
+    .default('https://demo.docusign.net/restapi'),
+  HELLOSIGN_API_KEY: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  HELLOSIGN_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  HELLOSIGN_TEST_MODE: z
+    .string()
+    .transform((v) => v !== 'false')
+    .default('true'),
+  SALES_CALENDAR_ADAPTER: z
+    .enum(['unavailable', 'google', 'outlook', 'auto'])
+    .default('unavailable'),
+  GOOGLE_CALENDAR_ACCESS_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  GOOGLE_CALENDAR_ID: z.string().default('primary'),
+  OUTLOOK_CALENDAR_ACCESS_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+
+  // Edge billing payment adapters (P6) — default UNAVAILABLE; never invent payment success
+  BILLING_PAYMENT_ADAPTER: z
+    .enum(['unavailable', 'http_webhook', 'auto'])
+    .default('unavailable'),
+  BILLING_PAYMENT_WEBHOOK_URL: z.string().url().optional(),
+  BILLING_PAYMENT_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+  BILLING_JOBS_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  BILLING_PROCESS_DUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
+  BILLING_OVERDUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(1800),
+
   // Push delivery (staff devices — FCM / Web Push / APNs stub)
   PUSH_DELIVERY_ENABLED: z
     .string()

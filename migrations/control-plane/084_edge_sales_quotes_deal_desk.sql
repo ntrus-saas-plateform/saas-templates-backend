@@ -291,3 +291,6 @@ INNER JOIN edge_permissions p ON p.code IN (
 )
 WHERE r.code = 'EDGE_PLATFORM_OPERATOR'
 ON CONFLICT DO NOTHING;
+
+INSERT INTO schema_migrations (version) VALUES ('084_edge_sales_quotes_deal_desk')
+ON CONFLICT DO NOTHING;

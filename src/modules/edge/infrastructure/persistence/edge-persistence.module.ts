@@ -26,6 +26,9 @@ import { COMMERCIAL_REPOSITORY_PORT } from '../../domain/ports/commercial-reposi
 import { MARKETING_REPOSITORY_PORT } from '../../domain/ports/marketing-repository.port.js';
 import { SALES_REPOSITORY_PORT } from '../../domain/ports/sales-repository.port.js';
 import { SALES_COMMERCE_REPOSITORY_PORT } from '../../domain/ports/sales-commerce-repository.port.js';
+import { SALES_PLATFORM_REPOSITORY_PORT } from '../../domain/ports/sales-platform-repository.port.js';
+import { SUBSCRIPTION_REPOSITORY_PORT } from '../../domain/ports/subscription-repository.port.js';
+import { BILLING_REPOSITORY_PORT } from '../../domain/ports/billing-repository.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgVerticalRepository } from './pg-vertical.repository.js';
 import { PgMembershipRepository } from './pg-membership.repository.js';
@@ -52,6 +55,9 @@ import { PgCommercialRepository } from './pg-commercial.repository.js';
 import { PgMarketingRepository } from './pg-marketing.repository.js';
 import { PgSalesRepository } from './pg-sales.repository.js';
 import { PgSalesCommerceRepository } from './pg-sales-commerce.repository.js';
+import { PgSalesPlatformRepository } from './pg-sales-platform.repository.js';
+import { PgSubscriptionRepository } from './pg-subscription.repository.js';
+import { PgBillingRepository } from './pg-billing.repository.js';
 
 const providers = [
   { provide: ADMINISTRATOR_REPOSITORY_PORT, useClass: PgAdministratorRepository },
@@ -80,6 +86,9 @@ const providers = [
   { provide: MARKETING_REPOSITORY_PORT, useClass: PgMarketingRepository },
   { provide: SALES_REPOSITORY_PORT, useClass: PgSalesRepository },
   { provide: SALES_COMMERCE_REPOSITORY_PORT, useClass: PgSalesCommerceRepository },
+  { provide: SALES_PLATFORM_REPOSITORY_PORT, useClass: PgSalesPlatformRepository },
+  { provide: SUBSCRIPTION_REPOSITORY_PORT, useClass: PgSubscriptionRepository },
+  { provide: BILLING_REPOSITORY_PORT, useClass: PgBillingRepository },
 ];
 
 @Module({

@@ -147,6 +147,184 @@ import {
 import { MARKETING_REPOSITORY_PORT } from '../domain/ports/marketing-repository.port.js';
 import { SALES_REPOSITORY_PORT } from '../domain/ports/sales-repository.port.js';
 import { SALES_COMMERCE_REPOSITORY_PORT } from '../domain/ports/sales-commerce-repository.port.js';
+import { SUBSCRIPTION_REPOSITORY_PORT } from '../domain/ports/subscription-repository.port.js';
+import { SUBSCRIPTION_BILLING_COORDINATION_PORT } from '../domain/subscription/billing-coordination.port.js';
+import { SUBSCRIPTION_PROVISIONING_COORDINATION_PORT } from '../domain/subscription/provisioning-coordination.port.js';
+import { UnavailableSubscriptionBillingAdapter } from './subscription/unavailable-billing.adapter.js';
+import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unavailable-provisioning.adapter.js';
+import {
+  ActivateSubscriptionUseCase,
+  AddSubscriptionItemUseCase,
+  ApproveSubscriptionUseCase,
+  CalculateAndSnapshotEntitlementsUseCase,
+  CancelSubscriptionUseCase,
+  ConfirmBillingCoordinationUseCase,
+  CompleteProvisioningUseCase,
+  ConvertTrialUseCase,
+  CreateChangeRequestUseCase,
+  CreateSubscriptionFromHandoffUseCase,
+  CreateSubscriptionUseCase,
+  ExecuteChangeRequestUseCase,
+  ExpireTrialUseCase,
+  GetSubscriptionAnalyticsUseCase,
+  GetSubscriptionHistoryUseCase,
+  GetSubscriptionOverviewUseCase,
+  GetSubscriptionUseCase,
+  GetSubscriptionWorkspaceUseCase,
+  ListChangeRequestsUseCase,
+  ListEntitlementSnapshotsUseCase,
+  ListRenewalsUseCase,
+  ListSubscriptionItemsUseCase,
+  ListSubscriptionsUseCase,
+  ListTrialsUseCase,
+  PublishEntitlementsUseCase,
+  ReactivateSubscriptionUseCase,
+  RenewSubscriptionUseCase,
+  RequestActivationUseCase,
+  RequestBillingCoordinationUseCase,
+  RequestProvisioningUseCase,
+  StartTrialUseCase,
+  SubmitSubscriptionUseCase,
+  SuspendSubscriptionUseCase,
+  TerminateSubscriptionUseCase,
+  ResolveSubscriptionIdempotencyUseCase,
+} from '../application/subscription/subscription.use-cases.js';
+import {
+  ApproveChangeRequestUseCase,
+  GetCoordinationUseCase,
+  ListPendingApprovalsUseCase,
+  ListPoliciesUseCase,
+  ListSubscriptionCancellationsUseCase,
+  ListSubscriptionPublicationsUseCase,
+  ListSubscriptionSuspensionsUseCase,
+  ProcessDueScheduledChangesUseCase,
+  ProposeRenewalUseCase,
+  ReconcileEntitlementsUseCase,
+  RejectChangeRequestUseCase,
+  ScheduleChangeUseCase,
+  UpdateSubscriptionUseCase,
+  UpsertPolicyUseCase,
+} from '../application/subscription/subscription-governance.use-cases.js';
+import { SALES_SIGNATURE_ADAPTER_PORT } from '../domain/sales/signature-adapter.port.js';
+import { UnavailableSalesSignatureAdapter } from './sales/unavailable-signature.adapter.js';
+import { DocuSignSalesSignatureAdapter } from './sales/docusign-signature.adapter.js';
+import { HelloSignSalesSignatureAdapter } from './sales/hellosign-signature.adapter.js';
+import { ResolvingSalesSignatureAdapter } from './sales/resolving-signature.adapter.js';
+import { SALES_PLATFORM_REPOSITORY_PORT } from '../domain/ports/sales-platform-repository.port.js';
+import { SALES_PROPOSAL_DOCUMENT_ADAPTER_PORT } from '../domain/sales/proposal-document.adapter.port.js';
+import { MinimalPdfProposalAdapter } from './sales/minimal-pdf-proposal.adapter.js';
+import { SALES_CALENDAR_ADAPTER_PORT } from '../domain/sales/calendar-adapter.port.js';
+import { UnavailableSalesCalendarAdapter } from './sales/unavailable-calendar.adapter.js';
+import { GoogleSalesCalendarAdapter } from './sales/google-calendar.adapter.js';
+import { OutlookSalesCalendarAdapter } from './sales/outlook-calendar.adapter.js';
+import { ResolvingSalesCalendarAdapter } from './sales/resolving-calendar.adapter.js';
+import { BILLING_REPOSITORY_PORT } from '../domain/ports/billing-repository.port.js';
+import { PAYMENT_PROVIDER_PORT } from '../domain/billing/payment-provider.port.js';
+import { UnavailablePaymentProviderAdapter } from './billing/unavailable-payment.adapter.js';
+import { HttpWebhookPaymentProviderAdapter } from './billing/http-webhook-payment.adapter.js';
+import { ResolvingPaymentProviderAdapter } from './billing/resolving-payment.adapter.js';
+import {
+  AppendJournalEntryUseCase,
+  ApproveInvoiceUseCase,
+  ApproveRefundUseCase,
+  AllocatePaymentUseCase,
+  CreateBillingAccountUseCase,
+  CreateBillingScheduleUseCase,
+  CreateDraftInvoiceFromSubscriptionUseCase,
+  CreatePaymentIntentUseCase,
+  CreateRefundUseCase,
+  ConfirmPaymentIntentUseCase,
+  GetBillingAccountUseCase,
+  GetBillingAnalyticsUseCase,
+  GetBillingOverviewUseCase,
+  GetInvoiceUseCase,
+  IngestSubscriptionBillingCoordinationUseCase,
+  IssueInvoiceUseCase,
+  LinkSubscriptionToBillingAccountUseCase,
+  ListBillingAccountsUseCase,
+  ListInvoicesUseCase,
+  MarkInvoicePaidIfSettledUseCase,
+  OpenCollectionCaseUseCase,
+  PreviewInvoiceUseCase,
+  ProcessPaymentWebhookUseCase,
+  RecordDunningAttemptUseCase,
+  UpsertBillingProfileUseCase,
+  VoidInvoiceUseCase,
+} from '../application/billing/billing.use-cases.js';
+import {
+  ApplyTaxToInvoiceUseCase,
+  ConvertAmountUseCase,
+  CreateCreditNoteUseCase,
+  CreateDisputeUseCase,
+  CreateFxRateUseCase,
+  CreateSettlementBatchUseCase,
+  EscalateCollectionCaseUseCase,
+  GetBillingProfileUseCase,
+  GetCollectionCaseUseCase,
+  IngestProviderTransactionUseCase,
+  ListBillingPartiesUseCase,
+  ListBillingPoliciesUseCase,
+  ListBillingProfilesUseCase,
+  ListBillingSchedulesUseCase,
+  ListCollectionCasesUseCase,
+  ListCreditNotesUseCase,
+  ListDisputesUseCase,
+  ListFxRatesUseCase,
+  ListJournalEntriesUseCase,
+  ListPaymentIntentsUseCase,
+  ListPaymentMethodsUseCase,
+  ListReconciliationExceptionsUseCase,
+  ListReconciliationRunsUseCase,
+  ListRefundsUseCase,
+  ListSettlementBatchesUseCase,
+  ListTaxJurisdictionsUseCase,
+  RegisterPaymentMethodUseCase,
+  ResolveCollectionCaseUseCase,
+  ResolveDisputeUseCase,
+  ResolveReconciliationExceptionUseCase,
+  RevokePaymentMethodUseCase,
+  RunReconciliationUseCase,
+  UpsertBillingPartyUseCase,
+  UpsertBillingPolicyUseCase,
+} from '../application/billing/billing-ops.use-cases.js';
+import {
+  GenerateFinancialExportUseCase,
+  GetCustomerBillingPortalUseCase,
+  GetFinancialExportUseCase,
+  ListFinancialExportsUseCase,
+  ListRevenuePoliciesUseCase,
+  MarkOverdueInvoicesUseCase,
+  ProcessDueBillingSchedulesUseCase,
+  UpsertRevenuePolicyUseCase,
+} from '../application/billing/billing-lifecycle.use-cases.js';
+import {
+  AddAccountRelationshipUseCase,
+  AddContactRoleUseCase,
+  AssertSalesSubjectAccessUseCase,
+  CreateContractAmendmentUseCase,
+  CreateSalesSavedViewUseCase,
+  DeleteSalesSavedViewUseCase,
+  ExecuteContractAmendmentUseCase,
+  ExportSalesEntitiesUseCase,
+  GenerateProposalDocumentUseCase,
+  GetAccountHierarchyUseCase,
+  GlobalSalesSearchUseCase,
+  GrantSalesVisibilityUseCase,
+  ListContactRolesUseCase,
+  ListContractAmendmentsUseCase,
+  ListDiscoveryQuestionnairesUseCase,
+  ListSalesExportJobsUseCase,
+  ListSalesForecastSnapshotsUseCase,
+  ListSalesOrderLinesUseCase,
+  ListSalesSavedViewsUseCase,
+  ListSalesVisibilityGrantsUseCase,
+  PersistSalesForecastSnapshotUseCase,
+  ResolveSalesIdempotencyUseCase,
+  SetSalesOrderLinesUseCase,
+  SyncSalesActivityCalendarUseCase,
+  UpsertDiscoveryQuestionnaireUseCase,
+  ValidateSolutionFitUseCase,
+} from '../application/sales/sales-platform.use-cases.js';
 import {
   AcceptSalesLeadUseCase,
   AddSalesTeamMemberUseCase,
@@ -2005,10 +2183,23 @@ export const edgeApplicationProviders: Provider[] = [
     useFactory: (c) => new ListSalesContractsUseCase(c),
     inject: [SALES_COMMERCE_REPOSITORY_PORT],
   },
+  UnavailableSalesSignatureAdapter,
+  DocuSignSalesSignatureAdapter,
+  HelloSignSalesSignatureAdapter,
+  ResolvingSalesSignatureAdapter,
+  {
+    provide: SALES_SIGNATURE_ADAPTER_PORT,
+    useExisting: ResolvingSalesSignatureAdapter,
+  },
   {
     provide: TransitionSalesContractUseCase,
-    useFactory: (c, outbox) => new TransitionSalesContractUseCase(c, outbox),
-    inject: [SALES_COMMERCE_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (c, outbox, signatures) =>
+      new TransitionSalesContractUseCase(c, outbox, signatures),
+    inject: [
+      SALES_COMMERCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      SALES_SIGNATURE_ADAPTER_PORT,
+    ],
   },
   {
     provide: CreateSalesOrderUseCase,
@@ -2026,8 +2217,8 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: TransitionSalesOrderUseCase,
-    useFactory: (c) => new TransitionSalesOrderUseCase(c),
-    inject: [SALES_COMMERCE_REPOSITORY_PORT],
+    useFactory: (c, outbox) => new TransitionSalesOrderUseCase(c, outbox),
+    inject: [SALES_COMMERCE_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
   {
     provide: RequestSalesHandoffUseCase,
@@ -2058,5 +2249,785 @@ export const edgeApplicationProviders: Provider[] = [
     provide: GetSalesPerformanceUseCase,
     useFactory: (c) => new GetSalesPerformanceUseCase(c),
     inject: [SALES_COMMERCE_REPOSITORY_PORT],
+  },
+  { provide: SALES_PROPOSAL_DOCUMENT_ADAPTER_PORT, useClass: MinimalPdfProposalAdapter },
+  UnavailableSalesCalendarAdapter,
+  GoogleSalesCalendarAdapter,
+  OutlookSalesCalendarAdapter,
+  ResolvingSalesCalendarAdapter,
+  {
+    provide: SALES_CALENDAR_ADAPTER_PORT,
+    useExisting: ResolvingSalesCalendarAdapter,
+  },
+  {
+    provide: AddAccountRelationshipUseCase,
+    useFactory: (p) => new AddAccountRelationshipUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: GetAccountHierarchyUseCase,
+    useFactory: (p) => new GetAccountHierarchyUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: AddContactRoleUseCase,
+    useFactory: (p) => new AddContactRoleUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ListContactRolesUseCase,
+    useFactory: (p) => new ListContactRolesUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertDiscoveryQuestionnaireUseCase,
+    useFactory: (p) => new UpsertDiscoveryQuestionnaireUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ListDiscoveryQuestionnairesUseCase,
+    useFactory: (p) => new ListDiscoveryQuestionnairesUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateContractAmendmentUseCase,
+    useFactory: (p, c, outbox) => new CreateContractAmendmentUseCase(p, c, outbox),
+    inject: [
+      SALES_PLATFORM_REPOSITORY_PORT,
+      SALES_COMMERCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: ListContractAmendmentsUseCase,
+    useFactory: (p) => new ListContractAmendmentsUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ExecuteContractAmendmentUseCase,
+    useFactory: (p) => new ExecuteContractAmendmentUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: SetSalesOrderLinesUseCase,
+    useFactory: (p, c) => new SetSalesOrderLinesUseCase(p, c),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT, SALES_COMMERCE_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSalesOrderLinesUseCase,
+    useFactory: (p) => new ListSalesOrderLinesUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: PersistSalesForecastSnapshotUseCase,
+    useFactory: (p, c) => new PersistSalesForecastSnapshotUseCase(p, c),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT, SALES_COMMERCE_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSalesForecastSnapshotsUseCase,
+    useFactory: (p) => new ListSalesForecastSnapshotsUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: GlobalSalesSearchUseCase,
+    useFactory: (p) => new GlobalSalesSearchUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateSalesSavedViewUseCase,
+    useFactory: (p) => new CreateSalesSavedViewUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSalesSavedViewsUseCase,
+    useFactory: (p) => new ListSalesSavedViewsUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: DeleteSalesSavedViewUseCase,
+    useFactory: (p) => new DeleteSalesSavedViewUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ExportSalesEntitiesUseCase,
+    useFactory: (p, s, c) => new ExportSalesEntitiesUseCase(p, s, c),
+    inject: [
+      SALES_PLATFORM_REPOSITORY_PORT,
+      SALES_REPOSITORY_PORT,
+      SALES_COMMERCE_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListSalesExportJobsUseCase,
+    useFactory: (p) => new ListSalesExportJobsUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: GrantSalesVisibilityUseCase,
+    useFactory: (p) => new GrantSalesVisibilityUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSalesVisibilityGrantsUseCase,
+    useFactory: (p) => new ListSalesVisibilityGrantsUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: AssertSalesSubjectAccessUseCase,
+    useFactory: (p) => new AssertSalesSubjectAccessUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: GenerateProposalDocumentUseCase,
+    useFactory: (c, p, docs, outbox) =>
+      new GenerateProposalDocumentUseCase(c, p, docs, outbox),
+    inject: [
+      SALES_COMMERCE_REPOSITORY_PORT,
+      SALES_PLATFORM_REPOSITORY_PORT,
+      SALES_PROPOSAL_DOCUMENT_ADAPTER_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: SyncSalesActivityCalendarUseCase,
+    useFactory: (c, p, cal) => new SyncSalesActivityCalendarUseCase(c, p, cal),
+    inject: [
+      SALES_COMMERCE_REPOSITORY_PORT,
+      SALES_PLATFORM_REPOSITORY_PORT,
+      SALES_CALENDAR_ADAPTER_PORT,
+    ],
+  },
+  {
+    provide: ValidateSolutionFitUseCase,
+    useFactory: (c, outbox) => new ValidateSolutionFitUseCase(c, outbox),
+    inject: [SALES_COMMERCE_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ResolveSalesIdempotencyUseCase,
+    useFactory: (p) => new ResolveSalesIdempotencyUseCase(p),
+    inject: [SALES_PLATFORM_REPOSITORY_PORT],
+  },
+  {
+    provide: SUBSCRIPTION_BILLING_COORDINATION_PORT,
+    useClass: UnavailableSubscriptionBillingAdapter,
+  },
+  {
+    provide: SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
+    useClass: UnavailableSubscriptionProvisioningAdapter,
+  },
+  {
+    provide: GetSubscriptionOverviewUseCase,
+    useFactory: (s) => new GetSubscriptionOverviewUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetSubscriptionAnalyticsUseCase,
+    useFactory: (s) => new GetSubscriptionAnalyticsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionsUseCase,
+    useFactory: (s) => new ListSubscriptionsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetSubscriptionUseCase,
+    useFactory: (s) => new GetSubscriptionUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetSubscriptionWorkspaceUseCase,
+    useFactory: (s) => new GetSubscriptionWorkspaceUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetSubscriptionHistoryUseCase,
+    useFactory: (s) => new GetSubscriptionHistoryUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateSubscriptionUseCase,
+    useFactory: (s, outbox) => new CreateSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateSubscriptionFromHandoffUseCase,
+    useFactory: (s, c, accept, outbox) =>
+      new CreateSubscriptionFromHandoffUseCase(s, c, accept, outbox),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      SALES_COMMERCE_REPOSITORY_PORT,
+      AcceptSalesHandoffUseCase,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: SubmitSubscriptionUseCase,
+    useFactory: (s, outbox) => new SubmitSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ApproveSubscriptionUseCase,
+    useFactory: (s, outbox) => new ApproveSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RequestActivationUseCase,
+    useFactory: (s, prov, outbox) => new RequestActivationUseCase(s, prov, outbox),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: ActivateSubscriptionUseCase,
+    useFactory: (s, outbox) => new ActivateSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: SuspendSubscriptionUseCase,
+    useFactory: (s, outbox) => new SuspendSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ReactivateSubscriptionUseCase,
+    useFactory: (s, outbox) => new ReactivateSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CancelSubscriptionUseCase,
+    useFactory: (s, outbox) => new CancelSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: TerminateSubscriptionUseCase,
+    useFactory: (s, outbox) => new TerminateSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: AddSubscriptionItemUseCase,
+    useFactory: (s) => new AddSubscriptionItemUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionItemsUseCase,
+    useFactory: (s) => new ListSubscriptionItemsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: CalculateAndSnapshotEntitlementsUseCase,
+    useFactory: (s, outbox) => new CalculateAndSnapshotEntitlementsUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListEntitlementSnapshotsUseCase,
+    useFactory: (s) => new ListEntitlementSnapshotsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: PublishEntitlementsUseCase,
+    useFactory: (s, outbox) => new PublishEntitlementsUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateChangeRequestUseCase,
+    useFactory: (s) => new CreateChangeRequestUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListChangeRequestsUseCase,
+    useFactory: (s) => new ListChangeRequestsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ExecuteChangeRequestUseCase,
+    useFactory: (s, outbox) => new ExecuteChangeRequestUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RenewSubscriptionUseCase,
+    useFactory: (s, outbox) => new RenewSubscriptionUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListRenewalsUseCase,
+    useFactory: (s) => new ListRenewalsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: StartTrialUseCase,
+    useFactory: (s, outbox) => new StartTrialUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListTrialsUseCase,
+    useFactory: (s) => new ListTrialsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ConvertTrialUseCase,
+    useFactory: (s, outbox) => new ConvertTrialUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ExpireTrialUseCase,
+    useFactory: (s) => new ExpireTrialUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestBillingCoordinationUseCase,
+    useFactory: (s, b, outbox) => new RequestBillingCoordinationUseCase(s, b, outbox),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      SUBSCRIPTION_BILLING_COORDINATION_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: ConfirmBillingCoordinationUseCase,
+    useFactory: (s, outbox) => new ConfirmBillingCoordinationUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RequestProvisioningUseCase,
+    useFactory: (s, p, outbox) => new RequestProvisioningUseCase(s, p, outbox),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: CompleteProvisioningUseCase,
+    useFactory: (s, outbox) => new CompleteProvisioningUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ResolveSubscriptionIdempotencyUseCase,
+    useFactory: (s) => new ResolveSubscriptionIdempotencyUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateSubscriptionUseCase,
+    useFactory: (s) => new UpdateSubscriptionUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ApproveChangeRequestUseCase,
+    useFactory: (s, outbox) => new ApproveChangeRequestUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RejectChangeRequestUseCase,
+    useFactory: (s) => new RejectChangeRequestUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ScheduleChangeUseCase,
+    useFactory: (s) => new ScheduleChangeUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ProposeRenewalUseCase,
+    useFactory: (s) => new ProposeRenewalUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ReconcileEntitlementsUseCase,
+    useFactory: (s, outbox) => new ReconcileEntitlementsUseCase(s, outbox),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListPoliciesUseCase,
+    useFactory: (s) => new ListPoliciesUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertPolicyUseCase,
+    useFactory: (s) => new UpsertPolicyUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetCoordinationUseCase,
+    useFactory: (s) => new GetCoordinationUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListPendingApprovalsUseCase,
+    useFactory: (s) => new ListPendingApprovalsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionPublicationsUseCase,
+    useFactory: (s) => new ListSubscriptionPublicationsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionSuspensionsUseCase,
+    useFactory: (s) => new ListSubscriptionSuspensionsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionCancellationsUseCase,
+    useFactory: (s) => new ListSubscriptionCancellationsUseCase(s),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ProcessDueScheduledChangesUseCase,
+    useFactory: (s, exec) => new ProcessDueScheduledChangesUseCase(s, exec),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ExecuteChangeRequestUseCase],
+  },
+  UnavailablePaymentProviderAdapter,
+  HttpWebhookPaymentProviderAdapter,
+  ResolvingPaymentProviderAdapter,
+  {
+    provide: PAYMENT_PROVIDER_PORT,
+    useClass: ResolvingPaymentProviderAdapter,
+  },
+  {
+    provide: CreateBillingAccountUseCase,
+    useFactory: (b, outbox) => new CreateBillingAccountUseCase(b, outbox),
+    inject: [BILLING_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListBillingAccountsUseCase,
+    useFactory: (b) => new ListBillingAccountsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetBillingAccountUseCase,
+    useFactory: (b) => new GetBillingAccountUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertBillingProfileUseCase,
+    useFactory: (b) => new UpsertBillingProfileUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: LinkSubscriptionToBillingAccountUseCase,
+    useFactory: (b) => new LinkSubscriptionToBillingAccountUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateBillingScheduleUseCase,
+    useFactory: (b) => new CreateBillingScheduleUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: PreviewInvoiceUseCase,
+    useFactory: (b) => new PreviewInvoiceUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateDraftInvoiceFromSubscriptionUseCase,
+    useFactory: (b, s) => new CreateDraftInvoiceFromSubscriptionUseCase(b, s),
+    inject: [BILLING_REPOSITORY_PORT, SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ApproveInvoiceUseCase,
+    useFactory: (b) => new ApproveInvoiceUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: IssueInvoiceUseCase,
+    useFactory: (b, outbox) => new IssueInvoiceUseCase(b, outbox),
+    inject: [BILLING_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: VoidInvoiceUseCase,
+    useFactory: (b) => new VoidInvoiceUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreatePaymentIntentUseCase,
+    useFactory: (b, p) => new CreatePaymentIntentUseCase(b, p),
+    inject: [BILLING_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT],
+  },
+  {
+    provide: ConfirmPaymentIntentUseCase,
+    useFactory: (b, p, outbox) => new ConfirmPaymentIntentUseCase(b, p, outbox),
+    inject: [BILLING_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: AllocatePaymentUseCase,
+    useFactory: (b) => new AllocatePaymentUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: MarkInvoicePaidIfSettledUseCase,
+    useFactory: (b, outbox, confirm) =>
+      new MarkInvoicePaidIfSettledUseCase(b, outbox, confirm),
+    inject: [
+      BILLING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      ConfirmBillingCoordinationUseCase,
+    ],
+  },
+  {
+    provide: CreateRefundUseCase,
+    useFactory: (b) => new CreateRefundUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ApproveRefundUseCase,
+    useFactory: (b, p, outbox) => new ApproveRefundUseCase(b, p, outbox),
+    inject: [BILLING_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: OpenCollectionCaseUseCase,
+    useFactory: (b, outbox) => new OpenCollectionCaseUseCase(b, outbox),
+    inject: [BILLING_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RecordDunningAttemptUseCase,
+    useFactory: (b) => new RecordDunningAttemptUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: AppendJournalEntryUseCase,
+    useFactory: (b) => new AppendJournalEntryUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListInvoicesUseCase,
+    useFactory: (b) => new ListInvoicesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetInvoiceUseCase,
+    useFactory: (b) => new GetInvoiceUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetBillingOverviewUseCase,
+    useFactory: (b) => new GetBillingOverviewUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetBillingAnalyticsUseCase,
+    useFactory: (b) => new GetBillingAnalyticsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ProcessPaymentWebhookUseCase,
+    useFactory: (b, confirm, outbox) => new ProcessPaymentWebhookUseCase(b, confirm, outbox),
+    inject: [BILLING_REPOSITORY_PORT, ConfirmPaymentIntentUseCase, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: IngestSubscriptionBillingCoordinationUseCase,
+    useFactory: (b, s) => new IngestSubscriptionBillingCoordinationUseCase(b, s),
+    inject: [BILLING_REPOSITORY_PORT, SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetBillingProfileUseCase,
+    useFactory: (b) => new GetBillingProfileUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListBillingProfilesUseCase,
+    useFactory: (b) => new ListBillingProfilesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertBillingPartyUseCase,
+    useFactory: (b) => new UpsertBillingPartyUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListBillingPartiesUseCase,
+    useFactory: (b) => new ListBillingPartiesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListBillingSchedulesUseCase,
+    useFactory: (b) => new ListBillingSchedulesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ApplyTaxToInvoiceUseCase,
+    useFactory: (b) => new ApplyTaxToInvoiceUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListTaxJurisdictionsUseCase,
+    useFactory: (b) => new ListTaxJurisdictionsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateCreditNoteUseCase,
+    useFactory: (b) => new CreateCreditNoteUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListCreditNotesUseCase,
+    useFactory: (b) => new ListCreditNotesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListCollectionCasesUseCase,
+    useFactory: (b) => new ListCollectionCasesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetCollectionCaseUseCase,
+    useFactory: (b) => new GetCollectionCaseUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: EscalateCollectionCaseUseCase,
+    useFactory: (b) => new EscalateCollectionCaseUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ResolveCollectionCaseUseCase,
+    useFactory: (b) => new ResolveCollectionCaseUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListBillingPoliciesUseCase,
+    useFactory: (b) => new ListBillingPoliciesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertBillingPolicyUseCase,
+    useFactory: (b) => new UpsertBillingPolicyUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListPaymentMethodsUseCase,
+    useFactory: (b) => new ListPaymentMethodsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterPaymentMethodUseCase,
+    useFactory: (b) => new RegisterPaymentMethodUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: RevokePaymentMethodUseCase,
+    useFactory: (b) => new RevokePaymentMethodUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: RunReconciliationUseCase,
+    useFactory: (b) => new RunReconciliationUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListReconciliationRunsUseCase,
+    useFactory: (b) => new ListReconciliationRunsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListReconciliationExceptionsUseCase,
+    useFactory: (b) => new ListReconciliationExceptionsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ResolveReconciliationExceptionUseCase,
+    useFactory: (b) => new ResolveReconciliationExceptionUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: IngestProviderTransactionUseCase,
+    useFactory: (b) => new IngestProviderTransactionUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateSettlementBatchUseCase,
+    useFactory: (b) => new CreateSettlementBatchUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSettlementBatchesUseCase,
+    useFactory: (b) => new ListSettlementBatchesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateDisputeUseCase,
+    useFactory: (b) => new CreateDisputeUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListDisputesUseCase,
+    useFactory: (b) => new ListDisputesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ResolveDisputeUseCase,
+    useFactory: (b) => new ResolveDisputeUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListFxRatesUseCase,
+    useFactory: (b) => new ListFxRatesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateFxRateUseCase,
+    useFactory: (b) => new CreateFxRateUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ConvertAmountUseCase,
+    useFactory: (b) => new ConvertAmountUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListPaymentIntentsUseCase,
+    useFactory: (b) => new ListPaymentIntentsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListRefundsUseCase,
+    useFactory: (b) => new ListRefundsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListJournalEntriesUseCase,
+    useFactory: (b) => new ListJournalEntriesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ProcessDueBillingSchedulesUseCase,
+    useFactory: (b, draft) => new ProcessDueBillingSchedulesUseCase(b, draft),
+    inject: [BILLING_REPOSITORY_PORT, CreateDraftInvoiceFromSubscriptionUseCase],
+  },
+  {
+    provide: MarkOverdueInvoicesUseCase,
+    useFactory: (b) => new MarkOverdueInvoicesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetCustomerBillingPortalUseCase,
+    useFactory: (b) => new GetCustomerBillingPortalUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GenerateFinancialExportUseCase,
+    useFactory: (b) => new GenerateFinancialExportUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListFinancialExportsUseCase,
+    useFactory: (b) => new ListFinancialExportsUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: GetFinancialExportUseCase,
+    useFactory: (b) => new GetFinancialExportUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: ListRevenuePoliciesUseCase,
+    useFactory: (b) => new ListRevenuePoliciesUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertRevenuePolicyUseCase,
+    useFactory: (b) => new UpsertRevenuePolicyUseCase(b),
+    inject: [BILLING_REPOSITORY_PORT],
   },
 ];

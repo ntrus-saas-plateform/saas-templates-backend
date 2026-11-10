@@ -260,3 +260,6 @@ INNER JOIN edge_permissions p ON p.code IN (
 )
 WHERE r.code IN ('VERTICAL_OWNER', 'VERTICAL_ADMIN')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO schema_migrations (version) VALUES ('082_edge_sales_opportunity_pipeline')
+ON CONFLICT DO NOTHING;
