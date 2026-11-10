@@ -154,6 +154,8 @@ import { UnavailableSubscriptionBillingAdapter } from './subscription/unavailabl
 import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unavailable-provisioning.adapter.js';
 import { PROVISIONING_REPOSITORY_PORT } from '../domain/provisioning/provisioning-repository.port.js';
 import { REGISTRY_REPOSITORY_PORT } from '../domain/registry/registry-repository.port.js';
+import { PLACEMENT_REPOSITORY_PORT } from '../domain/placement/placement-repository.port.js';
+import { PLACEMENT_AUTHORIZATION_VIEW_PORT } from '../domain/placement/placement-authorization-view.port.js';
 import {
   CreateControlContractUseCase,
   CreateTechnicalVersionUseCase,
@@ -175,6 +177,21 @@ import {
   UpdateProductRegistryUseCase,
   UpdateTechnicalVersionDraftUseCase,
 } from '../application/registry/registry.use-cases.js';
+import {
+  CancelPlacementUseCase,
+  ConfirmPlacementUseCase,
+  CreatePlacementPolicyUseCase,
+  CreatePlacementRequestUseCase,
+  EvaluatePlacementUseCase,
+  ExpireReservationUseCase,
+  ListPlacementResourcesUseCase,
+  PatchCapacityInventoryUseCase,
+  PatchPlacementPolicyUseCase,
+  ReEvaluatePlacementUseCase,
+  ReleaseReservationUseCase,
+  SupersedeDecisionUseCase,
+  UpsertCapacityInventoryUseCase,
+} from '../application/placement/placement.use-cases.js';
 import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
 import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
@@ -2666,6 +2683,123 @@ export const edgeApplicationProviders: Provider[] = [
     provide: EvaluateCompatibilityUseCase,
     useFactory: (repo, outbox, audit) => new EvaluateCompatibilityUseCase(repo, outbox, audit),
     inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ListPlacementResourcesUseCase,
+    useFactory: (repo) => new ListPlacementResourcesUseCase(repo),
+    inject: [PLACEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreatePlacementRequestUseCase,
+    useFactory: (repo, authView, registry, outbox, audit) =>
+      new CreatePlacementRequestUseCase(repo, authView, registry, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      PLACEMENT_AUTHORIZATION_VIEW_PORT,
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: EvaluatePlacementUseCase,
+    useFactory: (repo, registry, outbox, audit) =>
+      new EvaluatePlacementUseCase(repo, registry, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ConfirmPlacementUseCase,
+    useFactory: (repo, outbox, audit) => new ConfirmPlacementUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CancelPlacementUseCase,
+    useFactory: (repo, outbox, audit) => new CancelPlacementUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReleaseReservationUseCase,
+    useFactory: (repo, outbox, audit) => new ReleaseReservationUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ExpireReservationUseCase,
+    useFactory: (repo, outbox, audit) => new ExpireReservationUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: SupersedeDecisionUseCase,
+    useFactory: (repo, outbox, audit) => new SupersedeDecisionUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ReEvaluatePlacementUseCase,
+    useFactory: (evaluate, supersede, repo) =>
+      new ReEvaluatePlacementUseCase(evaluate, supersede, repo),
+    inject: [EvaluatePlacementUseCase, SupersedeDecisionUseCase, PLACEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpsertCapacityInventoryUseCase,
+    useFactory: (repo, registry, outbox, audit) =>
+      new UpsertCapacityInventoryUseCase(repo, registry, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PatchCapacityInventoryUseCase,
+    useFactory: (repo, outbox, audit) => new PatchCapacityInventoryUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreatePlacementPolicyUseCase,
+    useFactory: (repo, outbox, audit) => new CreatePlacementPolicyUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PatchPlacementPolicyUseCase,
+    useFactory: (repo, outbox, audit) => new PatchPlacementPolicyUseCase(repo, outbox, audit),
+    inject: [
+      PLACEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: GetSubscriptionOverviewUseCase,

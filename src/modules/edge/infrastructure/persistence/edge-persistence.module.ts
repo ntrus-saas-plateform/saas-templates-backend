@@ -31,9 +31,13 @@ import { SUBSCRIPTION_REPOSITORY_PORT } from '../../domain/ports/subscription-re
 import { BILLING_REPOSITORY_PORT } from '../../domain/ports/billing-repository.port.js';
 import { PROVISIONING_REPOSITORY_PORT } from '../../domain/provisioning/provisioning-repository.port.js';
 import { REGISTRY_REPOSITORY_PORT } from '../../domain/registry/registry-repository.port.js';
+import { PLACEMENT_REPOSITORY_PORT } from '../../domain/placement/placement-repository.port.js';
+import { PLACEMENT_AUTHORIZATION_VIEW_PORT } from '../../domain/placement/placement-authorization-view.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
+import { PgPlacementRepository } from '../placement/pg-placement.repository.js';
+import { PgPlacementAuthorizationViewAdapter } from '../placement/pg-placement-authorization-view.adapter.js';
 import { PgVerticalRepository } from './pg-vertical.repository.js';
 import { PgMembershipRepository } from './pg-membership.repository.js';
 import { PgInvitationRepository } from './pg-invitation.repository.js';
@@ -95,6 +99,11 @@ const providers = [
   { provide: BILLING_REPOSITORY_PORT, useClass: PgBillingRepository },
   { provide: PROVISIONING_REPOSITORY_PORT, useClass: PgProvisioningRepository },
   { provide: REGISTRY_REPOSITORY_PORT, useClass: PgRegistryRepository },
+  { provide: PLACEMENT_REPOSITORY_PORT, useClass: PgPlacementRepository },
+  {
+    provide: PLACEMENT_AUTHORIZATION_VIEW_PORT,
+    useClass: PgPlacementAuthorizationViewAdapter,
+  },
 ];
 
 @Module({
