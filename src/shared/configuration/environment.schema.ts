@@ -294,12 +294,23 @@ export const environmentSchema = z.object({
   /** Comma-separated allowed issuers — required non-empty for verification (fail-closed) */
   EDGE_P7_AUTHORIZATION_ALLOWED_ISSUERS: z.string().optional(),
   EDGE_P5_AUTHORIZATION_STATUS_URL: z.string().url().optional(),
+  /** OQ-04 global deadline covering token acquisition + status call + response validation */
   EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
-  /** Outbound S2S to P5 — Keycloak client_credentials (same pattern as KeycloakAdminClient) */
+  /**
+   * Outbound Edge→P5 S2S — OAuth2 client_credentials for the Edge service identity calling P5.
+   * Must NOT equal EDGE_P5_INBOUND_S2S_CLIENT_ID.
+   */
   EDGE_P5_S2S_TOKEN_URL: z.string().url().optional(),
   EDGE_P5_S2S_CLIENT_ID: z.string().optional(),
   EDGE_P5_S2S_CLIENT_SECRET: z.string().optional(),
   EDGE_P5_S2S_SCOPE: z.string().optional(),
+  /**
+   * Inbound P5→Edge S2S — authorized P5 service-account client (JWT azp) calling Edge.
+   * Distinct from EDGE_P5_S2S_CLIENT_ID (outbound Edge identity).
+   */
+  EDGE_P5_INBOUND_S2S_CLIENT_ID: z.string().optional(),
+  /** Optional required scopes (space-separated) on inbound P5 JWT */
+  EDGE_P5_INBOUND_S2S_REQUIRED_SCOPES: z.string().optional(),
   /** Lab-only: allow http:// status URL (default false → require https) */
   EDGE_P5_ALLOW_INSECURE_HTTP: z
     .string()

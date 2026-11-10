@@ -9,6 +9,11 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
     clearCache: vi.fn(),
   } as unknown as EdgeP5S2STokenClient;
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
   it('returns UNAVAILABLE when status URL is not configured', async () => {
     const adapter = new FailClosedP5AuthorizationStatusAdapter(
       { EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: 2000 } as EnvironmentConfig,
@@ -46,12 +51,36 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
     }
   });
 
+  it('rejects colliding Edge→P5 and P5→Edge client IDs', async () => {
+    (s2s.isConfigured as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const adapter = new FailClosedP5AuthorizationStatusAdapter(
+      {
+        EDGE_P5_AUTHORIZATION_STATUS_URL: 'https://p5.example/status',
+        EDGE_P5_S2S_CLIENT_ID: 'same-client',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'same-client',
+        EDGE_P5_ALLOW_INSECURE_HTTP: false,
+      } as EnvironmentConfig,
+      s2s,
+    );
+    const result = await adapter.verifyCurrentStatus({
+      authorizationId: 'a',
+      authorizationVersion: 1,
+      correlationId: 'c',
+    });
+    expect(result.outcome).toBe('UNAVAILABLE');
+    if (result.outcome === 'UNAVAILABLE') {
+      expect(result.reasonCode).toBe('P5_S2S_IDENTITY_COLLISION');
+    }
+  });
+
   it('rejects non-HTTPS status URL by default', async () => {
     (s2s.isConfigured as ReturnType<typeof vi.fn>).mockReturnValue(true);
     const adapter = new FailClosedP5AuthorizationStatusAdapter(
       {
         EDGE_P5_AUTHORIZATION_STATUS_URL: 'http://p5.example/status',
         EDGE_P5_ALLOW_INSECURE_HTTP: false,
+        EDGE_P5_S2S_CLIENT_ID: 'edge-out',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'p5-in',
       } as EnvironmentConfig,
       s2s,
     );
@@ -76,6 +105,8 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
         EDGE_P5_AUTHORIZATION_STATUS_URL: 'https://p5.example/status',
         EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: 2000,
         EDGE_P5_ALLOW_INSECURE_HTTP: false,
+        EDGE_P5_S2S_CLIENT_ID: 'edge-out',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'p5-in',
       } as EnvironmentConfig,
       s2s,
     );
@@ -88,6 +119,57 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
     if (result.outcome === 'UNAVAILABLE') {
       expect(result.reasonCode).toBe('P5_S2S_AUTH_FAILED');
     }
+  });
+
+  it('enforces shared global deadline across token + status call', async () => {
+    (s2s.isConfigured as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (s2s.getAccessToken as ReturnType<typeof vi.fn>).mockImplementation(
+      async (signal?: AbortSignal) => {
+        await new Promise((r) => setTimeout(r, 80));
+        if (signal?.aborted) {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          throw err;
+        }
+        return 'token';
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: { signal?: AbortSignal }) => {
+        await new Promise((r) => setTimeout(r, 80));
+        if (init?.signal?.aborted) {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          throw err;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ outcome: 'ACTIVE' }),
+        };
+      }),
+    );
+    const adapter = new FailClosedP5AuthorizationStatusAdapter(
+      {
+        EDGE_P5_AUTHORIZATION_STATUS_URL: 'https://p5.example/status',
+        EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: 100,
+        EDGE_P5_ALLOW_INSECURE_HTTP: false,
+        EDGE_P5_S2S_CLIENT_ID: 'edge-out',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'p5-in',
+      } as EnvironmentConfig,
+      s2s,
+    );
+    const result = await adapter.verifyCurrentStatus({
+      authorizationId: 'a',
+      authorizationVersion: 1,
+      correlationId: 'c',
+    });
+    expect(result.outcome).toBe('UNAVAILABLE');
+    if (result.outcome === 'UNAVAILABLE') {
+      expect(result.reasonCode).toBe('P5_STATUS_TIMEOUT');
+    }
+    expect(s2s.getAccessToken).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 
   it('returns UNAVAILABLE on P5 timeout (AbortError)', async () => {
@@ -106,6 +188,8 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
         EDGE_P5_AUTHORIZATION_STATUS_URL: 'https://p5.example/status',
         EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: 2000,
         EDGE_P5_ALLOW_INSECURE_HTTP: false,
+        EDGE_P5_S2S_CLIENT_ID: 'edge-out',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'p5-in',
       } as EnvironmentConfig,
       s2s,
     );
@@ -118,7 +202,6 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
     if (result.outcome === 'UNAVAILABLE') {
       expect(result.reasonCode).toBe('P5_STATUS_TIMEOUT');
     }
-    vi.unstubAllGlobals();
   });
 
   it('returns UNAVAILABLE when P5 is unreachable', async () => {
@@ -135,6 +218,8 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
         EDGE_P5_AUTHORIZATION_STATUS_URL: 'https://p5.example/status',
         EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: 2000,
         EDGE_P5_ALLOW_INSECURE_HTTP: false,
+        EDGE_P5_S2S_CLIENT_ID: 'edge-out',
+        EDGE_P5_INBOUND_S2S_CLIENT_ID: 'p5-in',
       } as EnvironmentConfig,
       s2s,
     );
@@ -147,6 +232,5 @@ describe('FailClosedP5AuthorizationStatusAdapter (OQ-04 + S2S)', () => {
     if (result.outcome === 'UNAVAILABLE') {
       expect(result.reasonCode).toBe('P5_STATUS_NETWORK_ERROR');
     }
-    vi.unstubAllGlobals();
   });
 });

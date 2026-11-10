@@ -68,7 +68,7 @@ describe('HandleAuthorizationRevocationUseCase', () => {
     expect(audit.create).not.toHaveBeenCalled();
   });
 
-  it('fails closed when audit writer is missing for sensitive revoke', async () => {
+  it('fails closed when durable audit write fails after apply', async () => {
     const repo = {
       applyRevocationAtomically: vi.fn(async () => ({
         outcome: 'APPLIED' as const,
@@ -83,8 +83,15 @@ describe('HandleAuthorizationRevocationUseCase', () => {
         fn(null, vi.fn()),
       ),
     };
-    const uc = new HandleAuthorizationRevocationUseCase(repo as never, outbox as never, undefined);
-    await expect(uc.execute(baseInput)).rejects.toBeInstanceOf(DomainError);
+    const audit = {
+      create: vi.fn(async () => {
+        throw new Error('audit store down');
+      }),
+    };
+    const uc = new HandleAuthorizationRevocationUseCase(repo as never, outbox as never, audit as never);
+    await expect(uc.execute(baseInput)).rejects.toMatchObject({
+      code: ErrorCode.DEPENDENCY_UNAVAILABLE,
+    });
   });
 
   it('simulates two concurrent revocations: first APPLIED, second DUPLICATE/stale', async () => {

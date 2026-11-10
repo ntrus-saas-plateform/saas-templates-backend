@@ -10,7 +10,7 @@ type TokenResponse = {
 
 /**
  * Outbound Edge→P5 S2S tokens via OAuth2 client_credentials.
- * Reuses the same pattern as KeycloakAdminClient.getAccessToken — no custom crypto.
+ * Identity: EDGE_P5_S2S_CLIENT_ID (Edge service account toward P5) — never the inbound P5 client.
  */
 @Injectable()
 export class EdgeP5S2STokenClient {
@@ -27,9 +27,17 @@ export class EdgeP5S2STokenClient {
     );
   }
 
-  async getAccessToken(): Promise<string> {
+  /**
+   * @param signal Shared OQ-04 deadline AbortSignal — must not reset a separate timeout.
+   */
+  async getAccessToken(signal?: AbortSignal): Promise<string> {
     if (!this.isConfigured()) {
       throw new Error('P5_S2S_NOT_CONFIGURED');
+    }
+    if (signal?.aborted) {
+      const err = new Error('P5_S2S_DEADLINE_EXCEEDED');
+      err.name = 'AbortError';
+      throw err;
     }
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 5000) {
       return this.accessToken;
@@ -53,7 +61,7 @@ export class EdgeP5S2STokenClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
       body,
-      signal: AbortSignal.timeout(this.config.EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS ?? 2000),
+      signal,
     });
 
     if (!response.ok) {

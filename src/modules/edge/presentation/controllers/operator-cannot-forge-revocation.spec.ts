@@ -16,14 +16,16 @@ describe('operator cannot forge P5 revocation', () => {
     expect(src).toMatch(/never accepts P5 revocation forgery/);
   });
 
-  it('S2S integration controller owns revocation ingest', () => {
+  it('S2S integration controller owns revocation ingest with inbound identity', () => {
     const src = readFileSync(
       resolve(__dirname, './p5-provisioning-integration.controller.ts'),
       'utf8',
     );
     expect(src).toMatch(/edge\/integrations\/p5\/provisioning/);
-    expect(src).toMatch(/assertP5ServiceJwt/);
+    expect(src).toMatch(/assertP5InboundServiceJwt/);
+    expect(src).toMatch(/EDGE_P5_INBOUND_S2S_CLIENT_ID/);
     expect(src).toMatch(/verifyRevocationEventIntegrity/);
     expect(src).toMatch(/integrityVerified: true/);
+    expect(src).not.toMatch(/azp must match EDGE_P5_S2S_CLIENT_ID/);
   });
 });

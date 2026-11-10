@@ -13,6 +13,12 @@ export const P7_REVOCATION_EVENT_NAME =
   'subscription.provisioning.authorization.revoked.v1' as const;
 export const P7_REVOCATION_SCHEMA_VERSION = 'p5.provisioning_revocation.v1' as const;
 
+/** Explicit clock skew for issued_at / expires_at checks (seconds). */
+export const P7_REVOCATION_CLOCK_SKEW_SECONDS = 60;
+
+/** Maximum event lifetime from issued_at to expires_at (anti-replay window bound). */
+export const P7_REVOCATION_MAX_TTL_SECONDS = 24 * 3600;
+
 export type CanonicalRevocationEvent = {
   readonly event_id: string;
   readonly event_name: string;
@@ -30,7 +36,8 @@ export type CanonicalRevocationEvent = {
   readonly signature?: string | null;
   readonly payload_digest: string;
   readonly issued_at: string;
-  readonly expires_at?: string | null;
+  /** Required by canonical contract — signed but temporally invalid events are rejected. */
+  readonly expires_at: string;
   readonly correlation_id?: string | null;
 };
 
@@ -46,17 +53,19 @@ export function canonicalizeRevocationPayload(event: CanonicalRevocationEvent): 
 }
 
 /**
- * Verify a P5 revocation event (Option C): issuer allow-list, audience, digest, key/alg match, signature.
- * Operator paths must never call this with forged operator identity alone.
+ * Verify a P5 revocation event (Option C): issuer allow-list, audience, temporal validity,
+ * digest, key/alg match, signature. Operator paths must never call this with forged identity alone.
  */
 export function verifyRevocationEventIntegrity(input: {
   event: CanonicalRevocationEvent;
   keys: readonly PublicKeyMaterial[];
   allowedIssuers: readonly string[];
   now?: Date;
+  clockSkewSeconds?: number;
 }): AuthorizationVerificationResult {
   const event = input.event;
   const now = input.now ?? new Date();
+  const skewMs = (input.clockSkewSeconds ?? P7_REVOCATION_CLOCK_SKEW_SECONDS) * 1000;
 
   if (!event.event_id?.trim()) return reject('EVENT_ID_MISSING');
   if (event.event_name !== P7_REVOCATION_EVENT_NAME) {
@@ -95,11 +104,29 @@ export function verifyRevocationEventIntegrity(input: {
 
   const issuedAt = Date.parse(event.issued_at);
   if (Number.isNaN(issuedAt)) return reject('INVALID_ISSUED_AT');
-  if (event.expires_at) {
-    const exp = Date.parse(event.expires_at);
-    if (Number.isNaN(exp) || now.getTime() - 60_000 > exp) {
-      return reject('EVENT_EXPIRED', { expires_at: event.expires_at });
-    }
+  if (issuedAt > now.getTime() + skewMs) {
+    return reject('ISSUED_AT_IN_FUTURE', {
+      issued_at: event.issued_at,
+      clockSkewSeconds: input.clockSkewSeconds ?? P7_REVOCATION_CLOCK_SKEW_SECONDS,
+    });
+  }
+
+  if (!event.expires_at?.trim()) return reject('EXPIRES_AT_REQUIRED');
+  const exp = Date.parse(event.expires_at);
+  if (Number.isNaN(exp)) return reject('INVALID_EXPIRES_AT');
+  if (exp <= issuedAt) {
+    return reject('EXPIRES_AT_BEFORE_ISSUED_AT', {
+      issued_at: event.issued_at,
+      expires_at: event.expires_at,
+    });
+  }
+  if (exp - issuedAt > P7_REVOCATION_MAX_TTL_SECONDS * 1000) {
+    return reject('EXPIRES_AT_TTL_EXCEEDED', {
+      maxTtlSeconds: P7_REVOCATION_MAX_TTL_SECONDS,
+    });
+  }
+  if (now.getTime() - skewMs > exp) {
+    return reject('EVENT_EXPIRED', { expires_at: event.expires_at });
   }
 
   const canonical = canonicalizeRevocationPayload(event);

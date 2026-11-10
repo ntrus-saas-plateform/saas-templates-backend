@@ -35,13 +35,34 @@ import {
 } from '../../domain/provisioning/provisioning.events.js';
 
 async function enqueueP7(
-  outbox: ControlPlaneOutboxTransactionService | undefined,
+  outbox: ControlPlaneOutboxTransactionService,
   event: IntegrationEvent<unknown>,
 ): Promise<void> {
-  if (!outbox) return;
   await outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (_client, enqueue) => {
     await enqueue(event);
   });
+}
+
+async function requireAudit(
+  audit: AuditEventRepositoryPort,
+  input: {
+    eventType: string;
+    actorId: string;
+    subjectType: string;
+    subjectId: string;
+    details: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await audit.create(input);
+  } catch (err) {
+    throw new DomainError(
+      ErrorCode.DEPENDENCY_UNAVAILABLE,
+      'Durable audit write required for sensitive provisioning operation',
+      [{ eventType: input.eventType, subjectId: input.subjectId }],
+      err instanceof Error ? err : undefined,
+    );
+  }
 }
 
 export type TrustMaterialProvider = () => {
@@ -54,8 +75,8 @@ export class AcceptProvisioningAuthorizationUseCase {
     private readonly repo: ProvisioningRepositoryPort,
     private readonly p5Status: P5AuthorizationStatusPort,
     private readonly trust: TrustMaterialProvider,
-    private readonly outbox?: ControlPlaneOutboxTransactionService,
-    private readonly audit?: AuditEventRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
   ) {}
 
   async execute(input: {
@@ -165,9 +186,15 @@ export class AcceptProvisioningAuthorizationUseCase {
           reasonCode: integrity.reasonCode ?? 'INTEGRITY_FAILED',
         }),
       );
-      await this.auditSafe(input.actorId, 'provisioning.authorization.verification_failed', {
-        authorizationId: auth.authorization_id,
-        reasonCode: integrity.reasonCode,
+      await requireAudit(this.audit, {
+        eventType: 'provisioning.authorization.verification_failed',
+        actorId: input.actorId,
+        subjectType: 'PROVISIONING',
+        subjectId: auth.authorization_id,
+        details: {
+          authorizationId: auth.authorization_id,
+          reasonCode: integrity.reasonCode,
+        },
       });
       return this.createRejectedRequest(input, auth, stored.id, slot, integrity.reasonCode ?? 'INTEGRITY_FAILED');
     }
@@ -179,9 +206,16 @@ export class AcceptProvisioningAuthorizationUseCase {
       correlationId: auth.correlation_id,
     });
     if (status.outcome === 'UNAVAILABLE' || status.outcome === 'UNKNOWN') {
-      await this.auditSafe(input.actorId, 'provisioning.authorization.p5_unavailable', {
-        authorizationId: auth.authorization_id,
-        outcome: status.outcome,
+      await requireAudit(this.audit, {
+        eventType: 'provisioning.authorization.p5_unavailable',
+        actorId: input.actorId,
+        subjectType: 'PROVISIONING',
+        subjectId: auth.authorization_id,
+        details: {
+          authorizationId: auth.authorization_id,
+          outcome: status.outcome,
+          reasonCode: status.reasonCode ?? null,
+        },
       });
       return this.createRejectedRequest(
         input,
@@ -246,36 +280,51 @@ export class AcceptProvisioningAuthorizationUseCase {
       });
       assertNotTechnicalActiveLabel(request.requestStatus);
 
-      await enqueueP7(
-        this.outbox,
-        createAuthorizationVerifiedEvent({
-          actorId: input.actorId,
-          correlationId: auth.correlation_id,
+      try {
+        await enqueueP7(
+          this.outbox,
+          createAuthorizationVerifiedEvent({
+            actorId: input.actorId,
+            correlationId: auth.correlation_id,
+            authorizationId: auth.authorization_id,
+            authorizationVersion: auth.authorization_version,
+            requestId: request.id,
+          }),
+        );
+        await enqueueP7(
+          this.outbox,
+          createProvisioningRequestReceivedEvent({
+            actorId: input.actorId,
+            correlationId: auth.correlation_id,
+            requestId: request.id,
+            authorizationId: auth.authorization_id,
+          }),
+        );
+        await enqueueP7(
+          this.outbox,
+          createProvisioningRequestAcceptedEvent({
+            actorId: input.actorId,
+            correlationId: auth.correlation_id,
+            requestId: request.id,
+          }),
+        );
+      } catch (err) {
+        throw new DomainError(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          'Required outbox publication failed after durable accept — not announcing success',
+          [{ requestId: request.id, authorizationId: auth.authorization_id }],
+          err instanceof Error ? err : undefined,
+        );
+      }
+      await requireAudit(this.audit, {
+        eventType: 'provisioning.request.accepted',
+        actorId: input.actorId,
+        subjectType: 'PROVISIONING',
+        subjectId: request.id,
+        details: {
+          requestId: request.id,
           authorizationId: auth.authorization_id,
-          authorizationVersion: auth.authorization_version,
-          requestId: request.id,
-        }),
-      );
-      await enqueueP7(
-        this.outbox,
-        createProvisioningRequestReceivedEvent({
-          actorId: input.actorId,
-          correlationId: auth.correlation_id,
-          requestId: request.id,
-          authorizationId: auth.authorization_id,
-        }),
-      );
-      await enqueueP7(
-        this.outbox,
-        createProvisioningRequestAcceptedEvent({
-          actorId: input.actorId,
-          correlationId: auth.correlation_id,
-          requestId: request.id,
-        }),
-      );
-      await this.auditSafe(input.actorId, 'provisioning.request.accepted', {
-        requestId: request.id,
-        authorizationId: auth.authorization_id,
+        },
       });
       return { outcome: 'ACCEPTED' as const, request };
     } catch (err) {
@@ -342,15 +391,31 @@ export class AcceptProvisioningAuthorizationUseCase {
         metadata: { rejected: true },
         rejectedAt: new Date(),
       });
-      await enqueueP7(
-        this.outbox,
-        createProvisioningRequestRejectedEvent({
-          actorId: input.actorId,
-          correlationId: auth.correlation_id,
-          requestId: request.id,
-          reasonCode,
-        }),
-      );
+      try {
+        await enqueueP7(
+          this.outbox,
+          createProvisioningRequestRejectedEvent({
+            actorId: input.actorId,
+            correlationId: auth.correlation_id,
+            requestId: request.id,
+            reasonCode,
+          }),
+        );
+      } catch (err) {
+        throw new DomainError(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          'Required rejection outbox publication failed',
+          [{ requestId: request.id, reasonCode }],
+          err instanceof Error ? err : undefined,
+        );
+      }
+      await requireAudit(this.audit, {
+        eventType: 'provisioning.request.rejected',
+        actorId: input.actorId,
+        subjectType: 'PROVISIONING_REQUEST',
+        subjectId: request.id,
+        details: { reasonCode, authorizationId: auth.authorization_id },
+      });
       return { outcome: 'REJECTED' as const, request, reasonCode };
     } catch (err) {
       if (err instanceof DomainError && err.code === ErrorCode.IDEMPOTENCY_CONFLICT) {
@@ -364,28 +429,13 @@ export class AcceptProvisioningAuthorizationUseCase {
       throw err;
     }
   }
-
-  private async auditSafe(actorId: string, action: string, details: Record<string, unknown>) {
-    if (!this.audit) return;
-    try {
-      await this.audit.create({
-        eventType: action,
-        actorId,
-        subjectType: 'PROVISIONING',
-        subjectId: String(details.requestId ?? details.authorizationId ?? ''),
-        details,
-      });
-    } catch {
-      /* audit must not break accept path */
-    }
-  }
 }
 
 export class CancelProvisioningRequestUseCase {
   constructor(
     private readonly repo: ProvisioningRepositoryPort,
-    private readonly outbox?: ControlPlaneOutboxTransactionService,
-    private readonly audit?: AuditEventRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
   ) {}
 
   async execute(input: {
@@ -424,24 +474,31 @@ export class CancelProvisioningRequestUseCase {
         note: 'P7 cancel does not revoke P5 authorization and does not destroy resources',
       },
     });
-    await enqueueP7(
-      this.outbox,
-      createProvisioningRequestCancelledEvent({
-        actorId: input.actorId,
-        correlationId: request.correlationId,
-        requestId: request.id,
-        reason: input.reason.trim(),
-      }),
-    );
-    if (this.audit) {
-      await this.audit.create({
-        eventType: 'provisioning.request.cancelled',
-        actorId: input.actorId,
-        subjectType: 'PROVISIONING_REQUEST',
-        subjectId: request.id,
-        details: { reason: input.reason.trim() },
-      });
+    try {
+      await enqueueP7(
+        this.outbox,
+        createProvisioningRequestCancelledEvent({
+          actorId: input.actorId,
+          correlationId: request.correlationId,
+          requestId: request.id,
+          reason: input.reason.trim(),
+        }),
+      );
+    } catch (err) {
+      throw new DomainError(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'Required cancellation outbox publication failed — not announcing success',
+        [{ requestId: request.id }],
+        err instanceof Error ? err : undefined,
+      );
     }
+    await requireAudit(this.audit, {
+      eventType: 'provisioning.request.cancelled',
+      actorId: input.actorId,
+      subjectType: 'PROVISIONING_REQUEST',
+      subjectId: request.id,
+      details: { reason: input.reason.trim() },
+    });
     return updated;
   }
 }
@@ -449,8 +506,8 @@ export class CancelProvisioningRequestUseCase {
 export class HandleAuthorizationRevocationUseCase {
   constructor(
     private readonly repo: ProvisioningRepositoryPort,
-    private readonly outbox?: ControlPlaneOutboxTransactionService,
-    private readonly audit?: AuditEventRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
   ) {}
 
   /**
@@ -508,19 +565,13 @@ export class HandleAuthorizationRevocationUseCase {
     } catch (err) {
       throw new DomainError(
         ErrorCode.DEPENDENCY_UNAVAILABLE,
-        'Failed to publish revocation outbox event after durable apply',
-        [{ authorizationId: input.authorizationId }],
+        'Failed to publish revocation outbox event after durable apply — not announcing APPLIED',
+        [{ authorizationId: input.authorizationId, eventId: input.eventId }],
         err instanceof Error ? err : undefined,
       );
     }
 
-    if (!this.audit) {
-      throw new DomainError(
-        ErrorCode.INTERNAL_ERROR,
-        'Audit writer required for sensitive revocation operations',
-      );
-    }
-    await this.audit.create({
+    await requireAudit(this.audit, {
       eventType: 'provisioning.authorization.revoked',
       actorId: input.actorId,
       subjectType: 'PROVISIONING_AUTHORIZATION',

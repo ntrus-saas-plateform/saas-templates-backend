@@ -6,6 +6,7 @@ import {
   type CanonicalRevocationEvent,
   P7_REVOCATION_EVENT_NAME,
   P7_REVOCATION_SCHEMA_VERSION,
+  P7_REVOCATION_CLOCK_SKEW_SECONDS,
 } from './revocation-event.js';
 
 describe('verifyRevocationEventIntegrity', () => {
@@ -103,11 +104,37 @@ describe('verifyRevocationEventIntegrity', () => {
   it('rejects expired event', () => {
     const event = sign({
       ...base(),
+      issued_at: new Date(Date.now() - 3600_000).toISOString(),
       expires_at: new Date(Date.now() - 120_000).toISOString(),
     });
     const result = verifyRevocationEventIntegrity({ event, keys, allowedIssuers: issuers });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('EVENT_EXPIRED');
+  });
+
+  it('rejects issued_at in the future beyond clock skew', () => {
+    const event = sign({
+      ...base(),
+      issued_at: new Date(Date.now() + (P7_REVOCATION_CLOCK_SKEW_SECONDS + 120) * 1000).toISOString(),
+      expires_at: new Date(Date.now() + (P7_REVOCATION_CLOCK_SKEW_SECONDS + 3600) * 1000).toISOString(),
+    });
+    const result = verifyRevocationEventIntegrity({ event, keys, allowedIssuers: issuers });
+    expect(result.ok).toBe(false);
+    expect(result.reasonCode).toBe('ISSUED_AT_IN_FUTURE');
+  });
+
+  it('rejects missing expires_at', () => {
+    const event = sign({ ...base(), expires_at: '' as unknown as string });
+    const result = verifyRevocationEventIntegrity({ event, keys, allowedIssuers: issuers });
+    expect(result.ok).toBe(false);
+    expect(result.reasonCode).toBe('EXPIRES_AT_REQUIRED');
+  });
+
+  it('rejects invalid issued_at', () => {
+    const event = sign({ ...base(), issued_at: 'not-a-date' });
+    const result = verifyRevocationEventIntegrity({ event, keys, allowedIssuers: issuers });
+    expect(result.ok).toBe(false);
+    expect(result.reasonCode).toBe('INVALID_ISSUED_AT');
   });
 
   it('accepts rotated key when key_id matches active material', () => {
@@ -130,10 +157,7 @@ describe('verifyRevocationEventIntegrity', () => {
     const event = { ...eventBase, payload_digest, signature };
     const result = verifyRevocationEventIntegrity({
       event,
-      keys: [
-        ...keys,
-        { keyId: 'k2', algorithm: 'EdDSA', publicKeyPem: rotatedPem },
-      ],
+      keys: [...keys, { keyId: 'k2', algorithm: 'EdDSA', publicKeyPem: rotatedPem }],
       allowedIssuers: issuers,
     });
     expect(result.ok).toBe(true);

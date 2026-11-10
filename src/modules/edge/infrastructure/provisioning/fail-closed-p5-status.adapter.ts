@@ -10,8 +10,8 @@ import { EdgeP5S2STokenClient } from './edge-p5-s2s-token.client.js';
 
 /**
  * Synchronous P5 status check (OQ-04) with real S2S client_credentials auth.
+ * Global deadline covers token acquisition + status HTTP + response validation.
  * Never calls P5 with only a correlation header.
- * Fail-closed on missing auth, TLS/host policy, timeout, transport, or unauthenticated responses.
  */
 @Injectable()
 export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationStatusPort {
@@ -59,23 +59,46 @@ export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationSt
     if (!this.s2s.isConfigured()) {
       return unavailable(
         'P5_S2S_NOT_CONFIGURED',
-        'P5 S2S client_credentials (EDGE_P5_S2S_*) required; refuse unauthenticated call',
+        'Edge→P5 S2S client_credentials (EDGE_P5_S2S_*) required; refuse unauthenticated call',
+      );
+    }
+
+    const outboundId = this.config.EDGE_P5_S2S_CLIENT_ID?.trim();
+    const inboundId = this.config.EDGE_P5_INBOUND_S2S_CLIENT_ID?.trim();
+    if (outboundId && inboundId && outboundId === inboundId) {
+      return unavailable(
+        'P5_S2S_IDENTITY_COLLISION',
+        'EDGE_P5_S2S_CLIENT_ID must differ from EDGE_P5_INBOUND_S2S_CLIENT_ID',
       );
     }
 
     const timeoutMs = this.config.EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS ?? 2000;
+    const deadline = Date.now() + timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       let accessToken: string;
       try {
-        accessToken = await this.s2s.getAccessToken();
+        accessToken = await this.s2s.getAccessToken(controller.signal);
       } catch (err) {
         this.s2s.clearCache();
+        if (isAbortError(err) || Date.now() >= deadline) {
+          return unavailable(
+            'P5_STATUS_TIMEOUT',
+            `OQ-04 global deadline exceeded during S2S token acquisition (${timeoutMs}ms)`,
+          );
+        }
         return unavailable(
           'P5_S2S_AUTH_FAILED',
           err instanceof Error ? err.message : 'S2S token acquisition failed',
+        );
+      }
+
+      if (controller.signal.aborted || Date.now() >= deadline) {
+        return unavailable(
+          'P5_STATUS_TIMEOUT',
+          `OQ-04 global deadline exceeded before P5 status call (${timeoutMs}ms)`,
         );
       }
 
@@ -90,15 +113,23 @@ export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationSt
           Authorization: `Bearer ${accessToken}`,
           'X-Correlation-Id': query.correlationId,
           'X-Edge-Service': 'okapi.edge.p7',
+          'X-Edge-S2S-Client': outboundId ?? 'edge-p7-outbound',
         },
         signal: controller.signal,
       });
+
+      if (controller.signal.aborted || Date.now() >= deadline) {
+        return unavailable(
+          'P5_STATUS_TIMEOUT',
+          `OQ-04 global deadline exceeded during/after P5 status HTTP (${timeoutMs}ms)`,
+        );
+      }
 
       if (res.status === 401 || res.status === 403) {
         this.s2s.clearCache();
         return unavailable(
           'P5_STATUS_UNAUTHORIZED',
-          `P5 rejected S2S credentials (HTTP ${res.status})`,
+          `P5 rejected Edge→P5 S2S credentials (HTTP ${res.status})`,
         );
       }
       if (!res.ok) {
@@ -110,6 +141,14 @@ export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationSt
         revocationVersion?: number | null;
         reasonCode?: string | null;
       };
+
+      if (controller.signal.aborted || Date.now() >= deadline) {
+        return unavailable(
+          'P5_STATUS_TIMEOUT',
+          `OQ-04 global deadline exceeded during response validation (${timeoutMs}ms)`,
+        );
+      }
+
       const outcome = body.outcome;
       if (
         outcome === 'ACTIVE' ||
@@ -129,11 +168,11 @@ export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationSt
         reasonCode: 'P5_STATUS_UNPARSEABLE',
       };
     } catch (err) {
-      const aborted = err instanceof Error && err.name === 'AbortError';
+      const aborted = isAbortError(err) || Date.now() >= deadline;
       return unavailable(
         aborted ? 'P5_STATUS_TIMEOUT' : 'P5_STATUS_NETWORK_ERROR',
         aborted
-          ? `P5 status timed out after ${timeoutMs}ms`
+          ? `OQ-04 global deadline exceeded after ${timeoutMs}ms (token+status+validate)`
           : err instanceof Error
             ? err.message
             : 'network error',
@@ -142,6 +181,10 @@ export class FailClosedP5AuthorizationStatusAdapter implements P5AuthorizationSt
       clearTimeout(timer);
     }
   }
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'));
 }
 
 function unavailable(reasonCode: string, failureMessage: string): P5AuthorizationStatusResult {
