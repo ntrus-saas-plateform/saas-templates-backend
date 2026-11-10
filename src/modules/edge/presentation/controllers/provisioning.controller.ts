@@ -19,7 +19,6 @@ import {
   GetProvisioningRequestHistoryUseCase,
   GetProvisioningRequestStatsUseCase,
   GetProvisioningRequestUseCase,
-  HandleAuthorizationRevocationUseCase,
   ListProvisioningRequestsUseCase,
   mapLegacyProvisioningRequestedEvent,
 } from '../../application/provisioning/provisioning.use-cases.js';
@@ -30,6 +29,10 @@ function actorId(req: EdgeRequest): string {
   return req.user?.sub ?? req.user?.id ?? 'unknown';
 }
 
+/**
+ * Operator APIs only — never accepts P5 revocation forgery.
+ * Revocation ingest lives on EdgeP5ProvisioningIntegrationController (S2S).
+ */
 @EdgeRoute()
 @UseGuards(EdgeAuthGuard, EdgeOptionalWorkspaceGuard, EdgePermissionGuard)
 @Controller('edge/provisioning-requests')
@@ -41,7 +44,6 @@ export class EdgeProvisioningController {
     private readonly getStats: GetProvisioningRequestStatsUseCase,
     private readonly cancelRequest: CancelProvisioningRequestUseCase,
     private readonly getAuthorization: GetProvisioningAuthorizationSummaryUseCase,
-    private readonly handleRevocation: HandleAuthorizationRevocationUseCase,
   ) {}
 
   @Get('stats')
@@ -56,41 +58,6 @@ export class EdgeProvisioningController {
     return mapLegacyProvisioningRequestedEvent(
       'OQ-05 dual-consume: legacy subscription.provisioning.requested.v1 is not a canonical authorization',
     );
-  }
-
-  @Post('revocations/ingest')
-  @RequireEdgePermissions('platform:provisioning_requests:cancel')
-  ingestRevocation(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      eventId?: string;
-      eventName?: string;
-      authorizationId?: string;
-      revocationVersion?: number;
-      revokedAt?: string;
-      reasonCode?: string;
-      reference?: string;
-      payload?: Record<string, unknown>;
-    },
-  ) {
-    if (!body?.eventId || !body.authorizationId || body.revocationVersion == null) {
-      throw new DomainError(
-        ErrorCode.VALIDATION_ERROR,
-        'eventId, authorizationId and revocationVersion are required',
-      );
-    }
-    return this.handleRevocation.execute({
-      actorId: actorId(req),
-      eventId: body.eventId,
-      eventName: body.eventName ?? 'subscription.provisioning.authorization.revoked.v1',
-      authorizationId: body.authorizationId,
-      revocationVersion: Number(body.revocationVersion),
-      revokedAt: body.revokedAt,
-      reasonCode: body.reasonCode,
-      reference: body.reference,
-      payload: body.payload,
-    });
   }
 
   @Get()

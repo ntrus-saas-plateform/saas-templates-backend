@@ -1,10 +1,18 @@
 import type { EnvironmentConfig } from '../../../../shared/configuration/environment.schema.js';
 import type { PublicKeyMaterial } from '../../domain/provisioning/authorization-verification.js';
 
-export function loadProvisioningTrustMaterial(config: EnvironmentConfig): {
+export type ProvisioningTrustMaterial = {
   keys: PublicKeyMaterial[];
   allowedIssuers: string[];
-} {
+};
+
+/**
+ * Load trust material. Empty issuers or empty keys are left empty so verifiers fail-closed
+ * with ALLOWED_ISSUERS_NOT_CONFIGURED / TRUST_KEYS_NOT_CONFIGURED / UNKNOWN_KEY_ID.
+ */
+export function loadProvisioningTrustMaterial(
+  config: EnvironmentConfig,
+): ProvisioningTrustMaterial {
   const keys: PublicKeyMaterial[] = [];
   const raw = config.EDGE_P7_AUTHORIZATION_PUBLIC_KEYS_JSON?.trim();
   if (raw) {
@@ -24,7 +32,7 @@ export function loadProvisioningTrustMaterial(config: EnvironmentConfig): {
         }
       }
     } catch {
-      // Misconfigured keys → empty set → verification fails closed (UNKNOWN_KEY_ID)
+      // Misconfigured JSON → empty keys → fail-closed
     }
   }
 
@@ -34,4 +42,13 @@ export function loadProvisioningTrustMaterial(config: EnvironmentConfig): {
     .filter(Boolean);
 
   return { keys, allowedIssuers };
+}
+
+export function assertTrustMaterialConfigured(trust: ProvisioningTrustMaterial): void {
+  if (!trust.allowedIssuers.length) {
+    throw new Error('ALLOWED_ISSUERS_NOT_CONFIGURED');
+  }
+  if (!trust.keys.length) {
+    throw new Error('TRUST_KEYS_NOT_CONFIGURED');
+  }
 }

@@ -53,6 +53,8 @@ describe('authorization-verification (OQ-01)', () => {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  const keys = [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }];
+  const allowedIssuers = ['okapi.edge.p5'];
 
   function sign(auth: CanonicalProvisioningAuthorization) {
     const canonical = canonicalizeAuthorizationPayload(auth);
@@ -65,13 +67,16 @@ describe('authorization-verification (OQ-01)', () => {
 
   it('accepts valid EdDSA signature + digest', () => {
     const auth = sign(baseAuth());
-    const result = verifyAuthorizationIntegrity({
-      authorization: auth,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
-      allowedIssuers: ['okapi.edge.p5'],
-    });
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers });
     expect(result.ok).toBe(true);
     expect(result.status).toBe(AuthorizationVerificationStatus.VERIFIED);
+  });
+
+  it('rejects missing issuer allow-list', () => {
+    const auth = sign(baseAuth());
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers: [] });
+    expect(result.ok).toBe(false);
+    expect(result.reasonCode).toBe('ALLOWED_ISSUERS_NOT_CONFIGURED');
   });
 
   it('rejects digest mismatch', () => {
@@ -79,7 +84,8 @@ describe('authorization-verification (OQ-01)', () => {
     const tampered = { ...auth, payload_digest: '0'.repeat(64) };
     const result = verifyAuthorizationIntegrity({
       authorization: tampered,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
+      keys,
+      allowedIssuers,
     });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('DIGEST_MISMATCH');
@@ -89,18 +95,29 @@ describe('authorization-verification (OQ-01)', () => {
     const rebuilt = sign(baseAuth({ key_id: 'missing' }));
     const result = verifyAuthorizationIntegrity({
       authorization: rebuilt,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
+      keys,
+      allowedIssuers,
     });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('UNKNOWN_KEY_ID');
   });
 
+  it('rejects algorithm mismatch for known key id', () => {
+    const auth = sign(baseAuth());
+    const altered = { ...auth, signature_algorithm: 'RS256' };
+    const digest = computePayloadDigest(canonicalizeAuthorizationPayload(altered));
+    const result = verifyAuthorizationIntegrity({
+      authorization: { ...altered, payload_digest: digest },
+      keys,
+      allowedIssuers,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reasonCode).toBe('ALGORITHM_MISMATCH');
+  });
+
   it('rejects invalid audience', () => {
     const auth = sign(baseAuth({ audience: 'wrong.audience' }));
-    const result = verifyAuthorizationIntegrity({
-      authorization: auth,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
-    });
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('INVALID_AUDIENCE');
   });
@@ -109,20 +126,14 @@ describe('authorization-verification (OQ-01)', () => {
     const auth = sign(
       baseAuth({ expires_at: new Date(Date.now() - 120_000).toISOString() }),
     );
-    const result = verifyAuthorizationIntegrity({
-      authorization: auth,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
-    });
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers });
     expect(result.ok).toBe(false);
     expect(result.status).toBe(AuthorizationVerificationStatus.EXPIRED);
   });
 
   it('rejects revoked authorization', () => {
     const auth = sign(baseAuth({ revocation_status: 'REVOKED' }));
-    const result = verifyAuthorizationIntegrity({
-      authorization: auth,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
-    });
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers });
     expect(result.ok).toBe(false);
     expect(result.status).toBe(AuthorizationVerificationStatus.REVOKED);
   });
@@ -135,7 +146,8 @@ describe('authorization-verification (OQ-01)', () => {
     const digest = computePayloadDigest(canonicalizeAuthorizationPayload(auth));
     const result = verifyAuthorizationIntegrity({
       authorization: { ...auth, payload_digest: digest },
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
+      keys,
+      allowedIssuers,
     });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('DIGEST_ONLY_NOT_ALLOWED_IN_PRODUCTION');
@@ -143,11 +155,7 @@ describe('authorization-verification (OQ-01)', () => {
 
   it('rejects invalid issuer when allow-list set', () => {
     const auth = sign(baseAuth({ issuer: 'evil.issuer' }));
-    const result = verifyAuthorizationIntegrity({
-      authorization: auth,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
-      allowedIssuers: ['okapi.edge.p5'],
-    });
+    const result = verifyAuthorizationIntegrity({ authorization: auth, keys, allowedIssuers });
     expect(result.ok).toBe(false);
     expect(result.reasonCode).toBe('INVALID_ISSUER');
   });
@@ -157,7 +165,8 @@ describe('authorization-verification (OQ-01)', () => {
     const bad = { ...auth, signature: Buffer.from('not-a-real-sig').toString('base64') };
     const result = verifyAuthorizationIntegrity({
       authorization: bad,
-      keys: [{ keyId: 'test-ed25519-1', algorithm: 'EdDSA', publicKeyPem }],
+      keys,
+      allowedIssuers,
     });
     expect(result.ok).toBe(false);
     expect(['INVALID_SIGNATURE', 'SIGNATURE_VERIFICATION_ERROR']).toContain(

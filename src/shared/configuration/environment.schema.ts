@@ -291,10 +291,22 @@ export const environmentSchema = z.object({
   EDGE_P7_PROVISIONING_ADAPTER: z.enum(['unavailable', 'durable']).default('unavailable'),
   /** JSON array: [{ "keyId","algorithm","publicKeyPem" }] — never private keys */
   EDGE_P7_AUTHORIZATION_PUBLIC_KEYS_JSON: z.string().optional(),
-  /** Comma-separated allowed issuers; empty = any issuer still needs signature */
+  /** Comma-separated allowed issuers — required non-empty for verification (fail-closed) */
   EDGE_P7_AUTHORIZATION_ALLOWED_ISSUERS: z.string().optional(),
   EDGE_P5_AUTHORIZATION_STATUS_URL: z.string().url().optional(),
   EDGE_P5_AUTHORIZATION_STATUS_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+  /** Outbound S2S to P5 — Keycloak client_credentials (same pattern as KeycloakAdminClient) */
+  EDGE_P5_S2S_TOKEN_URL: z.string().url().optional(),
+  EDGE_P5_S2S_CLIENT_ID: z.string().optional(),
+  EDGE_P5_S2S_CLIENT_SECRET: z.string().optional(),
+  EDGE_P5_S2S_SCOPE: z.string().optional(),
+  /** Lab-only: allow http:// status URL (default false → require https) */
+  EDGE_P5_ALLOW_INSECURE_HTTP: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  /** Expected TLS server name / host allow-list for P5 status (comma-separated); optional extra check */
+  EDGE_P5_STATUS_ALLOWED_HOSTS: z.string().optional(),
 
   // Push delivery (staff devices — FCM / Web Push / APNs stub)
   PUSH_DELIVERY_ENABLED: z

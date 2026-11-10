@@ -65,10 +65,11 @@ export function verifyAuthorizationIntegrity(input: {
   if (auth.audience !== P7_AUTHORIZATION_AUDIENCE) {
     return reject('INVALID_AUDIENCE', { audience: auth.audience });
   }
-  if (input.allowedIssuers && input.allowedIssuers.length > 0) {
-    if (!input.allowedIssuers.includes(auth.issuer)) {
-      return reject('INVALID_ISSUER', { issuer: auth.issuer });
-    }
+  if (!input.allowedIssuers || input.allowedIssuers.length === 0) {
+    return reject('ALLOWED_ISSUERS_NOT_CONFIGURED');
+  }
+  if (!input.allowedIssuers.includes(auth.issuer)) {
+    return reject('INVALID_ISSUER', { issuer: auth.issuer });
   }
   if (auth.decision !== ProvisioningDecision.ALLOW) {
     return reject('DECISION_DENY', { decision: auth.decision });
@@ -130,9 +131,19 @@ export function verifyAuthorizationIntegrity(input: {
     return reject('DIGEST_ONLY_NOT_ALLOWED_IN_PRODUCTION');
   }
 
+  if (!input.keys.length) {
+    return reject('TRUST_KEYS_NOT_CONFIGURED');
+  }
   const key = input.keys.find((k) => k.keyId === auth.key_id);
   if (!key) {
     return reject('UNKNOWN_KEY_ID', { key_id: auth.key_id });
+  }
+  if (key.algorithm !== algorithm) {
+    return reject('ALGORITHM_MISMATCH', {
+      announced: algorithm,
+      configured: key.algorithm,
+      key_id: auth.key_id,
+    });
   }
   if (!auth.signature) {
     return reject('SIGNATURE_MISSING');

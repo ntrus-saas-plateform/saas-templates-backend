@@ -140,6 +140,21 @@ export class AcceptProvisioningAuthorizationUseCase {
       signaturePresent: Boolean(auth.signature),
     });
 
+    // Race / replay: never accept if local row is already revoked (monotonic)
+    if (
+      stored.revocationStatus === RevocationStatus.REVOKED ||
+      stored.authorizationStatus === 'REVOKED' ||
+      stored.verificationStatus === AuthorizationVerificationStatus.REVOKED
+    ) {
+      return this.createRejectedRequest(
+        input,
+        auth,
+        stored.id,
+        slot,
+        'AUTHORIZATION_REVOKED',
+      );
+    }
+
     if (!integrity.ok) {
       await enqueueP7(
         this.outbox,
@@ -438,6 +453,10 @@ export class HandleAuthorizationRevocationUseCase {
     private readonly audit?: AuditEventRepositoryPort,
   ) {}
 
+  /**
+   * Apply a *already integrity-verified* P5 revocation event.
+   * Operator-forged calls without verification must never reach this method.
+   */
   async execute(input: {
     actorId: string;
     eventId: string;
@@ -448,50 +467,72 @@ export class HandleAuthorizationRevocationUseCase {
     reasonCode?: string | null;
     reference?: string | null;
     payload?: Record<string, unknown>;
+    integrityVerified: true;
   }) {
-    const inbox = await this.repo.recordRevocationInbox({
+    if (!input.integrityVerified) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Revocation requires verified P5 event integrity',
+      );
+    }
+
+    const applied = await this.repo.applyRevocationAtomically({
       eventId: input.eventId,
       authorizationId: input.authorizationId,
       revocationVersion: input.revocationVersion,
       eventName: input.eventName,
       payload: input.payload ?? {},
-      outcome: 'APPLIED',
-      rejectionReason: null,
-    });
-    if (inbox.duplicate) {
-      return { outcome: 'DUPLICATE' as const };
-    }
-
-    const updated = await this.repo.markAuthorizationRevoked({
-      authorizationId: input.authorizationId,
-      revocationVersion: input.revocationVersion,
       revokedAt: input.revokedAt ? new Date(input.revokedAt) : new Date(),
       reasonCode: input.reasonCode ?? null,
       reference: input.reference ?? null,
     });
 
-    await enqueueP7(
-      this.outbox,
-      createAuthorizationRevokedEvent({
-        actorId: input.actorId,
-        correlationId: randomUUID(),
-        authorizationId: input.authorizationId,
-        revocationVersion: input.revocationVersion,
-      }),
-    );
-    if (this.audit) {
-      await this.audit.create({
-        eventType: 'provisioning.authorization.revoked',
-        actorId: input.actorId,
-        subjectType: 'PROVISIONING_AUTHORIZATION',
-        subjectId: input.authorizationId,
-        details: {
-          revocationVersion: input.revocationVersion,
-          status: updated?.revocationStatus ?? RevocationStatus.REVOKED,
-        },
-      });
+    if (applied.outcome === 'DUPLICATE') {
+      return { outcome: 'DUPLICATE' as const };
     }
-    return { outcome: 'APPLIED' as const, authorization: updated };
+    if (applied.outcome === 'IGNORED_STALE') {
+      // Never advertise APPLIED / never emit revoke outbox for stale versions
+      return { outcome: 'IGNORED_STALE' as const, authorization: null };
+    }
+
+    try {
+      await enqueueP7(
+        this.outbox,
+        createAuthorizationRevokedEvent({
+          actorId: input.actorId,
+          correlationId: randomUUID(),
+          authorizationId: input.authorizationId,
+          revocationVersion: input.revocationVersion,
+        }),
+      );
+    } catch (err) {
+      throw new DomainError(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        'Failed to publish revocation outbox event after durable apply',
+        [{ authorizationId: input.authorizationId }],
+        err instanceof Error ? err : undefined,
+      );
+    }
+
+    if (!this.audit) {
+      throw new DomainError(
+        ErrorCode.INTERNAL_ERROR,
+        'Audit writer required for sensitive revocation operations',
+      );
+    }
+    await this.audit.create({
+      eventType: 'provisioning.authorization.revoked',
+      actorId: input.actorId,
+      subjectType: 'PROVISIONING_AUTHORIZATION',
+      subjectId: input.authorizationId,
+      details: {
+        revocationVersion: input.revocationVersion,
+        status: applied.authorization?.revocationStatus ?? RevocationStatus.REVOKED,
+        eventId: input.eventId,
+      },
+    });
+
+    return { outcome: 'APPLIED' as const, authorization: applied.authorization };
   }
 }
 

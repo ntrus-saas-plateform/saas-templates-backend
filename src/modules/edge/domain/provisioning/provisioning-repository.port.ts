@@ -183,4 +183,22 @@ export interface ProvisioningRepositoryPort {
     outcome: string;
     rejectionReason: string | null;
   }): Promise<{ duplicate: boolean }>;
+
+  /**
+   * Atomically record inbox + apply revocation (monotonic version).
+   * Stale/out-of-order versions → IGNORED_STALE (never reported as APPLIED).
+   */
+  applyRevocationAtomically(input: {
+    eventId: string;
+    authorizationId: string;
+    revocationVersion: number;
+    eventName: string;
+    payload: Record<string, unknown>;
+    revokedAt: Date;
+    reasonCode: string | null;
+    reference: string | null;
+  }): Promise<{
+    outcome: 'APPLIED' | 'DUPLICATE' | 'IGNORED_STALE';
+    authorization: StoredProvisioningAuthorization | null;
+  }>;
 }

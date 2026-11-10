@@ -143,11 +143,56 @@ export class PgProvisioningRepository implements ProvisioningRepositoryPort {
          $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42::jsonb
        )
        ON CONFLICT (authorization_id, authorization_version) DO UPDATE SET
-         verification_status = EXCLUDED.verification_status,
-         verification_reason_code = EXCLUDED.verification_reason_code,
-         verified_at = EXCLUDED.verified_at,
-         authorization_status = EXCLUDED.authorization_status,
-         revocation_status = EXCLUDED.revocation_status,
+         -- Monotonic revocation: never resurrect REVOKED → ACTIVE/NOT_REVOKED on replay
+         verification_status = CASE
+           WHEN edge_provisioning_authorizations.revocation_status = 'REVOKED'
+             OR edge_provisioning_authorizations.authorization_status = 'REVOKED'
+             OR EXCLUDED.revocation_status = 'REVOKED'
+             THEN 'REVOKED'
+           ELSE EXCLUDED.verification_status
+         END,
+         verification_reason_code = CASE
+           WHEN edge_provisioning_authorizations.revocation_status = 'REVOKED'
+             OR edge_provisioning_authorizations.authorization_status = 'REVOKED'
+             THEN COALESCE(edge_provisioning_authorizations.verification_reason_code, 'AUTHORIZATION_REVOKED')
+           ELSE EXCLUDED.verification_reason_code
+         END,
+         verified_at = CASE
+           WHEN edge_provisioning_authorizations.revocation_status = 'REVOKED'
+             OR edge_provisioning_authorizations.authorization_status = 'REVOKED'
+             THEN edge_provisioning_authorizations.verified_at
+           ELSE EXCLUDED.verified_at
+         END,
+         authorization_status = CASE
+           WHEN edge_provisioning_authorizations.revocation_status = 'REVOKED'
+             OR edge_provisioning_authorizations.authorization_status = 'REVOKED'
+             OR EXCLUDED.revocation_status = 'REVOKED'
+             OR EXCLUDED.authorization_status = 'REVOKED'
+             THEN 'REVOKED'
+           ELSE EXCLUDED.authorization_status
+         END,
+         revocation_status = CASE
+           WHEN edge_provisioning_authorizations.revocation_status = 'REVOKED'
+             OR EXCLUDED.revocation_status = 'REVOKED'
+             THEN 'REVOKED'
+           ELSE EXCLUDED.revocation_status
+         END,
+         revocation_version = GREATEST(
+           COALESCE(edge_provisioning_authorizations.revocation_version, 0),
+           COALESCE(EXCLUDED.revocation_version, 0)
+         ),
+         revoked_at = COALESCE(
+           edge_provisioning_authorizations.revoked_at,
+           EXCLUDED.revoked_at
+         ),
+         revocation_reason_code = COALESCE(
+           edge_provisioning_authorizations.revocation_reason_code,
+           EXCLUDED.revocation_reason_code
+         ),
+         revocation_reference = COALESCE(
+           edge_provisioning_authorizations.revocation_reference,
+           EXCLUDED.revocation_reference
+         ),
          updated_at = NOW()
        RETURNING *`,
       [
@@ -548,6 +593,101 @@ export class PgProvisioningRepository implements ProvisioningRepositoryPort {
       const code = (err as { code?: string })?.code;
       if (code === '23505') return { duplicate: true };
       throw err;
+    }
+  }
+
+  async applyRevocationAtomically(input: {
+    eventId: string;
+    authorizationId: string;
+    revocationVersion: number;
+    eventName: string;
+    payload: Record<string, unknown>;
+    revokedAt: Date;
+    reasonCode: string | null;
+    reference: string | null;
+  }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      try {
+        await client.query(
+          `INSERT INTO edge_p7_authorization_revocation_inbox (
+             event_id, authorization_id, revocation_version, event_name, payload, outcome, rejection_reason
+           ) VALUES ($1,$2,$3,$4,$5::jsonb,'APPLIED',NULL)`,
+          [
+            input.eventId,
+            input.authorizationId,
+            input.revocationVersion,
+            input.eventName,
+            JSON.stringify(input.payload),
+          ],
+        );
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === '23505') {
+          await client.query('ROLLBACK');
+          return { outcome: 'DUPLICATE' as const, authorization: null };
+        }
+        throw err;
+      }
+
+      // Serialize accept/revoke races for this authorization_id
+      await client.query(
+        `SELECT authorization_id FROM edge_provisioning_authorizations
+         WHERE authorization_id = $1
+         FOR UPDATE`,
+        [input.authorizationId],
+      );
+
+      const updated = await client.query(
+        `UPDATE edge_provisioning_authorizations SET
+           revocation_status = 'REVOKED',
+           authorization_status = 'REVOKED',
+           verification_status = 'REVOKED',
+           revocation_version = GREATEST(COALESCE(revocation_version, 0), $2),
+           revoked_at = COALESCE(revoked_at, $3),
+           revocation_reason_code = COALESCE($4, revocation_reason_code),
+           revocation_reference = COALESCE($5, revocation_reference),
+           updated_at = NOW()
+         WHERE authorization_id = $1
+           AND (revocation_version IS NULL OR revocation_version < $2
+                OR (revocation_version = $2 AND revocation_status <> 'REVOKED'))
+         RETURNING *`,
+        [
+          input.authorizationId,
+          input.revocationVersion,
+          input.revokedAt,
+          input.reasonCode,
+          input.reference,
+        ],
+      );
+
+      if (!updated.rows[0]) {
+        await client.query(
+          `UPDATE edge_p7_authorization_revocation_inbox
+           SET outcome = 'IGNORED_STALE',
+               rejection_reason = 'NO_NEWER_REVOCATION_APPLIED'
+           WHERE event_id = $1`,
+          [input.eventId],
+        );
+        await client.query('COMMIT');
+        return { outcome: 'IGNORED_STALE' as const, authorization: null };
+      }
+
+      await client.query('COMMIT');
+      return {
+        outcome: 'APPLIED' as const,
+        authorization: this.mapAuth(updated.rows[0] as Record<string, unknown>),
+      };
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
     }
   }
 }

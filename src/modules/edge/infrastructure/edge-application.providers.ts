@@ -155,6 +155,7 @@ import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unava
 import { PROVISIONING_REPOSITORY_PORT } from '../domain/provisioning/provisioning-repository.port.js';
 import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
+import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
 import { DurableSubscriptionProvisioningAdapter } from './provisioning/durable-provisioning.adapter.js';
 import { ResolvingSubscriptionProvisioningAdapter } from './provisioning/resolving-provisioning.adapter.js';
 import { loadProvisioningTrustMaterial } from './provisioning/trust-material.js';
@@ -2428,6 +2429,7 @@ export const edgeApplicationProviders: Provider[] = [
     useClass: UnavailableSubscriptionBillingAdapter,
   },
   UnavailableSubscriptionProvisioningAdapter,
+  EdgeP5S2STokenClient,
   FailClosedP5AuthorizationStatusAdapter,
   {
     provide: P5_AUTHORIZATION_STATUS_PORT,
