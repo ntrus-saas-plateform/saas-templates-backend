@@ -2558,8 +2558,12 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: CreateTechnicalVersionUseCase,
-    useFactory: (repo, audit) => new CreateTechnicalVersionUseCase(repo, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) => new CreateTechnicalVersionUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: UpdateTechnicalVersionDraftUseCase,
@@ -2568,8 +2572,13 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: TransitionTechnicalVersionUseCase,
-    useFactory: (repo, audit) => new TransitionTechnicalVersionUseCase(repo, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, outbox, audit) =>
+      new TransitionTechnicalVersionUseCase(repo, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: RegisterPlatformUseCase,

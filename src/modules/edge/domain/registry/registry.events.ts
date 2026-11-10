@@ -169,3 +169,45 @@ export function createCompatibilityEvaluatedEvent(p: {
     payload: { evaluationId: p.evaluationId, result: p.result },
   });
 }
+
+export function createTechnicalVersionRegisteredEvent(p: {
+  actorId: string;
+  correlationId: string;
+  versionId: string;
+  productRegistryId: string;
+  technicalVersion: string;
+}) {
+  return registryEvent({
+    eventType: 'p7.registry.technical_version.registered.v1',
+    actorId: p.actorId,
+    correlationId: p.correlationId,
+    aggregateType: 'PRODUCT_TECHNICAL_VERSION',
+    aggregateId: p.versionId,
+    payload: {
+      versionId: p.versionId,
+      productRegistryId: p.productRegistryId,
+      technicalVersion: p.technicalVersion,
+    },
+  });
+}
+
+export function createTechnicalVersionTransitionedEvent(p: {
+  actorId: string;
+  correlationId: string;
+  versionId: string;
+  fromStatus: string;
+  toStatus: string;
+}) {
+  return registryEvent({
+    eventType: 'p7.registry.technical_version.transitioned.v1',
+    actorId: p.actorId,
+    correlationId: p.correlationId,
+    aggregateType: 'PRODUCT_TECHNICAL_VERSION',
+    aggregateId: p.versionId,
+    payload: {
+      versionId: p.versionId,
+      fromStatus: p.fromStatus,
+      toStatus: p.toStatus,
+    },
+  });
+}

@@ -2,7 +2,7 @@
 
 ## Suites exécutées (réel)
 
-### Backend registry domain
+### Backend registry (domain + application + security redaction)
 
 ```bash
 npm run test:edge:registry
@@ -12,18 +12,13 @@ npm run test:edge:registry
 |-------|--------|
 | Date | 2026-11-10 |
 | Exit code | 0 |
-| Résumé | Test Files 2 passed / Tests 10 passed |
+| Résumé | Test Files **4** passed / Tests **20** passed |
 
-### Backend provisioning (non-régression P7.1)
-
-```bash
-npm run test:edge:provisioning
-```
-
-| Champ | Valeur |
-|-------|--------|
-| Exit code | 0 |
-| Résumé | Test Files 11 passed / Tests 55 passed |
+Couverture :
+- lifecycle transitions / provisionable
+- compatibility engine deterministic
+- use-cases: register P1 FK, audit fail-closed, certify→provisionable, release channel normalize, retired contract INCOMPATIBLE
+- secret redaction source contract
 
 ### Backend typecheck
 
@@ -35,18 +30,35 @@ npm run typecheck
 |-------|--------|
 | Exit code | 0 |
 
-### Migration file check
+### Migration runtime (éphémère Postgres Docker `p72-pg` :55432)
 
 ```bash
-npm run check:registry:migrations
+CONTROL_PLANE_DB_HOST=127.0.0.1
+CONTROL_PLANE_DB_PORT=55432
+CONTROL_PLANE_DB_NAME=platform_control
+CONTROL_PLANE_DB_USER=postgres
+CONTROL_PLANE_DB_PASSWORD=postgres
+npm run migrate:control
 ```
 
 | Champ | Valeur |
 |-------|--------|
 | Exit code | 0 |
-| Output | OK: registry migration file present |
+| Preuve | `Applied 096_edge_p7_product_platform_runtime_registry` + `Control plane migrations complete` |
 
-### Frontend registry helper tests
+Vérifications SQL post-migrate :
+
+```text
+schema_migrations: 096_edge_p7_product_platform_runtime_registry
+tables edge_p7_product_registry, edge_p7_product_technical_versions,
+  edge_p7_product_platforms, edge_p7_runtime_environments,
+  edge_p7_deployment_profiles, edge_p7_product_control_contracts,
+  edge_p7_compatibility_evaluations, edge_p7_registry_history
+permissions product_registry/platforms/runtime/profiles/contracts/registry_*
+deployment profiles: SHARED_SAAS, DEDICATED_DATA, DEDICATED_RUNTIME, PRIVATE_CLOUD, ON_PREMISE
+```
+
+### Frontend
 
 ```bash
 npm test -- --run lib/edge/registry.test.ts
@@ -55,12 +67,14 @@ npm test -- --run lib/edge/registry.test.ts
 | Champ | Valeur |
 |-------|--------|
 | Exit code | 0 |
-| Résumé | Test Files 1 passed / Tests 4 passed |
+| Résumé | 4 passed |
 
-### Frontend typecheck
+### Non-régression P7.1
 
-Erreurs TS préexistantes sur `edge/sales/*` et `edge/subscriptions/[id]` — **hors périmètre P7.2**. Pages registry non listées dans ces erreurs.
+```bash
+npm run test:edge:provisioning
+```
 
-### Migration DB runtime
-
-`npm run migrate:control` / `check:provisioning:migrations` : authentification CP DB (`28P01`) non disponible dans cet environnement — **exécution schema_migrations 096 PENDING**.
+| Champ | Valeur |
+|-------|--------|
+| Dernier run connu | 11 files / 55 passed |

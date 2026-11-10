@@ -27,6 +27,8 @@ import {
   createProductDeprecatedEvent,
   createProductRegisteredEvent,
   createProductUpdatedEvent,
+  createTechnicalVersionRegisteredEvent,
+  createTechnicalVersionTransitionedEvent,
 } from '../../domain/registry/registry.events.js';
 import {
   CertificationStatus,
@@ -323,6 +325,7 @@ const ALLOWED_RELEASE_CHANNELS = new Set(['DEV', 'BETA', 'STABLE', 'LTS', 'HOTFI
 export class CreateTechnicalVersionUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
@@ -371,6 +374,16 @@ export class CreateTechnicalVersionUseCase {
       actorId: input.actorId,
       details: { technicalVersion: version.technicalVersion },
     });
+    await enqueue(
+      this.outbox,
+      createTechnicalVersionRegisteredEvent({
+        actorId: input.actorId,
+        correlationId: randomUUID(),
+        versionId: version.id,
+        productRegistryId: input.productRegistryId,
+        technicalVersion: version.technicalVersion,
+      }),
+    );
     await requireAudit(this.audit, {
       eventType: 'registry.technical_version.created',
       actorId: input.actorId,
@@ -385,6 +398,7 @@ export class CreateTechnicalVersionUseCase {
 export class TransitionTechnicalVersionUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
@@ -412,6 +426,16 @@ export class TransitionTechnicalVersionUseCase {
       actorId: input.actorId,
       details: {},
     });
+    await enqueue(
+      this.outbox,
+      createTechnicalVersionTransitionedEvent({
+        actorId: input.actorId,
+        correlationId: randomUUID(),
+        versionId: updated.id,
+        fromStatus: current.versionStatus,
+        toStatus: input.toStatus,
+      }),
+    );
     await requireAudit(this.audit, {
       eventType: 'registry.technical_version.transitioned',
       actorId: input.actorId,

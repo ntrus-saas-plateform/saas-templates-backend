@@ -35,7 +35,7 @@
     "check:provisioning:migrations": "node --import tsx scripts/check-provisioning-migrations.ts",
     "check:registry:migrations": "node --import tsx scripts/check-registry-migrations.ts",
     "test:edge:provisioning": "vitest run src/modules/edge/domain/provisioning src/modules/edge/infrastructure/provisioning src/modules/edge/application/provisioning src/modules/edge/presentation/controllers/operator-cannot-forge-revocation.spec.ts",
-    "test:edge:registry": "vitest run src/modules/edge/domain/registry",
+    "test:edge:registry": "vitest run src/modules/edge/domain/registry src/modules/edge/application/registry src/modules/edge/infrastructure/registry",
     "certify:billing": "node --import tsx scripts/certify-billing.ts",
     "migrate:tenant": "node --import tsx scripts/migrate-tenant.ts",
     "migrate:pharmacy-patients": "node --import tsx scripts/migrate-pharmacy-patients-to-customers.ts",

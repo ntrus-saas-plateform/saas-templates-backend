@@ -9,7 +9,17 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  CreateControlContractDto,
+  CreateTechnicalVersionDto,
+  EvaluateCompatibilityDto,
+  PatchWithVersionDto,
+  RegisterEnvironmentDto,
+  RegisterPlatformDto,
+  RegisterProductDto,
+  TransitionStatusDto,
+} from '../dto/registry.dto.js';
 import { EdgeRoute, RequireEdgePermissions } from '../../../../shared/auth/decorators.js';
 import { EdgeAuthGuard } from '../../../../shared/auth/edge-auth.guard.js';
 import { EdgePermissionGuard } from '../../../../shared/auth/edge-permission.guard.js';
@@ -108,26 +118,20 @@ export class EdgeRegistryController {
 
   @Post('products')
   @RequireEdgePermissions('platform:product_registry:manage')
-  createProduct(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      productId: string;
-      code: string;
-      name: string;
-      description?: string;
-      verticalCategory?: string;
-    },
-  ) {
+  @ApiOperation({ summary: 'Register a P1 product into the P7.2 technical registry' })
+  @ApiBody({ type: RegisterProductDto })
+  createProduct(@Req() req: EdgeRequest, @Body() body: RegisterProductDto) {
     return this.registerProduct.execute({ actorId: actorId(req), ...body });
   }
 
   @Patch('products/:id')
   @RequireEdgePermissions('platform:product_registry:manage')
+  @ApiOperation({ summary: 'Update product registry metadata (optimistic concurrency)' })
+  @ApiBody({ type: PatchWithVersionDto })
   patchProduct(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { expectedVersion: number; patch: Record<string, unknown> },
+    @Body() body: PatchWithVersionDto,
   ) {
     return this.updateProduct.execute({
       actorId: actorId(req),
@@ -139,15 +143,17 @@ export class EdgeRegistryController {
 
   @Post('products/:id/transition')
   @RequireEdgePermissions('platform:product_registry:certify')
+  @ApiOperation({ summary: 'Transition product registry lifecycle (certify/suspend/deprecate/retire)' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionProductStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: RegistryLifecycleStatus; reason?: string },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionProduct.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as RegistryLifecycleStatus,
       reason: body.reason,
     });
   }
@@ -169,11 +175,12 @@ export class EdgeRegistryController {
 
   @Post('products/:id/versions')
   @RequireEdgePermissions('platform:product_registry:manage')
+  @ApiOperation({ summary: 'Create a draft technical version for a registered product' })
+  @ApiBody({ type: CreateTechnicalVersionDto })
   createProductVersion(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body()
-    body: { technicalVersion: string; releaseChannel?: string; changeSummary?: string },
+    @Body() body: CreateTechnicalVersionDto,
   ) {
     return this.createVersion.execute({
       actorId: actorId(req),
@@ -202,15 +209,17 @@ export class EdgeRegistryController {
 
   @Post('versions/:id/transition')
   @RequireEdgePermissions('platform:product_registry:manage')
+  @ApiOperation({ summary: 'Publish/deprecate/retire a technical version' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionVersionStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: TechnicalVersionStatus },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionVersion.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as TechnicalVersionStatus,
     });
   }
 
@@ -241,23 +250,14 @@ export class EdgeRegistryController {
 
   @Post('platforms')
   @RequireEdgePermissions('platform:product_platforms:manage')
-  createPlatform(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      code: string;
-      name: string;
-      description?: string;
-      platformType: PlatformType;
-      businessBackendId?: string;
-      allowedProductIds?: string[];
-      supportedEnvironmentTypes?: string[];
-      supportedProfileCodes?: string[];
-      connectivityReference?: string;
-      secureConfigRef?: string;
-    },
-  ) {
-    return this.registerPlatform.execute({ actorId: actorId(req), ...body });
+  @ApiOperation({ summary: 'Register a product platform (no plaintext secrets)' })
+  @ApiBody({ type: RegisterPlatformDto })
+  createPlatform(@Req() req: EdgeRequest, @Body() body: RegisterPlatformDto) {
+    return this.registerPlatform.execute({
+      actorId: actorId(req),
+      ...body,
+      platformType: body.platformType as PlatformType,
+    });
   }
 
   @Patch('platforms/:id')
@@ -277,15 +277,17 @@ export class EdgeRegistryController {
 
   @Post('platforms/:id/transition')
   @RequireEdgePermissions('platform:product_platforms:manage')
+  @ApiOperation({ summary: 'Transition platform operational status with dependency checks' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionPlatformStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: PlatformOperationalStatus; reason?: string },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionPlatform.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as PlatformOperationalStatus,
       reason: body.reason,
     });
   }
@@ -319,23 +321,14 @@ export class EdgeRegistryController {
 
   @Post('environments')
   @RequireEdgePermissions('platform:runtime_environments:manage')
-  createEnvironment(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      platformId: string;
-      code: string;
-      name: string;
-      environmentType: RuntimeEnvironmentType;
-      region?: string;
-      geoZone?: string;
-      securityClassification?: string;
-      dataClassification?: string;
-      allowedProfileCodes?: string[];
-      dataResidencyConstraints?: Record<string, unknown>;
-    },
-  ) {
-    return this.registerEnvironment.execute({ actorId: actorId(req), ...body });
+  @ApiOperation({ summary: 'Register a runtime environment (context, not a physical server)' })
+  @ApiBody({ type: RegisterEnvironmentDto })
+  createEnvironment(@Req() req: EdgeRequest, @Body() body: RegisterEnvironmentDto) {
+    return this.registerEnvironment.execute({
+      actorId: actorId(req),
+      ...body,
+      environmentType: body.environmentType as RuntimeEnvironmentType,
+    });
   }
 
   @Patch('environments/:id')
@@ -355,15 +348,17 @@ export class EdgeRegistryController {
 
   @Post('environments/:id/transition')
   @RequireEdgePermissions('platform:runtime_environments:manage')
+  @ApiOperation({ summary: 'Transition runtime environment status' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionEnvironmentStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: EnvironmentStatus; reason?: string },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionEnvironment.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as EnvironmentStatus,
       reason: body.reason,
     });
   }
@@ -405,15 +400,17 @@ export class EdgeRegistryController {
 
   @Post('deployment-profiles/:id/transition')
   @RequireEdgePermissions('platform:deployment_profiles:manage')
+  @ApiOperation({ summary: 'Transition deployment profile status' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionProfileStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: ProfileStatus; reason?: string },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionProfile.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as ProfileStatus,
       reason: body.reason,
     });
   }
@@ -449,21 +446,9 @@ export class EdgeRegistryController {
 
   @Post('control-contracts')
   @RequireEdgePermissions('platform:product_control_contracts:manage')
-  createControlContract(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      productId: string;
-      platformId: string;
-      contractCode: string;
-      contractVersion: string;
-      schemaVersion: string;
-      connectivityModel: string;
-      supportedCapabilities?: unknown[];
-      supportedControlOperations?: unknown[];
-      s2sAuthPolicy?: Record<string, unknown>;
-    },
-  ) {
+  @ApiOperation({ summary: 'Create a draft product control contract' })
+  @ApiBody({ type: CreateControlContractDto })
+  createControlContract(@Req() req: EdgeRequest, @Body() body: CreateControlContractDto) {
     return this.createContract.execute({ actorId: actorId(req), ...body });
   }
 
@@ -479,15 +464,17 @@ export class EdgeRegistryController {
 
   @Post('control-contracts/:id/transition')
   @RequireEdgePermissions('platform:product_control_contracts:certify')
+  @ApiOperation({ summary: 'Certify/publish/deprecate a control contract' })
+  @ApiBody({ type: TransitionStatusDto })
   transitionContractStatus(
     @Req() req: EdgeRequest,
     @Param('id') id: string,
-    @Body() body: { toStatus: ControlContractStatus; reason?: string },
+    @Body() body: TransitionStatusDto,
   ) {
     return this.transitionContract.execute({
       actorId: actorId(req),
       id,
-      toStatus: body.toStatus,
+      toStatus: body.toStatus as ControlContractStatus,
       reason: body.reason,
     });
   }
@@ -495,19 +482,9 @@ export class EdgeRegistryController {
   // ---- Compatibility ----
   @Post('compatibility/evaluate')
   @RequireEdgePermissions('platform:registry_compatibility:evaluate')
-  evaluate(
-    @Req() req: EdgeRequest,
-    @Body()
-    body: {
-      productRegistryId: string;
-      technicalVersionId: string;
-      platformId: string;
-      environmentId: string;
-      profileId: string;
-      contractId: string;
-      correlationId?: string;
-    },
-  ) {
+  @ApiOperation({ summary: 'Evaluate deterministic product/platform/environment/profile/contract compatibility' })
+  @ApiBody({ type: EvaluateCompatibilityDto })
+  evaluate(@Req() req: EdgeRequest, @Body() body: EvaluateCompatibilityDto) {
     return this.evaluateCompatibility.execute({ actorId: actorId(req), ...body });
   }
 
