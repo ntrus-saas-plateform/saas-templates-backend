@@ -3,6 +3,7 @@ import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-er
 import type { IntegrationEvent } from '../../../../core/domain/events/integration-event.js';
 import type { ControlPlaneOutboxTransactionService } from '../../../../shared/messaging/control-plane-outbox-transaction.service.js';
 import type { AuditEventRepositoryPort } from '../../domain/ports/audit-event-repository.port.js';
+import type { ProductRepositoryPort } from '../../domain/ports/product-repository.port.js';
 import { evaluateRegistryCompatibility } from '../../domain/registry/compatibility-engine.js';
 import {
   assertContractTransition,
@@ -81,6 +82,7 @@ async function requireAudit(
 export class RegisterProductUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
+    private readonly products: ProductRepositoryPort,
     private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
   ) {}
@@ -93,6 +95,14 @@ export class RegisterProductUseCase {
     description?: string | null;
     verticalCategory?: string | null;
   }) {
+    const catalogProduct = await this.products.findById(input.productId);
+    if (!catalogProduct) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'Canonical P1 productId does not exist — refuse orphan registry entry',
+        [{ productId: input.productId }],
+      );
+    }
     const existing = await this.repo.getProductRegistryByProductId(input.productId);
     if (existing) {
       throw new DomainError(ErrorCode.CONFLICT, 'Product already registered in P7.2 registry');
@@ -308,6 +318,8 @@ export class TransitionProductRegistryUseCase {
   }
 }
 
+const ALLOWED_RELEASE_CHANNELS = new Set(['DEV', 'BETA', 'STABLE', 'LTS', 'HOTFIX']);
+
 export class CreateTechnicalVersionUseCase {
   constructor(
     private readonly repo: RegistryRepositoryPort,
@@ -323,10 +335,17 @@ export class CreateTechnicalVersionUseCase {
   }) {
     const product = await this.repo.getProductRegistry(input.productRegistryId);
     if (!product) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Product registry not found');
+    const channel = (input.releaseChannel ?? 'STABLE').trim().toUpperCase();
+    if (!ALLOWED_RELEASE_CHANNELS.has(channel)) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        `Invalid release channel ${input.releaseChannel}; expected DEV|BETA|STABLE|LTS|HOTFIX`,
+      );
+    }
     const version = await this.repo.createTechnicalVersion({
       productRegistryId: input.productRegistryId,
       technicalVersion: input.technicalVersion.trim(),
-      releaseChannel: input.releaseChannel ?? 'STABLE',
+      releaseChannel: channel,
       versionStatus: TechnicalVersionStatus.DRAFT,
       compatibleContractVersions: [],
       compatibleProfileCodes: [],

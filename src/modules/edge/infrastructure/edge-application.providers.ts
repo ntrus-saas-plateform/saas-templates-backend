@@ -2537,8 +2537,14 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: RegisterProductUseCase,
-    useFactory: (repo, outbox, audit) => new RegisterProductUseCase(repo, outbox, audit),
-    inject: [REGISTRY_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+    useFactory: (repo, products, outbox, audit) =>
+      new RegisterProductUseCase(repo, products, outbox, audit),
+    inject: [
+      REGISTRY_REPOSITORY_PORT,
+      PRODUCT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: UpdateProductRegistryUseCase,

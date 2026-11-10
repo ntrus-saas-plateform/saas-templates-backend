@@ -182,6 +182,14 @@ export class EdgeRegistryController {
     });
   }
 
+  @Get('versions/:id')
+  @RequireEdgePermissions('platform:product_registry:read')
+  async getVersion(@Param('id') id: string) {
+    const item = await this.lists.getVersion(id);
+    if (!item) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Technical version not found');
+    return item;
+  }
+
   @Patch('versions/:id')
   @RequireEdgePermissions('platform:product_registry:manage')
   patchVersion(
