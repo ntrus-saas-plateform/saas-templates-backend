@@ -42,9 +42,8 @@ type MongoModule = {
 
 async function loadMongo(): Promise<MongoModule> {
   try {
-    // Dynamic require keeps mongodb optional at compile-time when the package is absent.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('mongodb') as MongoModule;
+    // Dynamic import keeps mongodb optional at compile-time when the package is absent.
+    const mod = (await import('mongodb')) as unknown as MongoModule;
     return mod;
   } catch {
     throw new DomainError(

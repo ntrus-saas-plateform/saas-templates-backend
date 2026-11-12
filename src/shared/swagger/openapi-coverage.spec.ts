@@ -29,7 +29,9 @@ describe('OpenAPI coverage', () => {
       "@Controller('sessions')",
       "@Controller('emergency-access')",
       "@Controller('platform')",
-      "@Controller('customers')",
+      "@Controller('edge/workflows')",
+      "@Controller('edge/registry')",
+      "@Controller('edge/provisioning-requests')",
     ]) {
       expect(src).toContain(marker);
     }

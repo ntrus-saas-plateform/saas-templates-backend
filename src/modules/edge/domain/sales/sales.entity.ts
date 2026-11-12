@@ -198,7 +198,7 @@ export function assertQualificationDecision(input: {
   }
 }
 
-/** Marketing MQL score is informative only — never equals sales qualification. */
+/** Marketing MQL score is informative only â€” never equals sales qualification. */
 export function assertSalesDecisionIndependentOfMarketingScore(input: {
   marketingScore?: number | null;
   salesDecisionBasedOnlyOnMarketingScore?: boolean;
