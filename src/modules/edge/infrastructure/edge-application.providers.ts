@@ -198,6 +198,7 @@ import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.p
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
 import {
   INFRASTRUCTURE_LIVE_EXECUTOR,
+  KEYCLOAK_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
@@ -249,6 +250,21 @@ import {
   VerifyResourcesUseCase,
 } from '../application/infrastructure-provisioning/infrastructure.use-cases.js';
 import { EncryptedSecretsProvider } from './infrastructure-provisioning/secrets-provider.adapter.js';
+// --- P7.7 Keycloak topology provisioning ------------------------------------
+import { KEYCLOAK_REPOSITORY_PORT } from '../domain/keycloak-topology/keycloak-repository.port.js';
+import { KEYCLOAK_PROVIDER_PORT } from '../domain/keycloak-topology/keycloak-provider.port.js';
+import {
+  CreateKeycloakTopologyUseCase,
+  DiscoverKeycloakCapabilitiesUseCase,
+  LaunchTopologyWorkflowUseCase,
+  ListKeycloakUseCase,
+  ProvisionKeycloakRealmUseCase,
+  RegisterKeycloakServerUseCase,
+  RequestKeycloakProvisioningUseCase,
+  TransitionKeycloakTopologyStatusUseCase,
+} from '../application/keycloak-topology/keycloak.use-cases.js';
+import { HttpKeycloakAdminAdapter } from './keycloak/keycloak-admin.adapter.js';
+import { createLiveKeycloakExecutor } from './keycloak/live-keycloak.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -3828,11 +3844,6 @@ export const edgeApplicationProviders: Provider[] = [
     ],
   },
   {
-    provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra) => new WorkflowHandlerRegistry(pci, infra),
-    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR, INFRASTRUCTURE_LIVE_EXECUTOR],
-  },
-  {
     provide: ListWorkflowResourcesUseCase,
     useFactory: (repo) => new ListWorkflowResourcesUseCase(repo),
     inject: [WORKFLOW_REPOSITORY_PORT],
@@ -3999,5 +4010,119 @@ export const edgeApplicationProviders: Provider[] = [
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
     ],
+  },
+
+  // =========================================================================
+  // P7.7 — Keycloak Topology Provisioning & Identity Infrastructure
+  // =========================================================================
+  {
+    // Real Keycloak admin adapter (service-account OAuth2 client_credentials,
+    // TLS, SSRF origin guard, idempotent reconcile-before-create).
+    provide: KEYCLOAK_PROVIDER_PORT,
+    useFactory: (secrets) => new HttpKeycloakAdminAdapter({ secrets }),
+    inject: [SECRETS_PROVIDER_PORT],
+  },
+  {
+    provide: ListKeycloakUseCase,
+    useFactory: (repo) => new ListKeycloakUseCase(repo),
+    inject: [KEYCLOAK_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterKeycloakServerUseCase,
+    useFactory: (repo, outbox, audit, secrets) =>
+      new RegisterKeycloakServerUseCase(repo, outbox, audit, secrets),
+    inject: [KEYCLOAK_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT, SECRETS_PROVIDER_PORT],
+  },
+  {
+    provide: DiscoverKeycloakCapabilitiesUseCase,
+    useFactory: (repo, provider, outbox, audit) =>
+      new DiscoverKeycloakCapabilitiesUseCase(repo, provider, outbox, audit),
+    inject: [KEYCLOAK_REPOSITORY_PORT, KEYCLOAK_PROVIDER_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateKeycloakTopologyUseCase,
+    useFactory: (repo, auth, placement, outbox, audit) =>
+      new CreateKeycloakTopologyUseCase(repo, auth, placement, outbox, audit),
+    inject: [KEYCLOAK_REPOSITORY_PORT, WORKFLOW_AUTHORIZATION_PORT, WORKFLOW_PLACEMENT_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionKeycloakTopologyStatusUseCase,
+    useFactory: (repo, outbox, audit) => new TransitionKeycloakTopologyStatusUseCase(repo, outbox, audit),
+    inject: [KEYCLOAK_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestKeycloakProvisioningUseCase,
+    useFactory: (repo, wfRepo, auth, placement, outbox, audit, createInstance, startWorkflow) =>
+      new RequestKeycloakProvisioningUseCase(
+        repo,
+        wfRepo,
+        auth,
+        placement,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      KEYCLOAK_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      WORKFLOW_PLACEMENT_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: LaunchTopologyWorkflowUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new LaunchTopologyWorkflowUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      KEYCLOAK_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: ProvisionKeycloakRealmUseCase,
+    useFactory: (repo, provider, secrets) => new ProvisionKeycloakRealmUseCase(repo, provider, secrets),
+    inject: [KEYCLOAK_REPOSITORY_PORT, KEYCLOAK_PROVIDER_PORT, SECRETS_PROVIDER_PORT],
+  },
+  {
+    // Live executor: bridges P7.4 handlers → P7.7 use cases + REAL Keycloak API.
+    provide: KEYCLOAK_LIVE_EXECUTOR,
+    useFactory: (repo, provider, secrets, discover, createTopology) =>
+      createLiveKeycloakExecutor({
+        repo,
+        provider,
+        secrets,
+        discoverCapabilities: discover,
+        createTopology,
+      }),
+    inject: [
+      KEYCLOAK_REPOSITORY_PORT,
+      KEYCLOAK_PROVIDER_PORT,
+      SECRETS_PROVIDER_PORT,
+      DiscoverKeycloakCapabilitiesUseCase,
+      CreateKeycloakTopologyUseCase,
+    ],
+  },
+  {
+    provide: WORKFLOW_HANDLER_REGISTRY,
+    useFactory: (pci, infra, keycloak) => new WorkflowHandlerRegistry(pci, infra, keycloak),
+    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR, INFRASTRUCTURE_LIVE_EXECUTOR, KEYCLOAK_LIVE_EXECUTOR],
   },
 ];

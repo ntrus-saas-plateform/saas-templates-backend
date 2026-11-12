@@ -14,9 +14,15 @@ import {
   type InfrastructureLiveExecutor,
 } from '../../domain/infrastructure-provisioning/infrastructure-handlers.js';
 import { INFRASTRUCTURE_HANDLER_KEYS } from '../../domain/infrastructure-provisioning/infrastructure.types.js';
+import {
+  registerKeycloakHandlers,
+  type KeycloakLiveExecutor,
+} from '../../domain/keycloak-topology/keycloak-handlers.js';
+import { KEYCLOAK_HANDLER_KEYS } from '../../domain/keycloak-topology/keycloak.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
+export const KEYCLOAK_LIVE_EXECUTOR = Symbol('KEYCLOAK_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -33,6 +39,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(INFRASTRUCTURE_LIVE_EXECUTOR)
     liveInfrastructure?: InfrastructureLiveExecutor | null,
+    @Optional()
+    @Inject(KEYCLOAK_LIVE_EXECUTOR)
+    liveKeycloak?: KeycloakLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -48,6 +57,8 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
         liveInfrastructure,
       );
     }
+    // P7.7 — Keycloak topology handlers (live executor = no simulation).
+    registerKeycloakHandlers(this.inner, KEYCLOAK_HANDLER_KEYS, liveKeycloak ?? undefined);
   }
 
   register(handler: WorkflowStepHandler): void {

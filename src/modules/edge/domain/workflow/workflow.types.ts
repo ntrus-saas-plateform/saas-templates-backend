@@ -1,6 +1,7 @@
 /** P7.4 Durable Workflow domain types. */
 
 import { INFRASTRUCTURE_HANDLER_KEYS as P76_HANDLER_KEYS } from '../infrastructure-provisioning/infrastructure.types.js';
+import { KEYCLOAK_HANDLER_KEYS } from '../keycloak-topology/keycloak.types.js';
 
 export enum WorkflowDefinitionStatus {
   DRAFT = 'DRAFT',
@@ -389,6 +390,9 @@ export const KNOWN_HANDLER_KEYS = [
   'product_control.verify_conformance',
   ...P76_HANDLER_KEYS,
   ...FUTURE_PROVISIONING_HANDLER_KEYS,
+  // P7.7 — real Keycloak topology provisioning handlers (registry-backed live
+  // executor; validateDefinition must accept them when publishing definitions).
+  ...KEYCLOAK_HANDLER_KEYS,
 ] as const;
 
 export type KnownHandlerKey = (typeof KNOWN_HANDLER_KEYS)[number];

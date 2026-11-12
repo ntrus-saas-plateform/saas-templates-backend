@@ -6,6 +6,8 @@ import {
   registerProductControlFoundationHandlers,
 } from '../product-control/product-control-handlers.js';
 import { registerInfrastructureHandlers } from '../infrastructure-provisioning/infrastructure-handlers.js';
+import { registerKeycloakHandlers } from '../keycloak-topology/keycloak-handlers.js';
+import { KEYCLOAK_HANDLER_KEYS } from '../keycloak-topology/keycloak.types.js';
 import {
   FUTURE_PROVISIONING_HANDLER_KEYS,
   WorkflowErrorClass,
@@ -159,6 +161,8 @@ export function createDefaultWorkflowHandlerRegistry(): InMemoryWorkflowHandlerR
   registerProductControlFoundationHandlers(registry);
   // P7.6 handlers registered without live executor → DEPENDENCY_UNAVAILABLE until wired.
   registerInfrastructureHandlers(registry);
+  // P7.7 handlers registered without live executor → DEPENDENCY_UNAVAILABLE until wired.
+  registerKeycloakHandlers(registry, KEYCLOAK_HANDLER_KEYS);
   registerUnavailableProvisioningHandlers(registry);
   // Explicit alias registration for mandate wording (same keys as FUTURE_*).
   registerOperationNotImplementedHandlers(

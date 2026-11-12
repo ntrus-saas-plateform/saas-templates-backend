@@ -38,7 +38,9 @@ import { WORKFLOW_AUTHORIZATION_PORT } from '../../domain/workflow/workflow-auth
 import { WORKFLOW_PLACEMENT_PORT } from '../../domain/workflow/workflow-placement.port.js';
 import { PRODUCT_CONTROL_REPOSITORY_PORT } from '../../domain/product-control/product-control-repository.port.js';
 import { INFRASTRUCTURE_REPOSITORY_PORT } from '../../domain/infrastructure-provisioning/infrastructure-repository.port.js';
+import { KEYCLOAK_REPOSITORY_PORT } from '../../domain/keycloak-topology/keycloak-repository.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
+import { PgKeycloakRepository } from '../keycloak/pg-keycloak.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -119,6 +121,8 @@ const providers = [
   { provide: WORKFLOW_PLACEMENT_PORT, useClass: PgWorkflowPlacementAdapter },
   { provide: PRODUCT_CONTROL_REPOSITORY_PORT, useClass: PgProductControlRepository },
   { provide: INFRASTRUCTURE_REPOSITORY_PORT, useClass: PgInfrastructureRepository },
+  // P7.7 — Keycloak topology registry (durable topology/resource registry).
+  { provide: KEYCLOAK_REPOSITORY_PORT, useClass: PgKeycloakRepository },
 ];
 
 @Module({

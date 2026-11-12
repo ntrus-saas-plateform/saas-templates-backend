@@ -5,6 +5,8 @@ export type SecretMaterial = {
   password?: string;
   connectionUri?: string;
   token?: string;
+  /** Opaque single-value secret (Keycloak admin/client credentials). */
+  value?: string;
   expiresAt?: Date | null;
   extra?: Record<string, string>;
 };
