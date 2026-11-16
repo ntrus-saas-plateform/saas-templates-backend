@@ -409,6 +409,7 @@ import {
   IngestOperationalAlertUseCase,
   LinkProblemIncidentUseCase,
   ListAlertsUseCase,
+  ListAutomationsUseCase,
   ListCapacityUseCase,
   ListChangesUseCase,
   ListIncidentsUseCase,
@@ -5905,6 +5906,11 @@ export const edgeApplicationProviders: Provider[] = [
   {
     provide: ListOperationalExceptionsUseCase,
     useFactory: (repo) => new ListOperationalExceptionsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListAutomationsUseCase,
+    useFactory: (repo) => new ListAutomationsUseCase(repo),
     inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
   },
   {

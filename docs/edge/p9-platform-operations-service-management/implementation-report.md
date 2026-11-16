@@ -1,60 +1,51 @@
 # P9 — Implementation report
 
 **Date :** 2026-11-16  
-**Verdict :** `P9 PARTIALLY IMPLEMENTED` (P9.0–P9.11 core + P9.12 partiel)
+**Verdict :** `P9 PARTIALLY IMPLEMENTED` (P9.0–P9.11 core + P9.12 cohérence FE/BE)
 
 ## Commit SHAs (feature/console, local — not pushed)
 
 | Repo | SHA | Message |
 |------|-----|---------|
-| Backend | `23366ad` | P9.2–P9.11 operations core |
-| Frontend | `6a278b8` | Operations Center + API align |
 | Backend (P9.1) | `59eab9a` | service catalog foundation |
 | Frontend (P9.1) | `d6becd6` | catalog console + nav |
+| Backend (ops core) | `23366ad` | P9.2–P9.11 operations core |
+| Frontend (ops UI) | `6a278b8` | Operations Center + API align |
+| Backend (docs SHAs) | `7cb2c5d` | record SHAs |
+
+*(SHAs de la vague cohérence FE/BE : voir commits suivants sur `feature/console`.)*
 
 ## Delivered
 
-### P9.0
-- Baseline audit des deux repos (remotes réels, HEAD, migrations, absences ops)
-- Architecture, bounded contexts, plan, known limitations
+### P9.0–P9.1
+- Baseline + service catalog mig 115 + console
 
-### P9.1
-- Migration `115_edge_p9_service_catalog.sql`
-- Domaine / use-cases / PG repo / controller / RBAC
-- Console `/edge/operations` + nav shell
+### P9.2–P9.11
+- Migration `116_edge_p9_operations_core.sql`
+- Domain / policy / PG repo / use-cases / routes `edge/operations/*`
+- List pages normalisées `{ items, total }` (y compris on-call, SLO, capacity, runbooks, automation)
+- Overview/analytics = agrégats DB réels ; monitoring `UNAVAILABLE` si `NOT_CONFIGURED`
+- SoD change / status / automation ; recovery VERIFIED exige evidence ; pas de HEALTHY inventé
 
-### P9.2–P9.11 (operations core)
-- Migration `116_edge_p9_operations_core.sql` (tables + permissions `platform:operations:*`)
-- Domain types, events (`edge.p9.*`), policy state machines, repository port
-- `PgOperationsRepository` — SQL réel contre `edge_p9_*` (alert fingerprint dedup, numéros INC/CHG/PRB/REQ)
-- Use cases avec policy asserts + outbox + audit durable
-- Routes `edge/operations/*` (alerts, incidents, problems, changes, maintenance, requests, tasks, on-call, SLO, capacity, recovery, runbooks, status, risks, exceptions, automation, analytics)
-- List GET alignés FE : problems, recovery, status/components, risks, exceptions
-- Overview / analytics : **comptages DB réels** ; intégrations monitoring marquées `UNAVAILABLE` si source `NOT_CONFIGURED`
-- Garde-fous : pas de HEALTHY sans source trusted ; pas de VERIFIED recovery sans evidence ; SoD change/status/automation ; pas de deletes silencieux
-
-### Console FE
-- Operations Center 16 onglets (API-driven, pas de métriques inventées)
-- Client `edgeApi` aligné chemins BE (ack→acknowledge, root-cause, link incidents, slo/measurements, automation singulier)
-- Unit tests module + smoke Playwright (gate sign-in + CSRF reject)
+### Cohérence FE ↔ BE (vague finale)
+- Client `edgeApi` couvre toutes les routes mutatives + listes + aliases mandat
+- Types overview alignés sur `OperationsOverviewAggregate`
+- Bodies alignés : `reject.reason`, `publish.componentCode/DisplayName`, capacity `observedAt` optionnel
+- Query `isMajor` sur incidents ; `GET automation` ; aliases `health`, `major-incidents`, `releases`, `status-pages`
+- Console : badges overview corrects, actions ligne (ack/resolve/transition/major/SoD change), forms create manquants, verify recovery, publish status, liste automations
+- Shell : nav Operations filtrée par permissions
 
 ### P9.12 (partiel)
-- Auth matrix controller étendue (routes list + mutations)
-- Alignement FE/BE des list endpoints
-- Smoke E2E CSRF / anonymous — **pas** matrice A–J production complète
-- Pas d’E3 Testcontainers dédié migration 116 dans cette vague
+- Auth matrix étendue (aliases + automation:read)
+- Smoke FE + unit auth — **pas** gates A–J production complets
 
 ## Not delivered / blocked for ACCEPTED
-- Adapters providers (Prometheus, Alertmanager, Grafana, OTEL) — registry only
-- Delivery on-call / notifications push
-- Public status-page CDN
-- Full authenticated E2E matrix + chaos/scale gates
-- Auto-discovery catalogue depuis P7
+- Adapters Prometheus / Alertmanager / Grafana / OTEL live
+- Paging on-call / notifications
+- Status page CDN public
+- E3 Testcontainers mig 116
+- Full authenticated E2E matrix / chaos / scale
 
-## Migrations
-- `115_edge_p9_service_catalog`
-- `116_edge_p9_operations_core`
-
-## Tests (unit) — dernière run locale
-- BE ops policy + use-cases + auth controller : **74 passed**
-- FE `edge-operations-module` : **4 passed**
+## Tests (dernière run locale cohérence)
+- BE ops policy + use-cases + auth : **79 passed**
+- FE `edge-operations-module` : **5 passed**

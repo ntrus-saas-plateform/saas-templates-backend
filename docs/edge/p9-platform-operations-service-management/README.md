@@ -21,7 +21,7 @@
 | P9.9 Runbooks / status | **DONE (core)** — SoD publication, pas de CDN public |
 | P9.10 Risk / automation | **DONE (core)** — exceptions + execute après approve |
 | P9.11 Analytics | **DONE (core)** — comptages DB ; intégrations `UNAVAILABLE` si non configurées |
-| P9.12 Hardening / E2E full | **PARTIAL** — auth matrix + smoke FE ; pas gates A–J complets |
+| P9.12 Hardening / cohérence FE↔BE | **PARTIAL** — contrats alignés, aliases mandat, auth/smoke ; pas gates A–J ACCEPTED |
 
 **Verdict courant :** `P9 PARTIALLY IMPLEMENTED`
 

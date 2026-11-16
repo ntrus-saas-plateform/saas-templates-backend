@@ -358,6 +358,8 @@ export interface ServiceOperationsRepositoryPort {
     client?: unknown,
   ): Promise<AutomationDefinition>;
 
+  listAutomations(filter?: ListFilter): Promise<{ items: AutomationDefinition[]; total: number }>;
+
   getAutomation(id: string): Promise<AutomationDefinition | null>;
 
   requestAutomationExecution(

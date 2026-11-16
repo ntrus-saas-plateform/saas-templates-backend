@@ -2048,29 +2048,40 @@ export class ListTasksUseCase {
 
 export class ListOnCallRotationsUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
-  execute(teamId?: string) {
-    return this.repo.listOnCallRotations(teamId);
+  async execute(teamId?: string) {
+    const items = await this.repo.listOnCallRotations(teamId);
+    return { items, total: items.length };
   }
 }
 
 export class ListSlosUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
-  execute(serviceId?: string) {
-    return this.repo.listSlos(serviceId);
+  async execute(serviceId?: string) {
+    const items = await this.repo.listSlos(serviceId);
+    return { items, total: items.length };
   }
 }
 
 export class ListCapacityUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
-  execute(serviceId?: string) {
-    return this.repo.listCapacity(serviceId);
+  async execute(serviceId?: string) {
+    const items = await this.repo.listCapacity(serviceId);
+    return { items, total: items.length };
   }
 }
 
 export class ListRunbooksUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
-  execute(serviceId?: string) {
-    return this.repo.listRunbooks(serviceId);
+  async execute(serviceId?: string) {
+    const items = await this.repo.listRunbooks(serviceId);
+    return { items, total: items.length };
+  }
+}
+
+export class ListAutomationsUseCase {
+  constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
+  execute(filter?: { status?: string; limit?: number; offset?: number }) {
+    return this.repo.listAutomations(filter);
   }
 }
 

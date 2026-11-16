@@ -1905,6 +1905,31 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
     return this.mapAutomation(rows[0]!);
   }
 
+  async listAutomations(
+    filter?: ListFilter,
+  ): Promise<{ items: AutomationDefinition[]; total: number }> {
+    const limit = Math.min(Math.max(filter?.limit ?? 50, 1), 200);
+    const offset = Math.max(filter?.offset ?? 0, 0);
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (filter?.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const countRows = await this.q(
+      `SELECT COUNT(*)::int AS c FROM edge_p9_automations ${clause}`,
+      params,
+    );
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p9_automations ${clause} ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return { items: rows.map((r) => this.mapAutomation(r)), total: num(countRows[0]?.c) };
+  }
+
   async getAutomation(id: string): Promise<AutomationDefinition | null> {
     const rows = await this.q(`SELECT * FROM edge_p9_automations WHERE id = $1`, [id]);
     return rows[0] ? this.mapAutomation(rows[0]) : null;

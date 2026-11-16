@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -14,6 +14,13 @@ import {
   MinLength,
 } from 'class-validator';
 
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true' || value === '1' || value === 1) return true;
+  if (value === false || value === 'false' || value === '0' || value === 0) return false;
+  return undefined;
+}
+
 export class OperationsListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -24,6 +31,12 @@ export class OperationsListQueryDto {
   @IsOptional()
   @IsUUID()
   serviceId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter incidents by major flag (1/0/true/false)' })
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBoolean(value))
+  @IsBoolean()
+  isMajor?: boolean;
 
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()

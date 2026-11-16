@@ -41,6 +41,7 @@ import {
   IngestOperationalAlertUseCase,
   LinkProblemIncidentUseCase,
   ListAlertsUseCase,
+  ListAutomationsUseCase,
   ListCapacityUseCase,
   ListChangesUseCase,
   ListIncidentsUseCase,
@@ -177,6 +178,7 @@ export class EdgePlatformOperationsController {
     private readonly listExceptions: ListOperationalExceptionsUseCase,
     private readonly flagExpiredExceptions: FlagExpiredExceptionsUseCase,
     private readonly createAutomation: CreateAutomationUseCase,
+    private readonly listAutomations: ListAutomationsUseCase,
     private readonly requestAutomationExecution: RequestAutomationExecutionUseCase,
     private readonly approveAutomationExecution: ApproveAutomationExecutionUseCase,
     private readonly executeAutomation: ExecuteAutomationUseCase,
@@ -264,6 +266,14 @@ export class EdgePlatformOperationsController {
     return this.overview.execute();
   }
 
+  /** Mandate alias — health surface = honest overview (no fabricated green). */
+  @Get('edge/operations/health')
+  @RequireEdgePermissions('platform:operations:overview:read')
+  @ApiOperation({ summary: 'Alias of overview (honest health; UNKNOWN≠HEALTHY)' })
+  async operationsHealth() {
+    return this.overview.execute();
+  }
+
   @Get('edge/operations/analytics')
   @RequireEdgePermissions('platform:operations:analytics:read')
   async operationsAnalytics() {
@@ -319,7 +329,26 @@ export class EdgePlatformOperationsController {
   @Get('edge/operations/incidents')
   @RequireEdgePermissions('platform:operations:incidents:read')
   async getIncidents(@Query() query: OperationsListQueryDto) {
-    return this.listIncidents.execute(query);
+    return this.listIncidents.execute({
+      status: query.status,
+      serviceId: query.serviceId,
+      isMajor: query.isMajor,
+      limit: query.limit,
+      offset: query.offset,
+    });
+  }
+
+  /** Mandate alias — major incidents filter. */
+  @Get('edge/operations/major-incidents')
+  @RequireEdgePermissions('platform:operations:incidents:read')
+  async getMajorIncidents(@Query() query: OperationsListQueryDto) {
+    return this.listIncidents.execute({
+      status: query.status,
+      serviceId: query.serviceId,
+      isMajor: true,
+      limit: query.limit,
+      offset: query.offset,
+    });
   }
 
   @Post('edge/operations/incidents')
@@ -414,6 +443,14 @@ export class EdgePlatformOperationsController {
   @Get('edge/operations/changes')
   @RequireEdgePermissions('platform:operations:changes:read')
   async getChanges(@Query() query: OperationsListQueryDto) {
+    return this.listChanges.execute(query);
+  }
+
+  /** Mandate alias — releases surface maps to change records (no separate release table). */
+  @Get('edge/operations/releases')
+  @RequireEdgePermissions('platform:operations:changes:read')
+  @ApiOperation({ summary: 'Alias of changes (release coordination via change SoD)' })
+  async getReleases(@Query() query: OperationsListQueryDto) {
     return this.listChanges.execute(query);
   }
 
@@ -636,6 +673,14 @@ export class EdgePlatformOperationsController {
     return this.listStatusComponents.execute(query);
   }
 
+  /** Mandate alias — status-pages → status components registry. */
+  @Get('edge/operations/status-pages')
+  @RequireEdgePermissions('platform:operations:status:read')
+  @ApiOperation({ summary: 'Alias of status/components' })
+  async getStatusPages(@Query() query: OperationsListQueryDto) {
+    return this.listStatusComponents.execute(query);
+  }
+
   @Post('edge/operations/status/publications')
   @RequireEdgePermissions('platform:operations:status:publish')
   async postStatusPublication(@Body() body: PublishStatusDto, @Req() req: EdgeRequest) {
@@ -698,6 +743,12 @@ export class EdgePlatformOperationsController {
   @RequireEdgePermissions('platform:operations:risks:manage')
   async postFlagExpiredExceptions(@Req() req: EdgeRequest) {
     return this.flagExpiredExceptions.execute({ actorId: actorId(req) });
+  }
+
+  @Get('edge/operations/automation')
+  @RequireEdgePermissions('platform:operations:automation:read')
+  async getAutomations(@Query() query: OperationsListQueryDto) {
+    return this.listAutomations.execute(query);
   }
 
   @Post('edge/operations/automation')
