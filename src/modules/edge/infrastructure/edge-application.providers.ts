@@ -203,6 +203,7 @@ import {
   INFRASTRUCTURE_LIVE_EXECUTOR,
   KEYCLOAK_LIVE_EXECUTOR,
   LIFECYCLE_LIVE_EXECUTOR,
+  ONBOARDING_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
@@ -319,6 +320,19 @@ import {
   RequestLifecycleSuspendUseCase,
 } from '../application/tenant-lifecycle/lifecycle.use-cases.js';
 import { createLiveLifecycleExecutor } from './tenant-lifecycle/live-lifecycle.executor.js';
+// --- P7.12 Onboarding operations --------------------------------------------
+import { ONBOARDING_REPOSITORY_PORT } from '../domain/onboarding/onboarding-repository.port.js';
+import {
+  CreateOnboardingJourneyUseCase,
+  CreateOnboardingTemplateUseCase,
+  DecideOnboardingTaskUseCase,
+  ListOnboardingUseCase,
+  PublishOnboardingTemplateUseCase,
+  RequestOnboardingAdvanceUseCase,
+  RequestOnboardingCloseUseCase,
+  RequestOnboardingStartUseCase,
+} from '../application/onboarding/onboarding.use-cases.js';
+import { createLiveOnboardingExecutor } from './onboarding/live-onboarding.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4675,9 +4689,162 @@ export const edgeApplicationProviders: Provider[] = [
       WORKFLOW_AUTHORIZATION_PORT,
     ],
   },
+  // =========================================================================
+  // P7.12 — Onboarding Operations
+  // =========================================================================
+  {
+    provide: ListOnboardingUseCase,
+    useFactory: (repo) => new ListOnboardingUseCase(repo),
+    inject: [ONBOARDING_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateOnboardingTemplateUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateOnboardingTemplateUseCase(repo, outbox, audit),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishOnboardingTemplateUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishOnboardingTemplateUseCase(repo, outbox, audit),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateOnboardingJourneyUseCase,
+    useFactory: (repo, activationRepo, auth, outbox, audit) =>
+      new CreateOnboardingJourneyUseCase(repo, activationRepo, auth, outbox, audit),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestOnboardingStartUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestOnboardingStartUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestOnboardingAdvanceUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestOnboardingAdvanceUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestOnboardingCloseUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestOnboardingCloseUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: DecideOnboardingTaskUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new DecideOnboardingTaskUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: ONBOARDING_LIVE_EXECUTOR,
+    useFactory: (repo, activationRepo, wfRepo, auth) =>
+      createLiveOnboardingExecutor({
+        repo,
+        activationRepo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+      }),
+    inject: [
+      ONBOARDING_REPOSITORY_PORT,
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra, keycloak, configuration, experience, activation, lifecycle) =>
+    useFactory: (
+      pci,
+      infra,
+      keycloak,
+      configuration,
+      experience,
+      activation,
+      lifecycle,
+      onboarding,
+    ) =>
       new WorkflowHandlerRegistry(
         pci,
         infra,
@@ -4686,6 +4853,7 @@ export const edgeApplicationProviders: Provider[] = [
         experience,
         activation,
         lifecycle,
+        onboarding,
       ),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
@@ -4695,6 +4863,7 @@ export const edgeApplicationProviders: Provider[] = [
       EXPERIENCE_LIVE_EXECUTOR,
       ACTIVATION_LIVE_EXECUTOR,
       LIFECYCLE_LIVE_EXECUTOR,
+      ONBOARDING_LIVE_EXECUTOR,
     ],
   },
 ];

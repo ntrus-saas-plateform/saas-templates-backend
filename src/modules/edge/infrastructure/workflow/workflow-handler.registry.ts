@@ -39,6 +39,11 @@ import {
   type LifecycleLiveExecutor,
 } from '../../domain/tenant-lifecycle/lifecycle-handlers.js';
 import { LIFECYCLE_HANDLER_KEYS } from '../../domain/tenant-lifecycle/lifecycle.types.js';
+import {
+  registerOnboardingHandlers,
+  type OnboardingLiveExecutor,
+} from '../../domain/onboarding/onboarding-handlers.js';
+import { ONBOARDING_HANDLER_KEYS } from '../../domain/onboarding/onboarding.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
@@ -47,6 +52,7 @@ export const CONFIGURATION_LIVE_EXECUTOR = Symbol('CONFIGURATION_LIVE_EXECUTOR')
 export const EXPERIENCE_LIVE_EXECUTOR = Symbol('EXPERIENCE_LIVE_EXECUTOR');
 export const ACTIVATION_LIVE_EXECUTOR = Symbol('ACTIVATION_LIVE_EXECUTOR');
 export const LIFECYCLE_LIVE_EXECUTOR = Symbol('LIFECYCLE_LIVE_EXECUTOR');
+export const ONBOARDING_LIVE_EXECUTOR = Symbol('ONBOARDING_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -78,6 +84,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(LIFECYCLE_LIVE_EXECUTOR)
     liveLifecycle?: LifecycleLiveExecutor | null,
+    @Optional()
+    @Inject(ONBOARDING_LIVE_EXECUTOR)
+    liveOnboarding?: OnboardingLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -118,6 +127,12 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
       this.inner,
       LIFECYCLE_HANDLER_KEYS,
       liveLifecycle ?? undefined,
+    );
+    // P7.12 — Onboarding operations handlers (8th live executor).
+    registerOnboardingHandlers(
+      this.inner,
+      ONBOARDING_HANDLER_KEYS,
+      liveOnboarding ?? undefined,
     );
   }
 
