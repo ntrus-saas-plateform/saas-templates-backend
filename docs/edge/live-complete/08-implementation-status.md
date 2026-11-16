@@ -39,6 +39,6 @@
 - Orchestration `paid-to-lab-bb-orchestration.spec.ts`: PAID → lab_bb → portal ready (E2/E3)
 - FE adapter badge: `vitest run components/edge/live-complete` — **5 passed**
 - `tsc --noEmit`: **PASS**
-- Local HEADs: BE `a761c0b` · FE `c256f16`
+- Local HEADs: BE `2199174` · FE `c256f16`
 - Push GitHub: still **403** (`kabikaAsyst`)
 - Re-audit stub: [`09-pilotage-re-audit-readiness.md`](./09-pilotage-re-audit-readiness.md)

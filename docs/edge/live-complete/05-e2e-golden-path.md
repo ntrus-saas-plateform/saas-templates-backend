@@ -6,13 +6,13 @@ Honest label: this pack is the **lab runbook + contract suite** for the Pharmacy
 
 ```bash
 BILLING_PAYMENT_ADAPTER=sandbox
-EDGE_P7_PROVISIONING_ADAPTER=durable
-EDGE_BB_CONTROL_BASE_URL=http://host.docker.internal:3100   # or lab BB URL
-EDGE_BB_CONTROL_TOKEN=lab-edge-control-token
+EDGE_P7_PROVISIONING_ADAPTER=lab_bb
+EDGE_BB_CONTROL_BASE_URL=http://host.docker.internal:3000   # or lab BB URL
+EDGE_BB_CONTROL_TOKEN=lab-token
 EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP=true
 ```
 
-See [`01-env-lab.example.md`](./01-env-lab.example.md) and [`00-lab-baseline.md`](./00-lab-baseline.md).
+See [`01-env-lab.example.md`](./01-env-lab.example.md) and [`00-lab-baseline.md`](./00-lab-baseline.md). Use `durable` only with P5 canonical auth.
 
 ## How to run
 
@@ -35,8 +35,8 @@ Probes only — not a full golden-path claim:
 
 | | |
 |--|--|
-| **Preconditions** | Lab compose healthy; Pharmacy product + plan seeded; sandbox + durable + BB URL set; console auth as ops |
-| **Steps** | Create commercial deal → create/bind subscription → raise invoice → pay via sandbox → enqueue durable provision → wait readiness (KC + DB + BB) → tenant ACTIVE |
+| **Preconditions** | Lab compose healthy; Pharmacy product + plan seeded; sandbox + `lab_bb` + BB URL set; console auth as ops |
+| **Steps** | Create commercial deal → create/bind subscription → raise invoice → pay via sandbox → auto `RequestProvisioning` / lab_bb → wait readiness (KC + DB + BB) → tenant ACTIVE |
 | **Expected** | P6 paid from sandbox proof; P7 provision evidence SUCCESS; P8 tenant ACTIVE; no `Unavailable*` on critical path |
 | **Run** | Console `/edge` + APIs; correlation IDs in evidence template |
 
