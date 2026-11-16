@@ -202,6 +202,7 @@ import {
   EXPERIENCE_LIVE_EXECUTOR,
   INFRASTRUCTURE_LIVE_EXECUTOR,
   KEYCLOAK_LIVE_EXECUTOR,
+  LIFECYCLE_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
@@ -308,6 +309,16 @@ import {
   RequestTechnicalActivationUseCase,
 } from '../application/readiness-activation/activation.use-cases.js';
 import { createLiveActivationExecutor } from './readiness-activation/live-activation.executor.js';
+// --- P7.11 Tenant technical lifecycle ---------------------------------------
+import { LIFECYCLE_REPOSITORY_PORT } from '../domain/tenant-lifecycle/lifecycle-repository.port.js';
+import {
+  CreateLifecycleRecordUseCase,
+  ListLifecycleUseCase,
+  RequestLifecycleDeprovisionUseCase,
+  RequestLifecycleResumeUseCase,
+  RequestLifecycleSuspendUseCase,
+} from '../application/tenant-lifecycle/lifecycle.use-cases.js';
+import { createLiveLifecycleExecutor } from './tenant-lifecycle/live-lifecycle.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4562,10 +4573,120 @@ export const edgeApplicationProviders: Provider[] = [
       ControlPlaneOutboxTransactionService,
     ],
   },
+  // =========================================================================
+  // P7.11 — Tenant Technical Lifecycle
+  // =========================================================================
+  {
+    provide: ListLifecycleUseCase,
+    useFactory: (repo) => new ListLifecycleUseCase(repo),
+    inject: [LIFECYCLE_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateLifecycleRecordUseCase,
+    useFactory: (repo, activationRepo, auth, outbox, audit) =>
+      new CreateLifecycleRecordUseCase(repo, activationRepo, auth, outbox, audit),
+    inject: [
+      LIFECYCLE_REPOSITORY_PORT,
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestLifecycleSuspendUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestLifecycleSuspendUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      LIFECYCLE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestLifecycleResumeUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestLifecycleResumeUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      LIFECYCLE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestLifecycleDeprovisionUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestLifecycleDeprovisionUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      LIFECYCLE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: LIFECYCLE_LIVE_EXECUTOR,
+    useFactory: (repo, activationRepo, wfRepo, auth) =>
+      createLiveLifecycleExecutor({
+        repo,
+        activationRepo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+      }),
+    inject: [
+      LIFECYCLE_REPOSITORY_PORT,
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra, keycloak, configuration, experience, activation) =>
-      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration, experience, activation),
+    useFactory: (pci, infra, keycloak, configuration, experience, activation, lifecycle) =>
+      new WorkflowHandlerRegistry(
+        pci,
+        infra,
+        keycloak,
+        configuration,
+        experience,
+        activation,
+        lifecycle,
+      ),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
       INFRASTRUCTURE_LIVE_EXECUTOR,
@@ -4573,6 +4694,7 @@ export const edgeApplicationProviders: Provider[] = [
       CONFIGURATION_LIVE_EXECUTOR,
       EXPERIENCE_LIVE_EXECUTOR,
       ACTIVATION_LIVE_EXECUTOR,
+      LIFECYCLE_LIVE_EXECUTOR,
     ],
   },
 ];

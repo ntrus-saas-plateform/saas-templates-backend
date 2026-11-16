@@ -30,7 +30,7 @@
 
 No number collision observed. P7.8 **must** start at **103**.
 
-> **Addendum (2026-11-16):** P7.8 uses migration **103** (`103_edge_p7_configuration_entitlement_deployment.sql`). P7.9 Product Experience Provisioning uses migration **104** (`104_edge_p7_product_experience_provisioning.sql`) — documentation pack **READY FOR AUDIT** (not ACCEPTED); implementation present and under independent review. P7.10 uses migration **105** (`105_edge_p7_readiness_activation.sql`) — see `docs/edge/p7/p7.10-readiness-activation/` (**READY FOR AUDIT**, not ACCEPTED).
+> **Addendum (2026-11-16):** P7.8 uses migration **103** (`103_edge_p7_configuration_entitlement_deployment.sql`). P7.9 Product Experience Provisioning uses migration **104** (`104_edge_p7_product_experience_provisioning.sql`) — documentation pack **READY FOR AUDIT** (not ACCEPTED); implementation present and under independent review. P7.10 uses migration **105** (`105_edge_p7_readiness_activation.sql`) — see `docs/edge/p7/p7.10-readiness-activation/` (**READY FOR AUDIT**, not ACCEPTED). P7.11 Tenant Technical Lifecycle uses migration **106** (`106_edge_p7_tenant_lifecycle.sql`) — see `docs/edge/p7/p7.11-tenant-lifecycle/` (**READY FOR AUDIT**, not ACCEPTED).
 
 ---
 
@@ -153,6 +153,8 @@ Per mandate §2.8 / §18:
 > **Addendum (2026-11-16):** After P7.8 @ **103**, P7.9 continues at **104** (`104_edge_p7_product_experience_provisioning.sql`). See `docs/edge/p7/p7.9-product-experience-provisioning/` — verdict **READY FOR AUDIT** (not ACCEPTED).
 
 > **Addendum (2026-11-16):** P7.10 Technical Readiness & Activation Gate uses migration **105** (`105_edge_p7_readiness_activation.sql`). See `docs/edge/p7/p7.10-readiness-activation/` — verdict **READY FOR AUDIT** (not ACCEPTED); Activation Record is SoT for technical ACTIVE; does not set commercial `Subscription.ACTIVE` alone.
+
+> **Addendum (2026-11-16):** P7.11 Tenant Technical Lifecycle uses migration **106** (`106_edge_p7_tenant_lifecycle.sql`). See `docs/edge/p7/p7.11-tenant-lifecycle/` — verdict **READY FOR AUDIT** (not ACCEPTED); suspend/resume/deprovision via `p711.lifecycle.*`; dual flags + export evidence; coordination signals only; never silent delete; does not set commercial Subscription status alone.
 
 ### Gate verdict
 

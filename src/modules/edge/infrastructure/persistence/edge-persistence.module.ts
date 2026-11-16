@@ -12,6 +12,7 @@ import { CONFIGURATION_REPOSITORY_PORT } from '../../domain/ports/configuration-
 import { CONFIGURATION_REPOSITORY_PORT as P78_CONFIGURATION_REPOSITORY_PORT } from '../../domain/configuration-entitlement/configuration-repository.port.js';
 import { EXPERIENCE_REPOSITORY_PORT } from '../../domain/product-experience/experience-repository.port.js';
 import { ACTIVATION_REPOSITORY_PORT } from '../../domain/readiness-activation/activation-repository.port.js';
+import { LIFECYCLE_REPOSITORY_PORT } from '../../domain/tenant-lifecycle/lifecycle-repository.port.js';
 import { AUDIT_EVENT_REPOSITORY_PORT } from '../../domain/ports/audit-event-repository.port.js';
 import { PRODUCT_REPOSITORY_PORT } from '../../domain/ports/product-repository.port.js';
 import { PRODUCT_VERSION_REPOSITORY_PORT } from '../../domain/ports/product-version-repository.port.js';
@@ -47,6 +48,7 @@ import { PgKeycloakRepository } from '../keycloak/pg-keycloak.repository.js';
 import { PgConfigurationEntitlementRepository } from '../configuration-entitlement/pg-configuration.repository.js';
 import { PgExperienceRepository } from '../product-experience/pg-experience.repository.js';
 import { PgActivationRepository } from '../readiness-activation/pg-activation.repository.js';
+import { PgLifecycleRepository } from '../tenant-lifecycle/pg-lifecycle.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -135,6 +137,8 @@ const providers = [
   { provide: EXPERIENCE_REPOSITORY_PORT, useClass: PgExperienceRepository },
   // P7.10 — Technical readiness & activation gate (migration 105).
   { provide: ACTIVATION_REPOSITORY_PORT, useClass: PgActivationRepository },
+  // P7.11 — Tenant technical lifecycle (migration 106).
+  { provide: LIFECYCLE_REPOSITORY_PORT, useClass: PgLifecycleRepository },
 ];
 
 @Module({
