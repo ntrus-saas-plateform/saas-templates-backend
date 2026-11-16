@@ -197,6 +197,7 @@ import { WORKFLOW_AUTHORIZATION_PORT } from '../domain/workflow/workflow-authori
 import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.port.js';
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
 import {
+  ACTIVATION_LIVE_EXECUTOR,
   CONFIGURATION_LIVE_EXECUTOR,
   EXPERIENCE_LIVE_EXECUTOR,
   INFRASTRUCTURE_LIVE_EXECUTOR,
@@ -297,6 +298,16 @@ import {
   RequestExperienceProvisionUseCase,
 } from '../application/product-experience/experience.use-cases.js';
 import { createLiveExperienceExecutor } from './product-experience/live-experience.executor.js';
+// --- P7.10 Technical readiness & activation ---------------------------------
+import { ACTIVATION_REPOSITORY_PORT } from '../domain/readiness-activation/activation-repository.port.js';
+import {
+  CreateActivationRecordUseCase,
+  CreateReadinessEvaluationUseCase,
+  ListActivationUseCase,
+  RequestReadinessEvaluateUseCase,
+  RequestTechnicalActivationUseCase,
+} from '../application/readiness-activation/activation.use-cases.js';
+import { createLiveActivationExecutor } from './readiness-activation/live-activation.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4438,16 +4449,130 @@ export const edgeApplicationProviders: Provider[] = [
       SECRETS_PROVIDER_PORT,
     ],
   },
+  // =========================================================================
+  // P7.10 — Technical Readiness & Activation Gate
+  // =========================================================================
+  {
+    provide: ListActivationUseCase,
+    useFactory: (repo) => new ListActivationUseCase(repo),
+    inject: [ACTIVATION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateReadinessEvaluationUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new CreateReadinessEvaluationUseCase(repo, auth, outbox, audit),
+    inject: [
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateActivationRecordUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new CreateActivationRecordUseCase(repo, auth, outbox, audit),
+    inject: [
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestReadinessEvaluateUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestReadinessEvaluateUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestTechnicalActivationUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestTechnicalActivationUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: ACTIVATION_LIVE_EXECUTOR,
+    useFactory: (
+      repo,
+      wfRepo,
+      auth,
+      infra,
+      keycloak,
+      configuration,
+      experience,
+      productControl,
+      subscriptions,
+      outbox,
+    ) =>
+      createLiveActivationExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+        infrastructure: infra,
+        keycloak,
+        configuration,
+        experience,
+        productControl,
+        subscriptions,
+        outbox,
+      }),
+    inject: [
+      ACTIVATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      INFRASTRUCTURE_REPOSITORY_PORT,
+      KEYCLOAK_REPOSITORY_PORT,
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      EXPERIENCE_REPOSITORY_PORT,
+      PRODUCT_CONTROL_REPOSITORY_PORT,
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra, keycloak, configuration, experience) =>
-      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration, experience),
+    useFactory: (pci, infra, keycloak, configuration, experience, activation) =>
+      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration, experience, activation),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
       INFRASTRUCTURE_LIVE_EXECUTOR,
       KEYCLOAK_LIVE_EXECUTOR,
       CONFIGURATION_LIVE_EXECUTOR,
       EXPERIENCE_LIVE_EXECUTOR,
+      ACTIVATION_LIVE_EXECUTOR,
     ],
   },
 ];

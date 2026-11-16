@@ -11,6 +11,7 @@ import { EMERGENCY_ACCESS_REPOSITORY_PORT } from '../../domain/ports/emergency-a
 import { CONFIGURATION_REPOSITORY_PORT } from '../../domain/ports/configuration-repository.port.js';
 import { CONFIGURATION_REPOSITORY_PORT as P78_CONFIGURATION_REPOSITORY_PORT } from '../../domain/configuration-entitlement/configuration-repository.port.js';
 import { EXPERIENCE_REPOSITORY_PORT } from '../../domain/product-experience/experience-repository.port.js';
+import { ACTIVATION_REPOSITORY_PORT } from '../../domain/readiness-activation/activation-repository.port.js';
 import { AUDIT_EVENT_REPOSITORY_PORT } from '../../domain/ports/audit-event-repository.port.js';
 import { PRODUCT_REPOSITORY_PORT } from '../../domain/ports/product-repository.port.js';
 import { PRODUCT_VERSION_REPOSITORY_PORT } from '../../domain/ports/product-version-repository.port.js';
@@ -45,6 +46,7 @@ import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgKeycloakRepository } from '../keycloak/pg-keycloak.repository.js';
 import { PgConfigurationEntitlementRepository } from '../configuration-entitlement/pg-configuration.repository.js';
 import { PgExperienceRepository } from '../product-experience/pg-experience.repository.js';
+import { PgActivationRepository } from '../readiness-activation/pg-activation.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -131,6 +133,8 @@ const providers = [
   { provide: P78_CONFIGURATION_REPOSITORY_PORT, useClass: PgConfigurationEntitlementRepository },
   // P7.9 — Product experience provisioning registry (migration 104).
   { provide: EXPERIENCE_REPOSITORY_PORT, useClass: PgExperienceRepository },
+  // P7.10 — Technical readiness & activation gate (migration 105).
+  { provide: ACTIVATION_REPOSITORY_PORT, useClass: PgActivationRepository },
 ];
 
 @Module({

@@ -52,6 +52,7 @@ import { EdgeInfrastructureController } from './presentation/controllers/infrast
 import { EdgeKeycloakController } from './presentation/controllers/keycloak.controller.js';
 import { EdgeConfigurationController } from './presentation/controllers/configuration.controller.js';
 import { EdgeExperienceController } from './presentation/controllers/experience.controller.js';
+import { EdgeActivationController } from './presentation/controllers/activation.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -98,6 +99,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeKeycloakController,
     EdgeConfigurationController,
     EdgeExperienceController,
+    EdgeActivationController,
   ],
   providers: [
     ...edgeApplicationProviders,

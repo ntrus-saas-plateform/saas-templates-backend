@@ -29,12 +29,18 @@ import {
   type ExperienceLiveExecutor,
 } from '../../domain/product-experience/experience-handlers.js';
 import { EXPERIENCE_HANDLER_KEYS } from '../../domain/product-experience/experience.types.js';
+import {
+  registerActivationHandlers,
+  type ActivationLiveExecutor,
+} from '../../domain/readiness-activation/activation-handlers.js';
+import { ACTIVATION_ALL_HANDLER_KEYS } from '../../domain/readiness-activation/activation.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
 export const KEYCLOAK_LIVE_EXECUTOR = Symbol('KEYCLOAK_LIVE_EXECUTOR');
 export const CONFIGURATION_LIVE_EXECUTOR = Symbol('CONFIGURATION_LIVE_EXECUTOR');
 export const EXPERIENCE_LIVE_EXECUTOR = Symbol('EXPERIENCE_LIVE_EXECUTOR');
+export const ACTIVATION_LIVE_EXECUTOR = Symbol('ACTIVATION_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -60,6 +66,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(EXPERIENCE_LIVE_EXECUTOR)
     liveExperience?: ExperienceLiveExecutor | null,
+    @Optional()
+    @Inject(ACTIVATION_LIVE_EXECUTOR)
+    liveActivation?: ActivationLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -88,6 +97,12 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
       this.inner,
       EXPERIENCE_HANDLER_KEYS,
       liveExperience ?? undefined,
+    );
+    // P7.10 — Technical readiness & activation handlers.
+    registerActivationHandlers(
+      this.inner,
+      ACTIVATION_ALL_HANDLER_KEYS,
+      liveActivation ?? undefined,
     );
   }
 
