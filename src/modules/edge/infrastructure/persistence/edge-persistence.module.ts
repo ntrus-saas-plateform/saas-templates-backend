@@ -9,6 +9,7 @@ import { WORKSPACE_SESSION_REPOSITORY_PORT } from '../../domain/ports/workspace-
 import { DELEGATION_REPOSITORY_PORT } from '../../domain/ports/delegation-repository.port.js';
 import { EMERGENCY_ACCESS_REPOSITORY_PORT } from '../../domain/ports/emergency-access-repository.port.js';
 import { CONFIGURATION_REPOSITORY_PORT } from '../../domain/ports/configuration-repository.port.js';
+import { CONFIGURATION_REPOSITORY_PORT as P78_CONFIGURATION_REPOSITORY_PORT } from '../../domain/configuration-entitlement/configuration-repository.port.js';
 import { AUDIT_EVENT_REPOSITORY_PORT } from '../../domain/ports/audit-event-repository.port.js';
 import { PRODUCT_REPOSITORY_PORT } from '../../domain/ports/product-repository.port.js';
 import { PRODUCT_VERSION_REPOSITORY_PORT } from '../../domain/ports/product-version-repository.port.js';
@@ -41,6 +42,7 @@ import { INFRASTRUCTURE_REPOSITORY_PORT } from '../../domain/infrastructure-prov
 import { KEYCLOAK_REPOSITORY_PORT } from '../../domain/keycloak-topology/keycloak-repository.port.js';
 import { PgAdministratorRepository } from './pg-administrator.repository.js';
 import { PgKeycloakRepository } from '../keycloak/pg-keycloak.repository.js';
+import { PgConfigurationEntitlementRepository } from '../configuration-entitlement/pg-configuration.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -123,6 +125,8 @@ const providers = [
   { provide: INFRASTRUCTURE_REPOSITORY_PORT, useClass: PgInfrastructureRepository },
   // P7.7 — Keycloak topology registry (durable topology/resource registry).
   { provide: KEYCLOAK_REPOSITORY_PORT, useClass: PgKeycloakRepository },
+  // P7.8 — Configuration & entitlement deployment registry (migration 103).
+  { provide: P78_CONFIGURATION_REPOSITORY_PORT, useClass: PgConfigurationEntitlementRepository },
 ];
 
 @Module({

@@ -197,6 +197,7 @@ import { WORKFLOW_AUTHORIZATION_PORT } from '../domain/workflow/workflow-authori
 import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.port.js';
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
 import {
+  CONFIGURATION_LIVE_EXECUTOR,
   INFRASTRUCTURE_LIVE_EXECUTOR,
   KEYCLOAK_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
@@ -266,6 +267,21 @@ import {
 import { HttpKeycloakAdminAdapter } from './keycloak/keycloak-admin.adapter.js';
 import { createLiveKeycloakExecutor } from './keycloak/live-keycloak.executor.js';
 import { RepositoryWorkflowLeaseValidator } from '../domain/workflow/workflow-lease.port.js';
+// --- P7.8 Configuration & entitlement deployment ----------------------------
+import { CONFIGURATION_REPOSITORY_PORT as P78_CONFIGURATION_REPOSITORY_PORT } from '../domain/configuration-entitlement/configuration-repository.port.js';
+import {
+  AssignTenantConfigurationUseCase,
+  CreateConfigurationBundleUseCase,
+  CreateConfigurationSchemaUseCase,
+  CreateConfigurationTemplateUseCase,
+  ListConfigurationUseCase,
+  PublishConfigurationBundleUseCase,
+  PublishConfigurationTemplateUseCase,
+  RequestConfigurationDeploymentUseCase,
+  RequestConfigurationReconcileUseCase,
+  RequestConfigurationRollbackUseCase,
+} from '../application/configuration-entitlement/configuration.use-cases.js';
+import { createLiveConfigurationExecutor } from './configuration-entitlement/live-configuration.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4127,9 +4143,166 @@ export const edgeApplicationProviders: Provider[] = [
       WORKFLOW_AUTHORIZATION_PORT,
     ],
   },
+  // =========================================================================
+  // P7.8 — Configuration & Entitlement Deployment
+  // =========================================================================
+  {
+    provide: ListConfigurationUseCase,
+    useFactory: (repo) => new ListConfigurationUseCase(repo),
+    inject: [P78_CONFIGURATION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateConfigurationSchemaUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateConfigurationSchemaUseCase(repo, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateConfigurationTemplateUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateConfigurationTemplateUseCase(repo, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishConfigurationTemplateUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishConfigurationTemplateUseCase(repo, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateConfigurationBundleUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateConfigurationBundleUseCase(repo, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishConfigurationBundleUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishConfigurationBundleUseCase(repo, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AssignTenantConfigurationUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new AssignTenantConfigurationUseCase(repo, auth, outbox, audit),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestConfigurationDeploymentUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConfigurationDeploymentUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestConfigurationRollbackUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConfigurationRollbackUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestConfigurationReconcileUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConfigurationReconcileUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: CONFIGURATION_LIVE_EXECUTOR,
+    useFactory: (repo, wfRepo, auth, secrets) =>
+      createLiveConfigurationExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+        secrets,
+      }),
+    inject: [
+      P78_CONFIGURATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      SECRETS_PROVIDER_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra, keycloak) => new WorkflowHandlerRegistry(pci, infra, keycloak),
-    inject: [PRODUCT_CONTROL_LIVE_EXECUTOR, INFRASTRUCTURE_LIVE_EXECUTOR, KEYCLOAK_LIVE_EXECUTOR],
+    useFactory: (pci, infra, keycloak, configuration) =>
+      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration),
+    inject: [
+      PRODUCT_CONTROL_LIVE_EXECUTOR,
+      INFRASTRUCTURE_LIVE_EXECUTOR,
+      KEYCLOAK_LIVE_EXECUTOR,
+      CONFIGURATION_LIVE_EXECUTOR,
+    ],
   },
 ];
