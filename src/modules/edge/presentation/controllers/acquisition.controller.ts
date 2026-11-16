@@ -27,6 +27,7 @@ import {
   CreateDocumentRequirementUseCase,
   CreateFormSchemaUseCase,
   CreateFormVersionUseCase,
+  InstantiateProductAcquisitionFormUseCase,
   CreatePlanPresentationUseCase,
   CreateProductContentVersionUseCase,
   CreateProductPresentationUseCase,
@@ -81,6 +82,8 @@ import {
   CreateDocumentRequirementDto,
   CreateFormSchemaDto,
   CreateFormVersionDto,
+  InstantiateProductAcquisitionFormDto,
+  SubmitApplicationDto,
   CreatePlanPresentationDto,
   CreateProductPresentationDto,
   CreateProspectDto,
@@ -137,6 +140,7 @@ export class AcquisitionController {
     private readonly promoteLead: PromoteLeadUseCase,
     private readonly listForms: ListFormSchemasUseCase,
     private readonly createForm: CreateFormSchemaUseCase,
+    private readonly instantiateFromContract: InstantiateProductAcquisitionFormUseCase,
     private readonly createFormVersion: CreateFormVersionUseCase,
     private readonly publishFormVersion: PublishFormVersionUseCase,
     private readonly listApplications: ListApplicationsUseCase,
@@ -348,6 +352,27 @@ export class AcquisitionController {
     });
   }
 
+  @Post('edge/acquisition/forms/from-contract')
+  @RequireEdgePermissions('platform:acquisition:forms:manage')
+  @ApiOperation({
+    summary:
+      'Instantiate a DRAFT form schema + version from a product-owned acquisition contract template (does not publish)',
+  })
+  async postFormFromContract(
+    @Body() body: InstantiateProductAcquisitionFormDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.instantiateFromContract.execute({
+      actorId: actorId(req),
+      productId: body.productId,
+      contractCode: body.contractCode,
+      code: body.code,
+      name: body.name,
+      description: body.description,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
   @Post('edge/acquisition/forms/:id/versions')
   @RequireEdgePermissions('platform:acquisition:forms:manage')
   async postFormVersion(
@@ -422,11 +447,16 @@ export class AcquisitionController {
 
   @Post('edge/acquisition/applications/:id/submit')
   @RequireEdgePermissions('platform:acquisition:manage')
-  async postSubmitApplication(@Param('id') id: string, @Req() req: EdgeRequest) {
+  async postSubmitApplication(
+    @Param('id') id: string,
+    @Req() req: EdgeRequest,
+    @Body() body?: SubmitApplicationDto,
+  ) {
     return this.submitApplication.execute({
       actorId: actorId(req),
       applicationId: id,
-      correlationId: randomUUID(),
+      consents: body?.consents,
+      correlationId: body?.correlationId?.trim() || randomUUID(),
     });
   }
 

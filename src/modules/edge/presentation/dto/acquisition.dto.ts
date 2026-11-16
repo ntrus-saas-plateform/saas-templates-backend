@@ -393,6 +393,23 @@ export class CaptureLeadDto {
   @IsString()
   challengeAnswer?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Consent decisions — required when the form publication metadata.requiredConsents is set.',
+    type: 'array',
+  })
+  @IsOptional()
+  @IsArray()
+  consents?: {
+    purpose: string;
+    channel: string;
+    textVersion: string;
+    decision: 'GRANTED' | 'DENIED' | 'NOT_PROVIDED' | 'WITHDRAWN';
+    locale?: string;
+    consentRef?: string;
+    decidedAt?: string;
+  }[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
@@ -446,6 +463,41 @@ export class CreateFormSchemaDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class InstantiateProductAcquisitionFormDto {
+  @ApiProperty({ description: 'Product id that owns the instantiated form' })
+  @IsUUID()
+  productId!: string;
+
+  @ApiProperty({
+    description:
+      'Versioned product acquisition contract code (e.g. pharmacy.retail.v1)',
+    example: 'pharmacy.retail.v1',
+  })
+  @IsString()
+  @MinLength(1)
+  contractCode!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  code!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -550,6 +602,47 @@ export class CreateApplicationDraftDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Consent decisions — validated when the bound form schemaDefinition.requiredConsents is set.',
+    type: 'array',
+  })
+  @IsOptional()
+  @IsArray()
+  consents?: {
+    purpose: string;
+    channel: string;
+    textVersion: string;
+    decision: 'GRANTED' | 'DENIED' | 'NOT_PROVIDED' | 'WITHDRAWN';
+    locale?: string;
+    consentRef?: string;
+    decidedAt?: string;
+  }[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class SubmitApplicationDto {
+  @ApiPropertyOptional({
+    description:
+      'Consent decisions — required when schemaDefinition.requiredConsents is declared.',
+    type: 'array',
+  })
+  @IsOptional()
+  @IsArray()
+  consents?: {
+    purpose: string;
+    channel: string;
+    textVersion: string;
+    decision: 'GRANTED' | 'DENIED' | 'NOT_PROVIDED' | 'WITHDRAWN';
+    locale?: string;
+    consentRef?: string;
+    decidedAt?: string;
+  }[];
 
   @ApiPropertyOptional()
   @IsOptional()

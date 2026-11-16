@@ -31,11 +31,18 @@ import {
   verifyChallenge,
 } from '../../domain/acquisition/acquisition-public-challenge.js';
 import type { AcquisitionDocumentStoragePort } from '../../domain/acquisition/document-storage.port.js';
-import { evaluateConditionRules } from '../../domain/acquisition/form-condition.js';
 import {
   assertFormAnswersValid,
-  validateFormAnswers,
+  assertFormSchemaDefinitionPublishable,
 } from '../../domain/acquisition/form-validation.js';
+import {
+  getProductAcquisitionContract,
+} from '../../domain/acquisition/product-acquisition-contracts.js';
+import {
+  parseRequiredConsents,
+  validateSubmittedConsents,
+  type SubmittedConsent,
+} from '../../domain/marketing/marketing-consent.js';
 import type { CommercialRepositoryPort } from '../../domain/ports/commercial-repository.port.js';
 import type { ProductRepositoryPort } from '../../domain/ports/product-repository.port.js';
 import { CommercialAvailability } from '../../domain/product/product.entity.js';
@@ -159,40 +166,100 @@ async function addAuditEvent(
   );
 }
 
-function assertFormSchemaDefinitionPublishable(
-  schemaDefinition: FormSchemaDefinition,
-  conditionRules: unknown,
-): void {
-  const fields = schemaDefinition?.fields;
-  if (!Array.isArray(fields)) {
-    throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form schema must define a fields array', [
-      { code: 'FORM_SCHEMA_FIELDS_REQUIRED' },
-    ]);
+function extractSchemaRequiredConsents(
+  schemaDefinition: FormSchemaDefinition | null | undefined,
+): ReturnType<typeof parseRequiredConsents> | null {
+  const raw = schemaDefinition?.requiredConsents;
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) {
+    throw new DomainError(
+      ErrorCode.VALIDATION_ERROR,
+      'schemaDefinition.requiredConsents must be an array',
+    );
   }
-  for (const field of fields) {
-    if (!field?.key || typeof field.key !== 'string' || !field.type) {
-      throw new DomainError(
-        ErrorCode.VALIDATION_ERROR,
-        'Form schema field definitions require key and type',
-        [{ code: 'FORM_SCHEMA_FIELD_INVALID' }],
-      );
-    }
+  if (raw.length === 0) return null;
+  return parseRequiredConsents(raw);
+}
+
+function decisionFromConsentState(state: unknown): SubmittedConsent['decision'] {
+  if (state === 'GRANTED') return 'GRANTED';
+  if (state === 'DENIED') return 'DENIED';
+  if (state === 'WITHDRAWN') return 'WITHDRAWN';
+  return 'NOT_PROVIDED';
+}
+
+function resolveSubmittedConsents(input: {
+  consents?: SubmittedConsent[];
+  metadata?: Record<string, unknown>;
+  answers?: Record<string, unknown> | Array<{ fieldKey: string; value: unknown }>;
+}): SubmittedConsent[] | undefined {
+  if (input.consents) return input.consents;
+  const fromMeta = input.metadata?.consents;
+  if (Array.isArray(fromMeta)) return fromMeta as SubmittedConsent[];
+  if (Array.isArray(input.answers)) {
+    const row = input.answers.find((a) => a.fieldKey === 'consents' || a.fieldKey === '__consents');
+    if (Array.isArray(row?.value)) return row!.value as SubmittedConsent[];
+  } else if (input.answers && typeof input.answers === 'object') {
+    const value = input.answers.consents ?? input.answers.__consents;
+    if (Array.isArray(value)) return value as SubmittedConsent[];
   }
-  if (conditionRules != null) {
-    const cond = evaluateConditionRules(conditionRules, {});
-    if (!cond.ok && cond.error === 'Invalid condition rule') {
-      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form condition rules are invalid', [
-        { code: 'FORM_CONDITION_INVALID' },
-      ]);
-    }
+  const evidence = input.metadata?.consentEvidence;
+  if (Array.isArray(evidence) && evidence.length > 0) {
+    return evidence.map((raw) => {
+      const e = raw as Record<string, unknown>;
+      const proof = (e.proof as Record<string, unknown> | undefined) ?? undefined;
+      return {
+        purpose: String(e.purpose ?? ''),
+        channel: String(e.channel ?? ''),
+        textVersion: String(e.consentTextVersion ?? e.textVersion ?? ''),
+        decision: decisionFromConsentState(e.state),
+        locale: typeof e.locale === 'string' ? e.locale : undefined,
+        decidedAt: typeof e.decidedAt === 'string' ? e.decidedAt : undefined,
+        consentRef:
+          typeof proof?.consentRef === 'string'
+            ? proof.consentRef
+            : typeof e.consentRef === 'string'
+              ? e.consentRef
+              : undefined,
+      } satisfies SubmittedConsent;
+    });
   }
-  const probe = validateFormAnswers(schemaDefinition, {}, { allowUnknownFields: true });
-  const structural = probe.issues.filter((i) => i.code === 'INVALID_FIELD_DEF');
-  if (structural.length > 0) {
-    throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form schema failed structural validation', [
-      ...structural.map((i) => ({ code: i.code, fieldKey: i.fieldKey, message: i.message })),
-    ]);
+  return undefined;
+}
+
+function validateAndMapApplicationConsents(input: {
+  schemaDefinition: FormSchemaDefinition;
+  formSchemaId: string;
+  formVersionNumber: number;
+  formSlug?: string | null;
+  consents?: SubmittedConsent[];
+  metadata?: Record<string, unknown>;
+  answers?: Record<string, unknown> | Array<{ fieldKey: string; value: unknown }>;
+  /** When true, missing requiredConsents is an error. When false, only validate if consents provided. */
+  requireIfDeclared: boolean;
+}): unknown[] | null {
+  const required = extractSchemaRequiredConsents(input.schemaDefinition);
+  if (!required) return null;
+  const submitted = resolveSubmittedConsents(input);
+  if (!input.requireIfDeclared && (submitted == null || submitted.length === 0)) {
+    return null;
   }
+  const { records } = validateSubmittedConsents({
+    required,
+    submitted,
+    formId: input.formSchemaId,
+    formVersion: input.formVersionNumber,
+    formSlug: input.formSlug ?? input.formSchemaId,
+  });
+  return records.map((r) => ({
+    purpose: r.purpose,
+    channel: r.channel,
+    state: r.state,
+    consentTextVersion: r.consentTextVersion,
+    locale: r.locale,
+    decidedAt: r.decidedAt,
+    proof: r.proof,
+  }));
 }
 
 function stripSensitiveProperties(properties: Record<string, unknown>): Record<string, unknown> {
@@ -891,6 +958,8 @@ export class CaptureAcquisitionLeadUseCase {
     attribution?: Record<string, unknown>;
     payload?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+    /** Consent decisions — validated when publication.metadata.requiredConsents is set. */
+    consents?: SubmittedConsent[];
     /** Bot-trap field — any non-empty value rejects the lead. */
     honeypot?: string | null;
     /** Client form-render timestamp (ms). Submissions under 800ms are rejected. */
@@ -911,8 +980,15 @@ export class CaptureAcquisitionLeadUseCase {
     assertLeadPublicChallenge(input);
     assertNoPaymentCredentials(input.payload);
     assertNoPaymentCredentials(input.metadata);
+
+    const consentEvidence = await this.validatePublicationConsents(input);
+
     const emailNormalized = normalizeEmail(input.email);
     const correlationId = input.correlationId?.trim() || randomUUID();
+    const metadata: Record<string, unknown> = {
+      ...(input.metadata ?? {}),
+      ...(consentEvidence ? { consentEvidence } : {}),
+    };
     return withOutbox(this.outbox, async (client, enqueue) => {
       const lead = await this.repo.createLead(
         {
@@ -927,7 +1003,7 @@ export class CaptureAcquisitionLeadUseCase {
           scoreBand: input.scoreBand ?? null,
           attribution: input.attribution ?? {},
           payload: input.payload ?? {},
-          metadata: input.metadata ?? {},
+          metadata,
         },
         client,
       );
@@ -964,6 +1040,56 @@ export class CaptureAcquisitionLeadUseCase {
       );
       return lead;
     });
+  }
+
+  /**
+   * When a form publication declares metadata.requiredConsents, validate the
+   * submitted consent array the same way marketing public forms do.
+   * Applications Save/Submit already enforce required schema fields via assertFormAnswersValid.
+   */
+  private async validatePublicationConsents(input: {
+    formPublicationId?: string | null;
+    consents?: SubmittedConsent[];
+    payload?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  }): Promise<unknown[] | null> {
+    if (!input.formPublicationId?.trim()) return null;
+    const publication = await this.repo.getFormPublication(input.formPublicationId.trim());
+    if (!publication) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Form publication not found');
+    }
+    const rawRequired = publication.metadata?.requiredConsents;
+    if (rawRequired == null) return null;
+    if (!Array.isArray(rawRequired)) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'publication.metadata.requiredConsents must be an array',
+      );
+    }
+    if (rawRequired.length === 0) return null;
+
+    const required = parseRequiredConsents(rawRequired);
+    const submittedFromPayload = Array.isArray(input.payload?.consents)
+      ? (input.payload!.consents as SubmittedConsent[])
+      : undefined;
+    const submitted = input.consents ?? submittedFromPayload;
+    const version = await this.repo.getFormVersion(publication.formVersionId);
+    const { records } = validateSubmittedConsents({
+      required,
+      submitted,
+      formId: publication.formSchemaId,
+      formVersion: version?.versionNumber ?? 0,
+      formSlug: publication.publicSlug ?? publication.id,
+    });
+    return records.map((r) => ({
+      purpose: r.purpose,
+      channel: r.channel,
+      state: r.state,
+      consentTextVersion: r.consentTextVersion,
+      locale: r.locale,
+      decidedAt: r.decidedAt,
+      proof: r.proof,
+    }));
   }
 }
 
@@ -1054,6 +1180,175 @@ export class PromoteLeadUseCase {
 // ---------------------------------------------------------------------------
 // P10.3 Forms
 // ---------------------------------------------------------------------------
+
+export class InstantiateProductAcquisitionFormUseCase {
+  constructor(
+    private readonly repo: AcquisitionRepositoryPort,
+    private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly products?: ProductRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    productId: string;
+    contractCode: string;
+    code: string;
+    name: string;
+    description?: string | null;
+    correlationId?: string | null;
+  }) {
+    if (!input.actorId?.trim() || !input.productId?.trim() || !input.contractCode?.trim()) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'actorId, productId and contractCode required',
+      );
+    }
+    if (!input.code?.trim() || !input.name?.trim()) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'code and name required');
+    }
+    const contract = getProductAcquisitionContract(input.contractCode);
+    if (!contract) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Unknown product acquisition contractCode', [
+        { code: 'UNKNOWN_ACQUISITION_CONTRACT', contractCode: input.contractCode.trim() },
+      ]);
+    }
+    if (!this.products) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Product repository is required');
+    }
+    const product = await this.products.findById(input.productId.trim());
+    if (!product) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'productId does not reference an existing product',
+      );
+    }
+
+    assertFormSchemaDefinitionPublishable(contract.schemaDefinition, contract.conditionRules);
+
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return withOutbox(this.outbox, async (client, enqueue) => {
+      const formSchema = await this.repo.createFormSchema(
+        {
+          code: input.code.trim(),
+          name: input.name.trim(),
+          description: input.description ?? contract.description,
+          status: 'DRAFT',
+          productId: input.productId.trim(),
+          commercialPlanId: null,
+          metadata: {
+            contractCode: contract.contractCode,
+            productOwnedAcquisitionContract: true,
+            requiredDocumentTypes: contract.requiredDocumentTypes,
+          },
+          createdBy: input.actorId,
+        },
+        client,
+      );
+
+      const formVersion = await this.repo.createFormVersion(
+        {
+          formSchemaId: formSchema.id,
+          versionNumber: 1,
+          schemaDefinition: {
+            ...contract.schemaDefinition,
+            requiredConsents: contract.requiredConsents,
+            requiredDocumentTypes: contract.requiredDocumentTypes,
+            contractCode: contract.contractCode,
+          },
+          conditionRules: contract.conditionRules,
+          immutableAfterPublish: true,
+          metadata: {
+            contractCode: contract.contractCode,
+            instantiatedFromTemplate: true,
+          },
+          createdBy: input.actorId,
+          status: 'DRAFT',
+        },
+        client,
+      );
+
+      const documentRequirements = [];
+      for (const doc of contract.requiredDocumentTypes) {
+        documentRequirements.push(
+          await this.repo.createDocumentRequirement(
+            {
+              code: `${formSchema.code}.${doc.code}`,
+              name: doc.name,
+              description: doc.description ?? null,
+              formSchemaId: formSchema.id,
+              documentType: doc.documentType,
+              required: doc.required !== false,
+              conditionRules: [],
+              status: 'ACTIVE',
+              metadata: {
+                contractCode: contract.contractCode,
+                templateDocumentCode: doc.code,
+              },
+            },
+            client,
+          ),
+        );
+      }
+
+      await enqueue(
+        buildAcquisitionOutboxEvent({
+          eventType: AcquisitionEventTypes.FORM_SCHEMA_CREATED,
+          aggregateId: formSchema.id,
+          aggregateType: 'form_schema',
+          correlationId,
+          actorId: input.actorId,
+          payload: {
+            code: formSchema.code,
+            productId: formSchema.productId,
+            contractCode: contract.contractCode,
+            formVersionId: formVersion.id,
+            published: false,
+          },
+        }),
+      );
+      await enqueue(
+        buildAcquisitionOutboxEvent({
+          eventType: AcquisitionEventTypes.FORM_VERSION_CREATED,
+          aggregateId: formVersion.id,
+          aggregateType: 'form_version',
+          correlationId,
+          actorId: input.actorId,
+          payload: {
+            formSchemaId: formVersion.formSchemaId,
+            versionNumber: formVersion.versionNumber,
+            contractCode: contract.contractCode,
+            status: formVersion.status,
+          },
+        }),
+      );
+      await addAuditEvent(
+        this.repo,
+        {
+          aggregateType: 'form_schema',
+          aggregateId: formSchema.id,
+          action: 'edge.p10.form_schema.instantiated_from_contract',
+          actorId: input.actorId,
+          afterState: {
+            code: formSchema.code,
+            contractCode: contract.contractCode,
+            formVersionId: formVersion.id,
+            status: formSchema.status,
+            versionStatus: formVersion.status,
+          },
+          correlationId,
+        },
+        client,
+      );
+
+      return {
+        formSchema,
+        formVersion,
+        documentRequirements,
+        contractCode: contract.contractCode,
+      };
+    });
+  }
+}
 
 export class CreateFormSchemaUseCase {
   constructor(
@@ -1972,6 +2267,8 @@ export class CreateApplicationDraftUseCase {
     commercialPlanId?: string | null;
     planPresentationId?: string | null;
     metadata?: Record<string, unknown>;
+    /** Optional consent evidence — validated when schemaDefinition.requiredConsents is set. */
+    consents?: SubmittedConsent[];
     correlationId?: string | null;
   }) {
     const formVersion = await this.repo.getFormVersion(input.formVersionId);
@@ -1986,6 +2283,17 @@ export class CreateApplicationDraftUseCase {
     const formSchemaId = input.formSchemaId ?? formVersion.formSchemaId;
     const prospect = await this.repo.getProspect(input.prospectId);
     if (!prospect) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Prospect not found');
+
+    const consentEvidence = validateAndMapApplicationConsents({
+      schemaDefinition: formVersion.schemaDefinition,
+      formSchemaId,
+      formVersionNumber: formVersion.versionNumber,
+      formSlug: formSchemaId,
+      consents: input.consents,
+      metadata: input.metadata,
+      requireIfDeclared: false,
+    });
+
     const correlationId = input.correlationId?.trim() || randomUUID();
     return withOutbox(this.outbox, async (client, enqueue) => {
       const row = await this.repo.createApplication(
@@ -2003,6 +2311,8 @@ export class CreateApplicationDraftUseCase {
             ...(input.metadata ?? {}),
             boundFormVersionNumber: formVersion.versionNumber,
             boundFormSchemaSnapshot: true,
+            ...(consentEvidence ? { consentEvidence } : {}),
+            ...(input.consents ? { consents: input.consents } : {}),
           },
           createdBy: input.actorId ?? null,
         },
@@ -2055,7 +2365,13 @@ export class SaveApplicationAnswersUseCase {
   }) {
     const application = await this.repo.getApplication(input.applicationId);
     if (!application) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Application not found');
-    if (application.status !== 'DRAFT' && application.status !== 'DOCUMENTS_PENDING') {
+    const editableStatuses = new Set([
+      'DRAFT',
+      'DOCUMENTS_PENDING',
+      'INFORMATION_REQUIRED',
+      'INFORMATION_RECEIVED',
+    ]);
+    if (!editableStatuses.has(String(application.status))) {
       throw new DomainError(
         ErrorCode.CONFLICT,
         `Cannot save answers when application status is ${application.status}`,
@@ -2155,6 +2471,8 @@ export class SubmitApplicationUseCase {
   async execute(input: {
     actorId?: string | null;
     applicationId: string;
+    /** Consent evidence — required when schemaDefinition.requiredConsents is set. */
+    consents?: SubmittedConsent[];
     correlationId?: string | null;
   }) {
     const application = await this.repo.getApplication(input.applicationId);
@@ -2170,12 +2488,36 @@ export class SubmitApplicationUseCase {
       answers.map((a) => ({ fieldKey: a.fieldKey, value: a.value })),
       { conditionRules: boundVersion.conditionRules },
     );
+
+    const consentEvidence = validateAndMapApplicationConsents({
+      schemaDefinition: boundVersion.schemaDefinition,
+      formSchemaId: application.formSchemaId,
+      formVersionNumber: boundVersion.versionNumber,
+      formSlug: application.formSchemaId,
+      consents: input.consents,
+      metadata: application.metadata,
+      answers: answers.map((a) => ({ fieldKey: a.fieldKey, value: a.value })),
+      requireIfDeclared: true,
+    });
+
     const correlationId = input.correlationId?.trim() || randomUUID();
     return withOutbox(this.outbox, async (client, enqueue) => {
       const updated = await this.repo.transitionApplication(
         application.id,
         'SUBMITTED',
-        { submittedAt: new Date(), updatedBy: input.actorId ?? null },
+        {
+          submittedAt: new Date(),
+          updatedBy: input.actorId ?? null,
+          ...(consentEvidence
+            ? {
+                metadata: {
+                  ...application.metadata,
+                  consentEvidence,
+                  ...(input.consents ? { consents: input.consents } : {}),
+                },
+              }
+            : {}),
+        },
         input.actorId ?? null,
         client,
       );

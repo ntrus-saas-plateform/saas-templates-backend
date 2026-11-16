@@ -715,7 +715,7 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
 
   async listLeadConsents(leadId: string) {
     const rows = await this.q(
-      `SELECT purpose, channel, state, withdrawn_at
+      `SELECT purpose, channel, state, consent_text_version, withdrawn_at
        FROM edge_marketing_lead_consents WHERE lead_id = $1
        ORDER BY created_at DESC`,
       [leadId],
@@ -724,6 +724,7 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
       purpose: String(r.purpose),
       channel: String(r.channel),
       state: String(r.state),
+      consentTextVersion: String(r.consent_text_version),
       withdrawnAt: r.withdrawn_at ? new Date(String(r.withdrawn_at)) : null,
     }));
   }

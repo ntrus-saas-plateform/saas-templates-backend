@@ -35,6 +35,25 @@ describe('P10 acquisition-policy', () => {
     );
   });
 
+  it('accepts mandate statuses aliased with legacy review/info/checkout paths', () => {
+    expect(() => assertApplicationTransition('SUBMITTED', 'UNDER_REVIEW')).not.toThrow();
+    expect(() => assertApplicationTransition('UNDER_REVIEW', 'INFORMATION_REQUIRED')).not.toThrow();
+    expect(() =>
+      assertApplicationTransition('INFORMATION_REQUIRED', 'INFORMATION_RECEIVED'),
+    ).not.toThrow();
+    expect(() => assertApplicationTransition('INFORMATION_RECEIVED', 'UNDER_REVIEW')).not.toThrow();
+    expect(() => assertApplicationTransition('IN_REVIEW', 'DOCUMENTS_PENDING')).not.toThrow();
+    expect(() => assertApplicationTransition('DOCUMENTS_PENDING', 'IN_REVIEW')).not.toThrow();
+    expect(() => assertApplicationTransition('UNDER_REVIEW', 'QUALIFIED')).not.toThrow();
+    expect(() => assertApplicationTransition('QUALIFIED', 'CHECKOUT_PENDING')).not.toThrow();
+    expect(() => assertApplicationTransition('CHECKOUT_PENDING', 'CONVERTED')).not.toThrow();
+    expect(() => assertApplicationTransition('QUOTATION_PENDING', 'QUOTATION_ISSUED')).not.toThrow();
+    expect(() => assertApplicationTransition('QUOTATION_ISSUED', 'ACCEPTED')).not.toThrow();
+    expect(() => assertApplicationTransition('UNDER_REVIEW', 'DISQUALIFIED')).not.toThrow();
+    expect(() => assertApplicationTransition('DISQUALIFIED', 'UNDER_REVIEW')).toThrow(DomainError);
+    expect(() => assertApplicationTransition('CONVERTED', 'DRAFT')).toThrow(DomainError);
+  });
+
   it('allows valid document and qualification transitions', () => {
     expect(() => assertDocumentTransition('UPLOADED', 'PENDING_REVIEW')).not.toThrow();
     expect(() => assertDocumentTransition('PENDING_REVIEW', 'ACCEPTED')).not.toThrow();

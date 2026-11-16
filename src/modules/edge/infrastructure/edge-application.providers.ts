@@ -113,6 +113,7 @@ import {
   ScoreMarketingLeadUseCase,
   SubmitMarketingFormPublicUseCase,
   TransitionMarketingCampaignUseCase,
+  WithdrawMarketingLeadConsentUseCase,
 } from '../application/marketing/marketing.use-cases.js';
 import {
   ActivateMarketingJourneyUseCase,
@@ -388,6 +389,7 @@ import { ACQUISITION_REPOSITORY_PORT } from '../domain/acquisition/acquisition-r
 import { ACQUISITION_DOCUMENT_STORAGE_PORT } from '../domain/acquisition/document-storage.port.js';
 import { ACQUISITION_NOTIFICATION_PORT } from '../domain/acquisition/acquisition-notification.port.js';
 import { AcquisitionNotificationAdapter } from './acquisition/acquisition-notification.adapter.js';
+import { AcquisitionPublicRateLimiter } from './acquisition/acquisition-rate-limiter.js';
 import {
   AcceptQuoteUseCase,
   AdvanceJourneyUseCase,
@@ -401,6 +403,7 @@ import {
   CreateDocumentRequirementUseCase,
   CreateFormSchemaUseCase,
   CreateFormVersionUseCase,
+  InstantiateProductAcquisitionFormUseCase,
   CreatePlanPresentationUseCase,
   CreateProductContentVersionUseCase,
   CreateProductPresentationUseCase,
@@ -2102,6 +2105,11 @@ export const edgeApplicationProviders: Provider[] = [
   {
     provide: GetMarketingLeadUseCase,
     useFactory: (marketing) => new GetMarketingLeadUseCase(marketing),
+    inject: [MARKETING_REPOSITORY_PORT],
+  },
+  {
+    provide: WithdrawMarketingLeadConsentUseCase,
+    useFactory: (marketing) => new WithdrawMarketingLeadConsentUseCase(marketing),
     inject: [MARKETING_REPOSITORY_PORT],
   },
   {
@@ -6384,6 +6392,7 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
   },
   // P10 — Acquisition CX
+  AcquisitionPublicRateLimiter,
   {
     provide: CreateProductPresentationUseCase,
     useFactory: (repo, outbox) => new CreateProductPresentationUseCase(repo, outbox),
@@ -6492,6 +6501,16 @@ export const edgeApplicationProviders: Provider[] = [
   {
     provide: CreateFormSchemaUseCase,
     useFactory: (repo, outbox, products) => new CreateFormSchemaUseCase(repo, outbox, products),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      PRODUCT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: InstantiateProductAcquisitionFormUseCase,
+    useFactory: (repo, outbox, products) =>
+      new InstantiateProductAcquisitionFormUseCase(repo, outbox, products),
     inject: [
       ACQUISITION_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,

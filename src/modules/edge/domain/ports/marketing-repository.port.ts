@@ -390,7 +390,13 @@ export interface MarketingRepositoryPort {
     proofRef?: string | null;
   }): Promise<{ id: string }>;
   listLeadConsents(leadId: string): Promise<
-    { purpose: string; channel: string; state: string; withdrawnAt: Date | null }[]
+    {
+      purpose: string;
+      channel: string;
+      state: string;
+      consentTextVersion: string;
+      withdrawnAt: Date | null;
+    }[]
   >;
 
   getActiveScoringModel(code?: string): Promise<MarketingScoringModel | null>;

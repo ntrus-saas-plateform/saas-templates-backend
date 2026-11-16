@@ -1,6 +1,11 @@
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { ControlPlaneOutboxTransactionService } from '../../../../shared/messaging/control-plane-outbox-transaction.service.js';
 import {
+  parseRequiredConsents,
+  validateSubmittedConsents,
+  type SubmittedConsent,
+} from '../../domain/marketing/marketing-consent.js';
+import {
   assertCampaignCanPromoteProduct,
   assertCampaignPublishable,
   assertCampaignStatusTransition,
@@ -8,6 +13,7 @@ import {
   assertOfferPromotable,
   calculateExplainableLeadScore,
   CampaignStatus,
+  ConsentState,
   LeadStatus,
   normalizeLeadEmail,
   type ScoringWeights,
@@ -361,7 +367,7 @@ export class SubmitMarketingFormPublicUseCase {
     payload: Record<string, unknown>;
     utm?: Record<string, unknown>;
     sourceUrl?: string | null;
-    consents?: { purpose: string; channel: string; textVersion: string }[];
+    consents?: SubmittedConsent[];
     actorId?: string;
   }) {
     const form = await this.marketing.getFormBySlug(input.slug);
@@ -369,6 +375,14 @@ export class SubmitMarketingFormPublicUseCase {
       throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Published form not found');
     }
     assertFormDoesNotProvisionTenant(form.formType);
+
+    const { records: consentRecords } = validateSubmittedConsents({
+      required: parseRequiredConsents(form.requiredConsents ?? []),
+      submitted: input.consents,
+      formId: form.id,
+      formVersion: form.version,
+      formSlug: form.slug,
+    });
 
     if (input.idempotencyKey) {
       const existing = await this.marketing.findSubmissionByIdempotency(
@@ -411,14 +425,15 @@ export class SubmitMarketingFormPublicUseCase {
       });
     }
 
-    for (const c of input.consents ?? []) {
+    for (const c of consentRecords) {
       await this.marketing.createLeadConsent({
         leadId: lead.id,
         purpose: c.purpose,
         channel: c.channel,
-        state: 'GRANTED',
+        state: c.state,
         source: `form:${form.slug}`,
-        consentTextVersion: c.textVersion,
+        consentTextVersion: c.consentTextVersion,
+        proofRef: JSON.stringify(c.proof),
       });
     }
 
@@ -496,6 +511,61 @@ export class GetMarketingLeadUseCase {
     if (!lead) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Lead not found');
     const consents = await this.marketing.listLeadConsents(id);
     return { ...lead, consents };
+  }
+}
+
+/** Appends a WITHDRAWN consent row (history preserved; never deletes prior grants). */
+export class WithdrawMarketingLeadConsentUseCase {
+  constructor(private readonly marketing: MarketingRepositoryPort) {}
+
+  async execute(input: {
+    leadId: string;
+    purpose: string;
+    channel: string;
+    actorId: string;
+    consentTextVersion?: string;
+    locale?: string;
+  }) {
+    const lead = await this.marketing.getLead(input.leadId);
+    if (!lead) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Lead not found');
+
+    const purpose = input.purpose.trim();
+    const channel = input.channel.trim();
+    if (!purpose || !channel) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'purpose and channel are required', [
+        { purpose, channel },
+      ]);
+    }
+
+    const existing = await this.marketing.listLeadConsents(input.leadId);
+    const prior = existing.find((c) => c.purpose === purpose && c.channel === channel);
+    const textVersion =
+      input.consentTextVersion?.trim() || prior?.consentTextVersion || 'withdrawn';
+
+    const decidedAt = new Date().toISOString();
+    const locale = input.locale?.trim() || null;
+    const proof = {
+      leadId: input.leadId,
+      purpose,
+      channel,
+      locale,
+      decidedAt,
+      textVersion,
+      action: 'WITHDRAW',
+      actorId: input.actorId,
+    };
+
+    const row = await this.marketing.createLeadConsent({
+      leadId: input.leadId,
+      purpose,
+      channel,
+      state: ConsentState.WITHDRAWN,
+      source: `withdraw:${input.actorId}`,
+      consentTextVersion: textVersion,
+      proofRef: JSON.stringify(proof),
+    });
+
+    return { id: row.id, purpose, channel, state: ConsentState.WITHDRAWN, proof };
   }
 }
 

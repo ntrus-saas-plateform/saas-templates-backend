@@ -58,15 +58,30 @@ export type DocumentRequirementStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 export type ApplicationStatus =
   | 'DRAFT'
   | 'SUBMITTED'
+  /** Legacy review status — alias of UNDER_REVIEW */
   | 'IN_REVIEW'
+  | 'UNDER_REVIEW'
+  /** Legacy info-request status — alias of INFORMATION_REQUIRED */
   | 'DOCUMENTS_PENDING'
+  | 'INFORMATION_REQUIRED'
+  | 'INFORMATION_RECEIVED'
   | 'QUALIFICATION_PENDING'
+  | 'QUALIFIED'
+  | 'DISQUALIFIED'
+  | 'QUOTATION_PENDING'
+  | 'QUOTATION_ISSUED'
+  /** Legacy approval status — alias of QUALIFIED / ACCEPTED paths */
   | 'APPROVED'
+  | 'ACCEPTED'
   | 'REJECTED'
   | 'WITHDRAWN'
   | 'EXPIRED'
+  /** Legacy checkout status — alias of CHECKOUT_PENDING */
   | 'CHECKOUT_READY'
-  | 'COMPLETED';
+  | 'CHECKOUT_PENDING'
+  /** Legacy completion status — alias of CONVERTED */
+  | 'COMPLETED'
+  | 'CONVERTED';
 
 export type DocumentReferenceStatus =
   | 'UPLOADED'
@@ -288,8 +303,26 @@ export type FormFieldDefinition = {
   condition?: unknown;
 };
 
+export type FormSchemaSection = {
+  key: string;
+  title?: string;
+  fields?: FormFieldDefinition[];
+};
+
+export type FormSchemaRequiredConsent = {
+  purpose: string;
+  channel: string;
+  textVersion: string;
+  locale?: string;
+  mandatory?: boolean;
+  consentRef?: string;
+};
+
 export type FormSchemaDefinition = {
   fields?: FormFieldDefinition[];
+  sections?: FormSchemaSection[];
+  requiredConsents?: FormSchemaRequiredConsent[];
+  requiredDocumentTypes?: unknown[];
   [key: string]: unknown;
 };
 

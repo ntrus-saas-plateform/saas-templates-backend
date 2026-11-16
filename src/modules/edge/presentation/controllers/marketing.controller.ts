@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -44,6 +45,7 @@ import {
   ScoreMarketingLeadUseCase,
   SubmitMarketingFormPublicUseCase,
   TransitionMarketingCampaignUseCase,
+  WithdrawMarketingLeadConsentUseCase,
 } from '../../application/marketing/marketing.use-cases.js';
 import {
   ActivateMarketingJourneyUseCase,
@@ -105,6 +107,7 @@ export class EdgeMarketingController {
     private readonly submitFormPublic: SubmitMarketingFormPublicUseCase,
     private readonly listLeads: ListMarketingLeadsUseCase,
     private readonly getLead: GetMarketingLeadUseCase,
+    private readonly withdrawLeadConsent: WithdrawMarketingLeadConsentUseCase,
     private readonly scoreLead: ScoreMarketingLeadUseCase,
     private readonly createBudget: CreateMarketingBudgetUseCase,
     private readonly listBudgets: ListMarketingBudgetsUseCase,
@@ -350,7 +353,15 @@ export class EdgeMarketingController {
       payload: Record<string, unknown>;
       utm?: Record<string, unknown>;
       sourceUrl?: string | null;
-      consents?: { purpose: string; channel: string; textVersion: string }[];
+      consents?: {
+        purpose: string;
+        channel: string;
+        textVersion: string;
+        decision: 'GRANTED' | 'DENIED' | 'NOT_PROVIDED' | 'WITHDRAWN';
+        locale?: string;
+        consentRef?: string;
+        decidedAt?: string;
+      }[];
       idempotencyKey?: string;
     },
   ) {
@@ -380,6 +391,31 @@ export class EdgeMarketingController {
   @RequireEdgePermissions('platform:marketing:lead:read')
   async lead(@Param('id', ParseUUIDPipe) id: string) {
     return { data: await this.getLead.execute(id) };
+  }
+
+  @Patch('leads/:id/consents/withdraw')
+  @RequireEdgePermissions('platform:marketing:lead:manage')
+  async withdrawConsent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body()
+    body: {
+      purpose: string;
+      channel: string;
+      consentTextVersion?: string;
+      locale?: string;
+    },
+  ) {
+    const ctx = this.edgeContext.getOrThrow();
+    return {
+      data: await this.withdrawLeadConsent.execute({
+        leadId: id,
+        purpose: body.purpose,
+        channel: body.channel,
+        consentTextVersion: body.consentTextVersion,
+        locale: body.locale,
+        actorId: ctx.administratorId!,
+      }),
+    };
   }
 
   @Post('leads/:id/score')

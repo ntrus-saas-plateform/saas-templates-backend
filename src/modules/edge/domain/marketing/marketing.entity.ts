@@ -29,6 +29,7 @@ export enum ConsentState {
   GRANTED = 'GRANTED',
   WITHDRAWN = 'WITHDRAWN',
   DENIED = 'DENIED',
+  NOT_PROVIDED = 'NOT_PROVIDED',
 }
 
 export enum DataQuality {

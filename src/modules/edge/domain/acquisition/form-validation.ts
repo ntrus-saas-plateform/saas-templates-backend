@@ -47,8 +47,11 @@ function validateFieldType(field: FormFieldDefinition, value: unknown): FormVali
   switch (field.type) {
     case 'string':
     case 'text':
+    case 'short_text':
+    case 'long_text':
     case 'email':
     case 'phone':
+    case 'country':
       if (typeof value !== 'string') {
         return {
           code: 'FIELD_TYPE_MISMATCH',
@@ -156,10 +159,71 @@ function validateFieldType(field: FormFieldDefinition, value: unknown): FormVali
         }
       }
       break;
+    case 'address':
+      if (typeof value !== 'string' && (typeof value !== 'object' || value === null || Array.isArray(value))) {
+        return {
+          code: 'FIELD_TYPE_MISMATCH',
+          fieldKey: field.key,
+          message: `Field ${field.key} expects address object or string`,
+        };
+      }
+      break;
+    case 'file_upload':
+      if (
+        typeof value !== 'string' &&
+        (typeof value !== 'object' || value === null || Array.isArray(value))
+      ) {
+        return {
+          code: 'FIELD_TYPE_MISMATCH',
+          fieldKey: field.key,
+          message: `Field ${field.key} expects file reference object or string`,
+        };
+      }
+      break;
     default:
       break;
   }
   return null;
+}
+
+/**
+ * Structural publishability checks for a form schema definition + optional condition rules.
+ * Used by PublishFormVersion and product acquisition contract templates.
+ */
+export function assertFormSchemaDefinitionPublishable(
+  schemaDefinition: FormSchemaDefinition,
+  conditionRules: unknown,
+): void {
+  const fields = schemaDefinition?.fields;
+  if (!Array.isArray(fields)) {
+    throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form schema must define a fields array', [
+      { code: 'FORM_SCHEMA_FIELDS_REQUIRED' },
+    ]);
+  }
+  for (const field of fields) {
+    if (!field?.key || typeof field.key !== 'string' || !field.type) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'Form schema field definitions require key and type',
+        [{ code: 'FORM_SCHEMA_FIELD_INVALID' }],
+      );
+    }
+  }
+  if (conditionRules != null) {
+    const cond = evaluateConditionRules(conditionRules, {});
+    if (!cond.ok && cond.error === 'Invalid condition rule') {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form condition rules are invalid', [
+        { code: 'FORM_CONDITION_INVALID' },
+      ]);
+    }
+  }
+  const probe = validateFormAnswers(schemaDefinition, {}, { allowUnknownFields: true });
+  const structural = probe.issues.filter((i) => i.code === 'INVALID_FIELD_DEF');
+  if (structural.length > 0) {
+    throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Form schema failed structural validation', [
+      ...structural.map((i) => ({ code: i.code, fieldKey: i.fieldKey, message: i.message })),
+    ]);
+  }
 }
 
 /**

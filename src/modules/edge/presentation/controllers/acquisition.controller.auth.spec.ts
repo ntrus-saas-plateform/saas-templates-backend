@@ -25,6 +25,7 @@ describe('AcquisitionController auth matrix', () => {
     { method: 'postPromoteLead', permission: 'platform:acquisition:manage' },
     { method: 'getForms', permission: 'platform:acquisition:read' },
     { method: 'postForm', permission: 'platform:acquisition:forms:manage' },
+    { method: 'postFormFromContract', permission: 'platform:acquisition:forms:manage' },
     { method: 'postFormVersion', permission: 'platform:acquisition:forms:manage' },
     { method: 'postPublishFormVersion', permission: 'platform:acquisition:forms:publish' },
     { method: 'getApplications', permission: 'platform:acquisition:read' },

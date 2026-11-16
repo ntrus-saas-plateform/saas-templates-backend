@@ -16,9 +16,11 @@ import {
   CreateApplicationDraftUseCase,
   CreateFormSchemaUseCase,
   InitiateAcquisitionPaymentUseCase,
+  InstantiateProductAcquisitionFormUseCase,
   ListPublicProductDiscoveryUseCase,
   PublishFormVersionUseCase,
   SaveApplicationAnswersUseCase,
+  SubmitApplicationUseCase,
 } from './acquisition.use-cases.js';
 
 function outboxStub() {
@@ -37,6 +39,7 @@ type Store = {
   answers: Array<{ applicationId: string; fieldKey: string; value: unknown; metadata: Record<string, unknown> }>;
   audits: unknown[];
   checkoutSessions: Map<string, Record<string, unknown>>;
+  documentRequirements?: Array<Record<string, unknown>>;
 };
 
 function createFakeRepo(store: Store): AcquisitionRepositoryPort {
@@ -217,6 +220,68 @@ function createFakeRepo(store: Store): AcquisitionRepositoryPort {
       store.formSchemas.set(row.id, row);
       return row;
     },
+    createFormVersion: async (input: {
+      formSchemaId: string;
+      versionNumber: number;
+      schemaDefinition: FormVersion['schemaDefinition'];
+      conditionRules?: unknown[];
+      immutableAfterPublish?: boolean;
+      metadata?: Record<string, unknown>;
+      createdBy?: string | null;
+      status?: string;
+    }) => {
+      const row: FormVersion = {
+        id: `fv-${Math.random().toString(16).slice(2)}`,
+        formSchemaId: input.formSchemaId,
+        versionNumber: input.versionNumber,
+        schemaDefinition: input.schemaDefinition,
+        conditionRules: input.conditionRules ?? [],
+        status: input.status ?? 'DRAFT',
+        publishedAt: null,
+        publishedBy: null,
+        immutableAfterPublish: input.immutableAfterPublish ?? true,
+        metadata: input.metadata ?? {},
+        createdBy: input.createdBy ?? 'system',
+        createdAt: now(),
+      };
+      store.formVersions.set(row.id, row);
+      return row;
+    },
+    createDocumentRequirement: async (input: Record<string, unknown>) => {
+      if (!store.documentRequirements) store.documentRequirements = [];
+      const row = {
+        id: `dr-${Math.random().toString(16).slice(2)}`,
+        ...input,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      store.documentRequirements.push(row);
+      return row as never;
+    },
+    transitionApplication: async (
+      id: string,
+      toStatus: string,
+      patch?: Record<string, unknown>,
+    ) => {
+      const app = store.applications.get(id);
+      if (!app) throw new Error('missing');
+      const updated: Application = {
+        ...app,
+        status: toStatus,
+        submittedAt: (patch?.submittedAt as Date | undefined) ?? app.submittedAt,
+        metadata: (patch?.metadata as Record<string, unknown> | undefined) ?? app.metadata,
+        updatedBy: (patch?.updatedBy as string | null | undefined) ?? app.updatedBy,
+        updatedAt: now(),
+        version: app.version + 1,
+      };
+      store.applications.set(id, updated);
+      return updated;
+    },
+    addApplicationEvent: async (input: Record<string, unknown>) => ({
+      id: 'ae1',
+      ...input,
+      createdAt: now(),
+    }),
     createLead: async (input: Record<string, unknown>) => ({
       id: `lead-${Math.random().toString(16).slice(2)}`,
       ...input,
@@ -224,6 +289,11 @@ function createFakeRepo(store: Store): AcquisitionRepositoryPort {
       updatedAt: now(),
       version: 1,
     }),
+    getFormPublication: async (id: string) => {
+      const pubs = (store as Store & { publications?: Map<string, Record<string, unknown>> })
+        .publications;
+      return (pubs?.get(id) as never) ?? null;
+    },
     addLeadEvent: async (input: Record<string, unknown>) => ({
       id: 'le1',
       ...input,
@@ -697,6 +767,100 @@ describe('P10 acquisition use-cases', () => {
     expect(ok.emailNormalized).toBe('human@example.com');
   });
 
+  it('CaptureAcquisitionLeadUseCase validates requiredConsents from form publication metadata', async () => {
+    const store: Store & { publications: Map<string, Record<string, unknown>> } = {
+      presentations: [],
+      formSchemas: new Map(),
+      formVersions: new Map(),
+      applications: new Map(),
+      answers: [],
+      audits: [],
+      checkoutSessions: new Map(),
+      publications: new Map(),
+    };
+    store.formVersions.set('fv1', {
+      id: 'fv1',
+      formSchemaId: 'fs1',
+      versionNumber: 1,
+      schemaDefinition: { fields: [] },
+      conditionRules: [],
+      status: 'PUBLISHED',
+      publishedAt: new Date(),
+      publishedBy: 'actor',
+      immutableAfterPublish: true,
+      metadata: {},
+      createdBy: 'actor',
+      createdAt: new Date(),
+    });
+    store.publications.set('pub-1', {
+      id: 'pub-1',
+      formSchemaId: 'fs1',
+      formVersionId: 'fv1',
+      channel: 'PUBLIC_WEB',
+      publicSlug: 'demo-form',
+      status: 'ACTIVE',
+      publishedAt: new Date(),
+      publishedBy: 'actor',
+      expiresAt: null,
+      metadata: {
+        requiredConsents: [
+          {
+            purpose: 'MARKETING',
+            channel: 'EMAIL',
+            textVersion: 'v1',
+          },
+        ],
+      },
+      createdAt: new Date(),
+    });
+    const repo = createFakeRepo(store);
+    const uc = new CaptureAcquisitionLeadUseCase(repo, outboxStub() as never);
+    const { issueChallenge } = await import(
+      '../../domain/acquisition/acquisition-public-challenge.js'
+    );
+    const challenge = issueChallenge();
+    const challengeFields = {
+      challengeId: challenge.challengeId,
+      challengeToken: challenge.challengeToken,
+      challengeAnswer: String(challenge.operandA + challenge.operandB),
+      honeypot: '',
+      submittedAtMs: Date.now() - 2_000,
+    };
+
+    await expect(
+      uc.execute({
+        email: 'consent@example.com',
+        sourceType: 'WEB',
+        formPublicationId: 'pub-1',
+        ...challengeFields,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+
+    const lead = await uc.execute({
+      email: 'consent@example.com',
+      sourceType: 'WEB',
+      formPublicationId: 'pub-1',
+      consents: [
+        {
+          purpose: 'MARKETING',
+          channel: 'EMAIL',
+          textVersion: 'v1',
+          decision: 'GRANTED',
+        },
+      ],
+      ...challengeFields,
+    });
+    expect(lead.metadata).toMatchObject({
+      consentEvidence: [
+        expect.objectContaining({
+          purpose: 'MARKETING',
+          channel: 'EMAIL',
+          state: 'GRANTED',
+        }),
+      ],
+    });
+  });
+
   it('SaveApplicationAnswersUseCase rejects expectedVersion conflict', async () => {
     const store: Store = {
       presentations: [],
@@ -831,5 +995,199 @@ describe('P10 acquisition use-cases', () => {
     await expect(
       uc.execute({ actorId: 'actor-1', formVersionId: 'fv1' }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+  });
+
+  it('InstantiateProductAcquisitionFormUseCase creates draft schema+version from contract', async () => {
+    const store: Store = {
+      presentations: [],
+      formSchemas: new Map(),
+      formVersions: new Map(),
+      applications: new Map(),
+      answers: [],
+      audits: [],
+      checkoutSessions: new Map(),
+      documentRequirements: [],
+    };
+    const repo = createFakeRepo(store);
+    const products = {
+      findById: vi.fn().mockResolvedValue({ id: 'prod-1', code: 'pharmacy' }),
+    } as unknown as ProductRepositoryPort;
+    const uc = new InstantiateProductAcquisitionFormUseCase(
+      repo,
+      outboxStub() as never,
+      products,
+    );
+
+    const result = await uc.execute({
+      actorId: 'actor-1',
+      productId: 'prod-1',
+      contractCode: 'pharmacy.retail.v1',
+      code: 'pharma-acq-1',
+      name: 'Pharmacy acquisition',
+    });
+
+    expect(result.contractCode).toBe('pharmacy.retail.v1');
+    expect(result.formSchema.status).toBe('DRAFT');
+    expect(result.formSchema.productId).toBe('prod-1');
+    expect(result.formSchema.metadata.contractCode).toBe('pharmacy.retail.v1');
+    expect(result.formVersion.status).toBe('DRAFT');
+    expect(result.formVersion.publishedAt).toBeNull();
+    expect(result.formVersion.schemaDefinition.requiredConsents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ purpose: 'acquisition_processing' }),
+      ]),
+    );
+    expect(result.documentRequirements.length).toBeGreaterThan(0);
+    expect(store.formVersions.get(result.formVersion.id)?.status).toBe('DRAFT');
+  });
+
+  it('InstantiateProductAcquisitionFormUseCase rejects unknown contract and missing product', async () => {
+    const store: Store = {
+      presentations: [],
+      formSchemas: new Map(),
+      formVersions: new Map(),
+      applications: new Map(),
+      answers: [],
+      audits: [],
+      checkoutSessions: new Map(),
+      documentRequirements: [],
+    };
+    const repo = createFakeRepo(store);
+    const products = {
+      findById: vi.fn().mockResolvedValue(null),
+    } as unknown as ProductRepositoryPort;
+    const uc = new InstantiateProductAcquisitionFormUseCase(
+      repo,
+      outboxStub() as never,
+      products,
+    );
+
+    await expect(
+      uc.execute({
+        actorId: 'actor',
+        productId: 'prod-1',
+        contractCode: 'not.a.contract',
+        code: 'x',
+        name: 'X',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+
+    await expect(
+      uc.execute({
+        actorId: 'actor',
+        productId: 'missing',
+        contractCode: 'retail.commerce.v1',
+        code: 'x',
+        name: 'X',
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
+  });
+
+  it('SubmitApplicationUseCase validates requiredConsents from schemaDefinition', async () => {
+    const store: Store = {
+      presentations: [],
+      formSchemas: new Map(),
+      formVersions: new Map(),
+      applications: new Map(),
+      answers: [],
+      audits: [],
+      checkoutSessions: new Map(),
+      documentRequirements: [],
+    };
+    const schema: FormSchema = {
+      id: 'fs-consent',
+      code: 'consent-form',
+      name: 'Consent form',
+      description: null,
+      status: 'ACTIVE',
+      productId: 'prod-1',
+      commercialPlanId: null,
+      currentPublishedVersionId: 'fv-consent',
+      metadata: {},
+      createdBy: 'actor',
+      updatedBy: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1,
+    };
+    store.formSchemas.set(schema.id, schema);
+    store.formVersions.set('fv-consent', {
+      id: 'fv-consent',
+      formSchemaId: schema.id,
+      versionNumber: 1,
+      schemaDefinition: {
+        fields: [{ key: 'email', type: 'email', required: true }],
+        requiredConsents: [
+          {
+            purpose: 'acquisition_processing',
+            channel: 'WEB',
+            textVersion: 'v1',
+            mandatory: true,
+          },
+        ],
+      },
+      conditionRules: [],
+      status: 'PUBLISHED',
+      publishedAt: new Date(),
+      publishedBy: 'actor',
+      immutableAfterPublish: true,
+      metadata: {},
+      createdBy: 'actor',
+      createdAt: new Date(),
+    });
+    const app: Application = {
+      id: 'app-consent',
+      applicationNumber: 'A-1',
+      prospectId: 'prospect-1',
+      leadId: null,
+      formSchemaId: schema.id,
+      formVersionId: 'fv-consent',
+      formPublicationId: null,
+      productId: null,
+      commercialPlanId: null,
+      planPresentationId: null,
+      status: 'DRAFT',
+      submittedAt: null,
+      decidedAt: null,
+      decidedBy: null,
+      decisionReason: null,
+      metadata: {},
+      createdBy: 'actor',
+      updatedBy: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1,
+    };
+    store.applications.set(app.id, app);
+    store.answers.push({
+      applicationId: app.id,
+      fieldKey: 'email',
+      value: 'a@b.co',
+      metadata: {},
+    });
+    const repo = createFakeRepo(store);
+    const uc = new SubmitApplicationUseCase(repo, outboxStub() as never);
+
+    await expect(uc.execute({ applicationId: app.id })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION_ERROR,
+    });
+
+    const submitted = await uc.execute({
+      applicationId: app.id,
+      consents: [
+        {
+          purpose: 'acquisition_processing',
+          channel: 'WEB',
+          textVersion: 'v1',
+          decision: 'GRANTED',
+        },
+      ],
+    });
+    expect(submitted.status).toBe('SUBMITTED');
+    expect(submitted.metadata.consentEvidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ purpose: 'acquisition_processing', state: 'GRANTED' }),
+      ]),
+    );
   });
 });
