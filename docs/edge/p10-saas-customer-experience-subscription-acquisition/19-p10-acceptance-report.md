@@ -1,30 +1,30 @@
-# 19 â€” P10 acceptance report (remediation package)
+# 19 — P10 acceptance report (remediation package)
 
 **Date :** 2026-11-16  
 **Branche :** `feature/console`  
-**Baselines audit historiques :** BE `4fadf08` Â· FE `d7dcb2e`  
-**HEAD travail P10 (prÃ©-remÃ©diation commit) :** BE `0c0df38` Â· FE `e5a8e32`  
-**RemÃ©diation :** working tree / prochain commit sur `feature/console`
+**Baselines audit historiques :** BE `4fadf08` · FE `d7dcb2e`  
+**HEAD travail P10 (pré-remédiation commit) :** BE `0c0df38` · FE `e5a8e32`  
+**Remédiation :** working tree / prochain commit sur `feature/console`
 
 ## Verdict
 
 # READY FOR INDEPENDENT AUDIT
 
-P0 consent + parcours core + remÃ©diations sÃ©curitÃ© + contrats produit + evidence tests sont en place.  
-**Ce nâ€™est pas** un self-ACCEPT Â« ENTERPRISE PRODUCTION READY Â».
+P0 consent + parcours core + remédiations sécurité + contrats produit + evidence tests sont en place.  
+**Ce n’est pas** un self-ACCEPT « ENTERPRISE PRODUCTION READY ».
 
-### Evidence tests remÃ©diation (session)
+### Evidence tests remédiation (session)
 
 ```
-pnpm exec vitest run â€¦marketing-consentâ€¦ â€¦acquisitionâ€¦
-â†’ 15 files / 176 passed (incl. P10-S01â€¦S40 = 40/40)
+pnpm exec vitest run …marketing-consent… …acquisition…
+? 15 files / 176 passed (incl. P10-S01…S40 = 40/40)
 ```
 
-## Gates (honnÃªtes)
+## Gates (honnêtes)
 
 | Gate | Statut |
 |------|--------|
-| A Architecture / boundaries P1â€“P9 | PASS |
+| A Architecture / boundaries P1–P9 | PASS |
 | B Domain + mig 117 foundation | PASS |
 | C Forms / applications / docs | PASS (env ClamAV live deferred) |
 | D Qualification / enterprise quote | PASS (MVP) |
@@ -34,25 +34,25 @@ pnpm exec vitest run â€¦marketing-consentâ€¦ â€¦acquisitionâ€¦
 | H Console `/edge/acquisition` | PASS (MVP) |
 | I Consent P0 `validateSubmittedConsents` | **PASS (FIXED)** |
 | J Rate-limit Redis + FE advisory | **PASS** |
-| K Scenarios 40/40 + Playwright 18 | PASS (live 40 mÃ©tier deferred) |
-| L Privacy / legal compliance | **CONDITIONAL** â€” technique OK ; **revue juridique juridictionnelle requise** |
+| K Scenarios 40/40 + Playwright 18 | PASS (live 40 métier deferred) |
+| L Privacy / legal compliance | **CONDITIONAL** — technique OK ; **revue juridique juridictionnelle requise** |
 | M Testcontainers concurrency | **FAIL / incomplete** (deferred) |
 | N Self-ACCEPT production | **NOT CLAIMED** |
 
-## DiffÃ©rÃ© explicitement
+## Différé explicitement
 
 1. Suite Testcontainers concurrence incomplete  
-2. Smoke env rÃ©el Edge + ClamAV + S3  
+2. Smoke env réel Edge + ClamAV + S3  
 3. Playwright full 40 against live Edge auth  
 4. Apply mig **120** (consent NOT_PROVIDED) + **121** (application status expansion) sur tous les env
-5. Push remote peut Ã©chouer â€” non bloquant code  
+5. Push remote peut échouer — non bloquant code  
 6. GDPR erase automation, WAF/hCaptcha, form builder DnD  
 7. Aucun self-ACCEPT
 
 ## Note juridictionnelle
 
-> Consentement technique validÃ© en code â‰  conformitÃ© lÃ©gale. Legal review required per jurisdiction before production marketing/acquisition traffic.
+> Consentement technique validé en code ? conformité légale. Legal review required per jurisdiction before production marketing/acquisition traffic.
 
-## Documents liÃ©s
+## Documents liés
 
-Package remÃ©diation `00`â€“`18` Â· evidence packs prÃ©existants (`e2e-scenario-evidence.md`, `playwright-live-evidence.md`, `migration-apply-evidence.md`, `security-privacy.md`, `known-limitations.md`).
+Package remédiation `00`–`18` · evidence packs préexistants (`e2e-scenario-evidence.md`, `playwright-live-evidence.md`, `migration-apply-evidence.md`, `security-privacy.md`, `known-limitations.md`).
