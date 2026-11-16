@@ -9,6 +9,7 @@ import {
   AppendBusinessAuditUseCase,
   ApproveCommissionUseCase,
   CalculateCommissionUseCase,
+  ComputeCashRevenueUseCase,
   ComputeMrrMovementUseCase,
   CreateBusinessAlertPolicyUseCase,
   CreateBusinessDecisionUseCase,
@@ -43,6 +44,7 @@ import {
   ApproveCommissionDto,
   BusinessAuditQueryDto,
   CalculateCommissionDto,
+  ComputeCashRevenueDto,
   ComputeMrrMovementDto,
   CreateBusinessAlertPolicyDto,
   CreateBusinessDecisionDto,
@@ -90,6 +92,7 @@ export class EdgeRevenueOperationsController {
     private readonly recordSnapshot: RecordMetricSnapshotUseCase,
     private readonly overview: GetRevenueOverviewUseCase,
     private readonly computeMrr: ComputeMrrMovementUseCase,
+    private readonly computeCash: ComputeCashRevenueUseCase,
     private readonly createForecast: CreateRevenueForecastUseCase,
     private readonly createScenario: CreateForecastScenarioUseCase,
     private readonly createLeakage: CreateLeakageCaseUseCase,
@@ -170,6 +173,16 @@ export class EdgeRevenueOperationsController {
   })
   computeMrrMovement(@Req() req: EdgeRequest, @Body() body: ComputeMrrMovementDto) {
     return this.computeMrr.execute({ actorId: actorId(req), ...body });
+  }
+
+  @Post('edge/revenue/cash/compute')
+  @RequireEdgePermissions('platform:revenue:read')
+  @ApiOperation({
+    summary:
+      'Compute INVOICED/COLLECTED/RECEIVABLES from P6 invoice & payment refs (F-P11-001 engine)',
+  })
+  computeCashRevenue(@Req() req: EdgeRequest, @Body() body: ComputeCashRevenueDto) {
+    return this.computeCash.execute({ actorId: actorId(req), ...body });
   }
 
   // --- Retention ----------------------------------------------------------

@@ -7,6 +7,6 @@ P6 invoice/payment refs --provenance--> INVOICED / COLLECTED / RECEIVABLES snaps
 P11 --X--> never creates invoices, payment intents, or stores credentials
 ```
 
-**Live P6 recognition wiring deferred** for independent audit readiness of the foundation slice.
+**Vague 2:** executable recognition via `ComputeCashRevenueUseCase` + `cash-revenue-calculator` (read-only P6 export lists → INVOICED/COLLECTED/RECEIVABLES). Manual snapshots of those codes require `sourceProvenance.source=engine`. See [`27-vague2-cash-engine.md`](./27-vague2-cash-engine.md).
 
 Assurance detectors consume evidence structs; they do not call P6 mutators.

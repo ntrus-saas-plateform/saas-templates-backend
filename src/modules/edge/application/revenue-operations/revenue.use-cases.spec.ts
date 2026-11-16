@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ApproveCommissionUseCase,
   CalculateCommissionUseCase,
+  ComputeCashRevenueUseCase,
+  RecordMetricSnapshotUseCase,
   RecordProductProfitabilitySnapshotUseCase,
   RecordRetentionSnapshotUseCase,
   RunAssuranceScanUseCase,
 } from './revenue.use-cases.js';
+import { DomainError } from '../../../../core/domain/errors/domain-error.js';
 
 function mockRepo(overrides: Record<string, unknown> = {}) {
   return {
@@ -213,6 +216,112 @@ describe('RecordProductProfitabilitySnapshotUseCase', () => {
     });
     expect(snap.marginAmount).toBe(300);
     expect(snap.dataQuality).toBe('ESTIMATED');
+  });
+});
+
+describe('ComputeCashRevenueUseCase / F-P11-001', () => {
+  it('computes INVOICED and COLLECTED from P6 refs and never counts unpaid as collected', async () => {
+    const repo = mockRepo({
+      getMetricDefinitionByCode: vi.fn().mockResolvedValue({
+        id: 'def-1',
+        code: 'COLLECTED_REVENUE',
+        status: 'PUBLISHED',
+        version: 1,
+        currentPublishedVersionId: 'ver-1',
+      }),
+      recordMetricSnapshot: vi.fn().mockImplementation(async (input) => ({
+        id: `snap-${input.metricCode}`,
+        ...input,
+      })),
+    });
+    const uc = new ComputeCashRevenueUseCase(repo);
+    const out = await uc.execute({
+      actorId: 'a',
+      periodStart: '2026-01-01T00:00:00.000Z',
+      periodEnd: '2026-02-01T00:00:00.000Z',
+      currency: 'USD',
+      persistSnapshots: true,
+      invoices: [
+        {
+          id: 'inv-1',
+          status: 'ISSUED',
+          currency: 'USD',
+          total: '100',
+          amountDue: '100',
+          issueAt: '2026-01-10T00:00:00.000Z',
+        },
+      ],
+      payments: [
+        {
+          id: 'pi-1',
+          status: 'SUCCEEDED',
+          currency: 'USD',
+          amount: '40',
+          createdAt: '2026-01-12T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(out.result.invoiced.amount).toBe(100);
+    expect(out.result.collected.amount).toBe(40);
+    expect(out.provenance.source).toBe('engine');
+    expect(out.snapshots.length).toBeGreaterThan(0);
+  });
+});
+
+describe('RecordMetricSnapshotUseCase cash gate', () => {
+  it('rejects COLLECTED_REVENUE without engine provenance', async () => {
+    const repo = mockRepo({
+      getMetricDefinitionByCode: vi.fn().mockResolvedValue({
+        id: 'def-1',
+        code: 'COLLECTED_REVENUE',
+        status: 'PUBLISHED',
+        version: 1,
+        currentPublishedVersionId: 'ver-1',
+      }),
+    });
+    const uc = new RecordMetricSnapshotUseCase(repo);
+    await expect(
+      uc.execute({
+        actorId: 'a',
+        metricCode: 'COLLECTED_REVENUE',
+        periodStart: '2026-01-01',
+        periodEnd: '2026-01-31',
+        asOf: '2026-01-31',
+        value: 999,
+        currency: 'USD',
+        dataQuality: 'MEASURED',
+        sourceProvenance: { note: 'manual inject' },
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it('accepts COLLECTED_REVENUE with source=engine', async () => {
+    const repo = mockRepo({
+      getMetricDefinitionByCode: vi.fn().mockResolvedValue({
+        id: 'def-1',
+        code: 'COLLECTED_REVENUE',
+        status: 'PUBLISHED',
+        version: 1,
+        currentPublishedVersionId: 'ver-1',
+      }),
+      recordMetricSnapshot: vi.fn().mockImplementation(async (input) => ({
+        id: 'snap-1',
+        ...input,
+      })),
+    });
+    const uc = new RecordMetricSnapshotUseCase(repo);
+    const snap = await uc.execute({
+      actorId: 'a',
+      metricCode: 'COLLECTED_REVENUE',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-01-31',
+      asOf: '2026-01-31',
+      value: 40,
+      currency: 'USD',
+      dataQuality: 'MEASURED',
+      sourceProvenance: { source: 'engine', calculator: 'cash-revenue-calculator' },
+    });
+    expect(snap.id).toBe('snap-1');
   });
 });
 

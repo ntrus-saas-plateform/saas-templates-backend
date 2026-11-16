@@ -14,7 +14,7 @@
 | 4 Keycloak/infra checklist | **DONE** | `04-keycloak-infra-live.md` |
 | 5 E2E pack | **DONE (E2/E3)** | golden-path.spec; live smoke gated `LIVE_COMPLETE_E2E=1` (liveness + `/api/v1/edge/live-complete/status` never 404) |
 | 6 Console deep-links + badges | **DONE** | FE badge + status API; onboarding / billing / subscriptions; tenant→subscription link |
-| 7 Vague 2 roadmap | **DOCUMENTED** | `07-vague2-roadmap.md` — execute after lab E2E green |
+| 7 Vague 2 roadmap | **IN PROGRESS** | Restaurant seed + cash engine CODE_COMPLETE; see `10-vague2-status.md` |
 
 ## MUST_FIX closures
 

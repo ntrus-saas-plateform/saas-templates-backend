@@ -15,11 +15,20 @@ import {
   isCanonicalMetricCode,
 } from '../../domain/revenue-operations/revenue-metric-registry.js';
 import {
+  CASH_ENGINE_CALCULATOR,
+  CASH_ENGINE_PROVENANCE_SOURCE,
+  computeCashRevenue,
+  type InvoiceCashRef,
+  type PaymentCashRef,
+} from '../../domain/revenue-operations/cash-revenue-calculator.js';
+import {
+  assertCashMetricSnapshotProvenance,
   assertForecastMutable,
   assertLeakageCaseTransition,
   assertMetricDefinitionPublishedForSnapshot,
   assertSeparationOfDuties,
 } from '../../domain/revenue-operations/revenue-policy.js';
+import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
 import {
   buildRevenueOutboxEvent,
   EDGE_P11_OUTBOX_TENANT,
@@ -275,6 +284,7 @@ export class RecordMetricSnapshotUseCase {
       throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, `Metric definition ${code} not found`);
     }
     assertMetricDefinitionPublishedForSnapshot(definition.status);
+    assertCashMetricSnapshotProvenance(code, input.sourceProvenance);
 
     const correlationId = input.correlationId?.trim() || randomUUID();
     return withOutbox(this.outbox, async (client, enqueue) => {
@@ -446,6 +456,152 @@ export class ComputeMrrMovementUseCase {
         }),
       );
       return { result, snapshots };
+    });
+  }
+}
+
+/**
+ * F-P11-001 — executable INVOICED / COLLECTED / RECEIVABLES from P6 refs.
+ * Persisted snapshots always carry source=engine provenance.
+ */
+export class ComputeCashRevenueUseCase {
+  constructor(
+    private readonly repo: RevenueOperationsRepositoryPort,
+    private readonly billing?: BillingRepositoryPort,
+    private readonly outbox?: ControlPlaneOutboxTransactionService,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    periodStart: Date | string;
+    periodEnd: Date | string;
+    currency?: string;
+    businessUnitId?: string | null;
+    invoices?: InvoiceCashRef[];
+    payments?: PaymentCashRef[];
+    persistSnapshots?: boolean;
+    correlationId?: string | null;
+  }) {
+    const periodStart = new Date(input.periodStart);
+    const periodEnd = new Date(input.periodEnd);
+    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'periodStart/periodEnd must be valid dates');
+    }
+    if (periodEnd.getTime() <= periodStart.getTime()) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'periodEnd must be after periodStart');
+    }
+
+    let invoices = input.invoices ?? [];
+    let payments = input.payments ?? [];
+    if ((!invoices.length || !payments.length) && this.billing) {
+      if (!invoices.length) {
+        invoices = await this.billing.listInvoicesForExport({
+          currency: input.currency,
+          periodStart,
+          periodEnd,
+        });
+      }
+      if (!payments.length) {
+        payments = await this.billing.listPaymentIntentsForExport({
+          currency: input.currency,
+          periodStart,
+          periodEnd,
+        });
+      }
+    }
+
+    const result = computeCashRevenue({
+      invoices,
+      payments,
+      periodStart,
+      periodEnd,
+      currency: input.currency,
+    });
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    const provenance = {
+      source: CASH_ENGINE_PROVENANCE_SOURCE,
+      calculator: CASH_ENGINE_CALCULATOR,
+      invoiceCount: invoices.length,
+      paymentCount: payments.length,
+      invoicedInvoiceIds: result.invoicedInvoiceIds,
+      collectedPaymentIds: result.collectedPaymentIds,
+      openReceivableInvoiceIds: result.openReceivableInvoiceIds,
+      skippedInvoiceCount: result.skippedInvoiceCount,
+      skippedPaymentCount: result.skippedPaymentCount,
+      notes: result.notes,
+    };
+
+    if (!input.persistSnapshots) {
+      return { result, snapshots: [] as unknown[], provenance };
+    }
+
+    const asOf = periodEnd;
+    const currency = result.currency ?? input.currency ?? 'USD';
+
+    return withOutbox(this.outbox, async (client, enqueue) => {
+      const pairs: Array<{ code: string; bucket: typeof result.invoiced }> = [
+        { code: 'INVOICED_REVENUE', bucket: result.invoiced },
+        { code: 'COLLECTED_REVENUE', bucket: result.collected },
+        { code: 'RECEIVABLES', bucket: result.receivables },
+      ];
+      const snapshots = [];
+      for (const { code, bucket } of pairs) {
+        const def = await this.repo.getMetricDefinitionByCode(code);
+        if (!def || String(def.status).toUpperCase() !== 'PUBLISHED') {
+          continue;
+        }
+        const snap = await this.repo.recordMetricSnapshot(
+          {
+            metricCode: code,
+            definitionVersion: def.version,
+            definitionVersionId: def.currentPublishedVersionId,
+            businessUnitId: input.businessUnitId ?? null,
+            periodStart,
+            periodEnd,
+            asOf,
+            value: bucket.amount,
+            currency,
+            dataQuality: bucket.dataQuality,
+            sourceProvenance: provenance,
+            createdBy: input.actorId,
+          },
+          client,
+        );
+        snapshots.push(snap);
+      }
+      await enqueue(
+        buildRevenueOutboxEvent({
+          eventType: RevenueEventTypes.CASH_REVENUE_COMPUTED,
+          aggregateId: randomUUID(),
+          correlationId,
+          actorId: input.actorId,
+          payload: {
+            currency,
+            invoiced: result.invoiced,
+            collected: result.collected,
+            receivables: result.receivables,
+            snapshotCount: snapshots.length,
+          },
+        }),
+      );
+      await appendAudit(
+        this.repo,
+        {
+          eventType: RevenueEventTypes.CASH_REVENUE_COMPUTED,
+          aggregateType: 'CASH_REVENUE',
+          aggregateId: correlationId,
+          actorId: input.actorId,
+          correlationId,
+          details: {
+            currency,
+            snapshotCount: snapshots.length,
+            invoiced: result.invoiced,
+            collected: result.collected,
+          },
+        },
+        client,
+      );
+      return { result, snapshots, provenance };
     });
   }
 }

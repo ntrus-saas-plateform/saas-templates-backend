@@ -18,6 +18,7 @@ export const RevenueEventTypes = {
   COMMISSION_APPROVED: 'edge.p11.commission.approved',
   BUSINESS_AUDIT_APPENDED: 'edge.p11.business.audit.appended',
   MRR_MOVEMENT_COMPUTED: 'edge.p11.mrr.movement.computed',
+  CASH_REVENUE_COMPUTED: 'edge.p11.cash.revenue.computed',
   RETENTION_SNAPSHOT_RECORDED: 'edge.p11.retention.snapshot.recorded',
   PRODUCT_PROFITABILITY_SNAPSHOT_RECORDED: 'edge.p11.product_profitability.snapshot.recorded',
   ASSURANCE_SCAN_COMPLETED: 'edge.p11.assurance.scan.completed',

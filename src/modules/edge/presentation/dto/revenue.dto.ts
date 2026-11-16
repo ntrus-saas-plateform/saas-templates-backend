@@ -198,6 +198,32 @@ export class MrrLineDto {
   activeAtPeriodStart?: boolean;
 }
 
+export class ComputeCashRevenueDto {
+  @ApiProperty()
+  @IsDateString()
+  periodStart!: string;
+
+  @ApiProperty()
+  @IsDateString()
+  periodEnd!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  businessUnitId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Persist INVOICED/COLLECTED/RECEIVABLES snapshots with source=engine',
+  })
+  @IsOptional()
+  persistSnapshots?: boolean;
+}
+
 export class ComputeMrrMovementDto {
   @ApiProperty()
   @IsDateString()

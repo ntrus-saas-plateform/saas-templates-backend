@@ -86,3 +86,39 @@ export function assertSeparationOfDuties(requesterId: string, approverId: string
     );
   }
 }
+
+const ENGINE_GATED_CASH_METRICS = new Set([
+  'INVOICED_REVENUE',
+  'COLLECTED_REVENUE',
+  'RECEIVABLES',
+]);
+
+/**
+ * COLLECTED / INVOICED / RECEIVABLES snapshots must carry engine provenance
+ * (F-P11-001) — blocks executive misuse of injected MEASURED cash without P6 lineage.
+ */
+export function assertCashMetricSnapshotProvenance(
+  metricCode: string,
+  sourceProvenance: Record<string, unknown>,
+): void {
+  const code = String(metricCode ?? '').trim().toUpperCase();
+  if (!ENGINE_GATED_CASH_METRICS.has(code)) return;
+
+  const source = String(sourceProvenance?.source ?? '').trim().toLowerCase();
+  const calculator = String(sourceProvenance?.calculator ?? '').trim().toLowerCase();
+  const engineOk =
+    source === 'engine' || calculator === 'cash-revenue-calculator';
+
+  if (!engineOk) {
+    throw new DomainError(
+      ErrorCode.FORBIDDEN,
+      `${code} snapshots require sourceProvenance.source=engine (use POST /edge/revenue/cash/compute)`,
+      [
+        {
+          code: 'CASH_METRIC_ENGINE_PROVENANCE_REQUIRED',
+          metricCode: code,
+        },
+      ],
+    );
+  }
+}
