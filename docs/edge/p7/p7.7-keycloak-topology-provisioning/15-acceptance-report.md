@@ -12,8 +12,8 @@
 
 | Repo | HEAD | P7.7 remediation | Push |
 |------|------|------------------|------|
-| `saas-templates-backend` | _(recorded after local commit on `feature/console`)_ | **COMMITTED locally** | Retry reported below — do not claim remote publication on 403 |
-| `saas-template-frontend` | `d7dcb2eb4181070d643ca3300ca5250ff6c097ed` | Clean working tree (no additional P7.7 remediation diff) | Same remote permission constraints as backend |
+| `saas-templates-backend` | `bbd2cc3b0f1d19251bdff25a0c6d89befcc897af` (`bbd2cc3`) on `feature/console` | **COMMITTED locally** | See push attempt below — do not claim remote publication on 403 |
+| `saas-template-frontend` | `d7dcb2eb4181070d643ca3300ca5250ff6c097ed` (`d7dcb2e`) on `feature/console` | Clean working tree (no additional P7.7 remediation diff) | Same remote permission constraints as backend |
 
 ## Fixed defects (this remediation)
 
