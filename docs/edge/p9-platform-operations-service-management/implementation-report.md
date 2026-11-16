@@ -13,7 +13,8 @@
 | Frontend (ops UI) | `6a278b8` | Operations Center + API align |
 | Backend (docs SHAs) | `7cb2c5d` | record SHAs |
 
-*(SHAs de la vague cohérence FE/BE : voir commits suivants sur `feature/console`.)*
+| Backend (cohérence) | `3574b3c` | list pages, aliases, automation list |
+| Frontend (cohérence) | `5bff3a8` | API parity + UI actions + shell gate |
 
 ## Delivered
 
