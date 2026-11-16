@@ -538,10 +538,214 @@ export class VerifyRecoveryDto {
   @MinLength(4)
   externalEvidenceRef!: string;
 
+  @ApiProperty({
+    enum: ['PROVIDER_TICKET', 'BACKUP_JOB_ID', 'DR_EXERCISE_REF', 'MANUAL_OVERRIDE'],
+  })
+  @IsString()
+  evidenceKind!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  evidenceJustification?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   outcome?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class RecordNotificationDeliveryDto {
+  @ApiProperty()
+  @IsString()
+  eventType!: string;
+
+  @ApiProperty()
+  @IsString()
+  channel!: string;
+
+  @ApiProperty()
+  @IsString()
+  destination!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  providerRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  relatedIncidentId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  relatedRotationId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class UpdateNotificationDeliveryStatusDto {
+  @ApiProperty()
+  @IsString()
+  toStatus!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  providerRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lastError?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class CreateReleaseDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  version!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  buildRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  artifactDigest?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  externalEvidenceRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  serviceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  environment?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  changeId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class TransitionReleaseDto {
+  @ApiProperty()
+  @IsString()
+  toStatus!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  artifactDigest?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  externalEvidenceRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  healthGateStatus?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class ConnectMonitoringSourceDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  code!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  displayName!: string;
+
+  @ApiProperty()
+  @IsString()
+  providerType!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  endpointRef?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class RecordMonitoringProbeDto {
+  @ApiProperty()
+  @IsUUID()
+  sourceId!: string;
+
+  @ApiProperty()
+  @IsString()
+  probeType!: string;
+
+  @ApiProperty()
+  @IsString()
+  outcome!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  latencyMs?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  evidence?: Record<string, unknown>;
 
   @ApiPropertyOptional()
   @IsOptional()

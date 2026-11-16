@@ -326,6 +326,12 @@ export type CapacityMeasurement = {
   createdAt: Date;
 };
 
+export type RecoveryEvidenceKind =
+  | 'PROVIDER_TICKET'
+  | 'BACKUP_JOB_ID'
+  | 'DR_EXERCISE_REF'
+  | 'MANUAL_OVERRIDE';
+
 export type RecoveryOperation = {
   id: string;
   operationType: string;
@@ -334,9 +340,75 @@ export type RecoveryOperation = {
   requesterId: string;
   approverId: string | null;
   externalEvidenceRef: string | null;
+  evidenceKind: RecoveryEvidenceKind | string | null;
+  evidenceJustification: string | null;
   outcome: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type NotificationDeliveryStatus =
+  | 'QUEUED'
+  | 'SUBMITTED'
+  | 'ACCEPTED'
+  | 'FAILED'
+  | 'DELIVERED'
+  | 'ACKNOWLEDGED'
+  | 'EXPIRED';
+
+export type NotificationDelivery = {
+  id: string;
+  eventType: string;
+  channel: string;
+  destination: string;
+  status: NotificationDeliveryStatus | string;
+  providerRef: string | null;
+  relatedIncidentId: string | null;
+  relatedRotationId: string | null;
+  attempts: number;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ReleaseStatus =
+  | 'DRAFT'
+  | 'SCHEDULED'
+  | 'PROMOTING'
+  | 'DEPLOYED'
+  | 'FAILED'
+  | 'ROLLED_BACK'
+  | 'CANCELLED';
+
+export type ReleaseRecord = {
+  id: string;
+  releaseNumber: string;
+  version: string;
+  buildRef: string | null;
+  artifactDigest: string | null;
+  externalEvidenceRef: string | null;
+  serviceId: string | null;
+  environment: string | null;
+  status: ReleaseStatus | string;
+  changeId: string | null;
+  healthGateStatus: string;
+  deployedAt: Date | null;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MonitoringProbeOutcome = 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN' | 'ERROR';
+
+export type MonitoringProbeResult = {
+  id: string;
+  sourceId: string;
+  probeType: string;
+  observedAt: Date;
+  outcome: MonitoringProbeOutcome | string;
+  latencyMs: number | null;
+  evidence: Record<string, unknown>;
+  createdAt: Date;
 };
 
 export type Runbook = {

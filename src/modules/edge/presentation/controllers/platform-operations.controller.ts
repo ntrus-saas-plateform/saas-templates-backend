@@ -22,6 +22,7 @@ import {
   ApproveChangeUseCase,
   ApproveStatusPublicationUseCase,
   ConfirmProblemRootCauseUseCase,
+  ConnectMonitoringSourceUseCase,
   CreateAutomationUseCase,
   CreateChangeUseCase,
   CreateIncidentUseCase,
@@ -30,6 +31,7 @@ import {
   CreateOperationalRiskUseCase,
   CreateOperationalTaskUseCase,
   CreateProblemUseCase,
+  CreateReleaseUseCase,
   CreateRunbookUseCase,
   CreateServiceRequestUseCase,
   CreateSloUseCase,
@@ -46,10 +48,13 @@ import {
   ListChangesUseCase,
   ListIncidentsUseCase,
   ListMaintenanceUseCase,
+  ListMonitoringProbeResultsUseCase,
+  ListNotificationDeliveriesUseCase,
   ListOnCallRotationsUseCase,
   ListOperationalExceptionsUseCase,
   ListProblemsUseCase,
   ListRecoveryUseCase,
+  ListReleasesUseCase,
   ListRisksUseCase,
   ListRunbooksUseCase,
   ListServiceRequestsUseCase,
@@ -58,6 +63,8 @@ import {
   ListTasksUseCase,
   PublishStatusUpdateUseCase,
   RecordCapacityMeasurementUseCase,
+  RecordMonitoringProbeResultUseCase,
+  RecordNotificationDeliveryUseCase,
   RecordServiceHealthSnapshotUseCase,
   RecordSloMeasurementUseCase,
   RejectChangeUseCase,
@@ -67,6 +74,8 @@ import {
   ScheduleMaintenanceUseCase,
   SubmitChangeUseCase,
   TransitionIncidentUseCase,
+  TransitionReleaseUseCase,
+  UpdateNotificationDeliveryStatusUseCase,
   VerifyRecoveryUseCase,
 } from '../../application/platform-operations/operations.use-cases.js';
 import {
@@ -79,12 +88,14 @@ import {
 } from '../../application/platform-operations/service-catalog.use-cases.js';
 import {
   ConfirmRootCauseDto,
+  ConnectMonitoringSourceDto,
   CreateAutomationDto,
   CreateChangeDto,
   CreateExceptionDto,
   CreateIncidentDto,
   CreateOnCallRotationDto,
   CreateProblemDto,
+  CreateReleaseDto,
   CreateRiskDto,
   CreateRunbookDto,
   CreateServiceRequestDto,
@@ -96,12 +107,16 @@ import {
   PublishStatusDto,
   RecordCapacityDto,
   RecordHealthSnapshotDto,
+  RecordMonitoringProbeDto,
+  RecordNotificationDeliveryDto,
   RecordSloMeasurementDto,
   RejectChangeDto,
   RequestAutomationExecutionDto,
   RequestRecoveryDto,
   ScheduleMaintenanceDto,
   TransitionIncidentDto,
+  TransitionReleaseDto,
+  UpdateNotificationDeliveryStatusDto,
   VerifyRecoveryDto,
 } from '../dto/operations.dto.js';
 import {
@@ -182,6 +197,15 @@ export class EdgePlatformOperationsController {
     private readonly requestAutomationExecution: RequestAutomationExecutionUseCase,
     private readonly approveAutomationExecution: ApproveAutomationExecutionUseCase,
     private readonly executeAutomation: ExecuteAutomationUseCase,
+    private readonly recordNotificationDelivery: RecordNotificationDeliveryUseCase,
+    private readonly updateNotificationDeliveryStatus: UpdateNotificationDeliveryStatusUseCase,
+    private readonly listNotificationDeliveries: ListNotificationDeliveriesUseCase,
+    private readonly createRelease: CreateReleaseUseCase,
+    private readonly transitionRelease: TransitionReleaseUseCase,
+    private readonly listReleases: ListReleasesUseCase,
+    private readonly connectMonitoringSource: ConnectMonitoringSourceUseCase,
+    private readonly recordMonitoringProbe: RecordMonitoringProbeResultUseCase,
+    private readonly listMonitoringProbes: ListMonitoringProbeResultsUseCase,
   ) {}
 
   // --- P9.1 service catalog ----------------------------------------------------
@@ -446,12 +470,40 @@ export class EdgePlatformOperationsController {
     return this.listChanges.execute(query);
   }
 
-  /** Mandate alias — releases surface maps to change records (no separate release table). */
+  /** Release registry (real table). Kept at historical path; wired to ListReleases. */
   @Get('edge/operations/releases')
-  @RequireEdgePermissions('platform:operations:changes:read')
-  @ApiOperation({ summary: 'Alias of changes (release coordination via change SoD)' })
+  @RequireEdgePermissions('platform:operations:releases:read')
+  @ApiOperation({ summary: 'List release registry records (honest deploy evidence required for DEPLOYED)' })
   async getReleases(@Query() query: OperationsListQueryDto) {
-    return this.listChanges.execute(query);
+    return this.listReleases.execute(query);
+  }
+
+  @Post('edge/operations/releases')
+  @RequireEdgePermissions('platform:operations:releases:manage')
+  async postRelease(@Body() body: CreateReleaseDto, @Req() req: EdgeRequest) {
+    return this.createRelease.execute({
+      actorId: actorId(req),
+      ...body,
+      correlationId: body.correlationId,
+    });
+  }
+
+  @Post('edge/operations/releases/:id/transition')
+  @RequireEdgePermissions('platform:operations:releases:manage')
+  async postTransitionRelease(
+    @Param('id') id: string,
+    @Body() body: TransitionReleaseDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.transitionRelease.execute({
+      actorId: actorId(req),
+      releaseId: id,
+      toStatus: body.toStatus,
+      artifactDigest: body.artifactDigest,
+      externalEvidenceRef: body.externalEvidenceRef,
+      healthGateStatus: body.healthGateStatus,
+      correlationId: body.correlationId,
+    });
   }
 
   @Post('edge/operations/changes')
@@ -646,6 +698,8 @@ export class EdgePlatformOperationsController {
       actorId: actorId(req),
       recoveryId: id,
       externalEvidenceRef: body.externalEvidenceRef,
+      evidenceKind: body.evidenceKind,
+      evidenceJustification: body.evidenceJustification,
       outcome: body.outcome,
       correlationId: body.correlationId,
     });
@@ -792,5 +846,77 @@ export class EdgePlatformOperationsController {
       actorId: actorId(req),
       executionId: id,
     });
+  }
+
+  // --- Notifications / monitoring probes (P9 P1 remediation) --------------------
+
+  @Get('edge/operations/notifications')
+  @RequireEdgePermissions('platform:operations:notifications:read')
+  async getNotifications(@Query() query: OperationsListQueryDto) {
+    return this.listNotificationDeliveries.execute(query);
+  }
+
+  @Post('edge/operations/notifications')
+  @RequireEdgePermissions('platform:operations:notifications:manage')
+  async postNotification(@Body() body: RecordNotificationDeliveryDto, @Req() req: EdgeRequest) {
+    return this.recordNotificationDelivery.execute({
+      actorId: actorId(req),
+      ...body,
+      correlationId: body.correlationId,
+    });
+  }
+
+  @Post('edge/operations/notifications/:id/status')
+  @RequireEdgePermissions('platform:operations:notifications:manage')
+  async postNotificationStatus(
+    @Param('id') id: string,
+    @Body() body: UpdateNotificationDeliveryStatusDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.updateNotificationDeliveryStatus.execute({
+      actorId: actorId(req),
+      deliveryId: id,
+      toStatus: body.toStatus,
+      providerRef: body.providerRef,
+      lastError: body.lastError,
+      correlationId: body.correlationId,
+    });
+  }
+
+  @Post('edge/operations/monitoring/sources')
+  @RequireEdgePermissions('platform:operations:alerts:manage')
+  @ApiOperation({ summary: 'Configure monitoring source (CONFIGURED only — CONNECTED after UP probe)' })
+  async postMonitoringSource(@Body() body: ConnectMonitoringSourceDto, @Req() req: EdgeRequest) {
+    return this.connectMonitoringSource.execute({
+      actorId: actorId(req),
+      ...body,
+      correlationId: body.correlationId,
+    });
+  }
+
+  @Post('edge/operations/monitoring/probes')
+  @RequireEdgePermissions('platform:operations:alerts:manage')
+  async postMonitoringProbe(@Body() body: RecordMonitoringProbeDto, @Req() req: EdgeRequest) {
+    return this.recordMonitoringProbe.execute({
+      actorId: actorId(req),
+      sourceId: body.sourceId,
+      probeType: body.probeType,
+      outcome: body.outcome,
+      latencyMs: body.latencyMs,
+      evidence: body.evidence,
+      correlationId: body.correlationId,
+    });
+  }
+
+  @Get('edge/operations/monitoring/probes')
+  @RequireEdgePermissions('platform:operations:alerts:read')
+  async getMonitoringProbes(
+    @Query('sourceId') sourceId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.listMonitoringProbes.execute(
+      sourceId,
+      limit ? Number(limit) : undefined,
+    );
   }
 }

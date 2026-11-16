@@ -7,7 +7,9 @@ import type {
   IncidentTimelineEntry,
   ListFilter,
   MaintenanceWindow,
+  MonitoringProbeResult,
   MonitoringSource,
+  NotificationDelivery,
   OnCallRotation,
   OnCallTeam,
   OperationalAlert,
@@ -17,6 +19,7 @@ import type {
   OperationsOverviewAggregate,
   Problem,
   RecoveryOperation,
+  ReleaseRecord,
   Runbook,
   RunbookVersion,
   ServiceHealthSnapshot,
@@ -389,6 +392,86 @@ export interface ServiceOperationsRepositoryPort {
   ): Promise<AutomationExecution>;
 
   listMonitoringSources(): Promise<MonitoringSource[]>;
+
+  getMonitoringSource(id: string): Promise<MonitoringSource | null>;
+
+  connectMonitoringSource(
+    input: {
+      code: string;
+      displayName: string;
+      providerType: string;
+      endpointRef?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+    client?: unknown,
+  ): Promise<MonitoringSource>;
+
+  updateMonitoringSourceStatus(
+    id: string,
+    status: string,
+    patch?: { lastObservedAt?: Date | null; metadata?: Record<string, unknown> },
+    client?: unknown,
+  ): Promise<MonitoringSource>;
+
+  recordMonitoringProbeResult(
+    input: Omit<MonitoringProbeResult, 'id' | 'createdAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<MonitoringProbeResult>;
+
+  listMonitoringProbeResults(
+    sourceId?: string,
+    limit?: number,
+  ): Promise<MonitoringProbeResult[]>;
+
+  recordNotificationDelivery(
+    input: Omit<NotificationDelivery, 'id' | 'createdAt' | 'updatedAt' | 'attempts' | 'lastError'> & {
+      id?: string;
+      attempts?: number;
+      lastError?: string | null;
+    },
+    client?: unknown,
+  ): Promise<NotificationDelivery>;
+
+  getNotificationDelivery(id: string): Promise<NotificationDelivery | null>;
+
+  updateNotificationDeliveryStatus(
+    id: string,
+    toStatus: string,
+    patch?: {
+      providerRef?: string | null;
+      lastError?: string | null;
+      attempts?: number;
+    },
+    client?: unknown,
+  ): Promise<NotificationDelivery>;
+
+  listNotificationDeliveries(filter?: ListFilter): Promise<{
+    items: NotificationDelivery[];
+    total: number;
+  }>;
+
+  createRelease(
+    input: Omit<
+      ReleaseRecord,
+      'id' | 'releaseNumber' | 'createdAt' | 'updatedAt' | 'deployedAt'
+    > & {
+      id?: string;
+      releaseNumber?: string;
+      deployedAt?: Date | null;
+    },
+    client?: unknown,
+  ): Promise<ReleaseRecord>;
+
+  getRelease(id: string): Promise<ReleaseRecord | null>;
+
+  transitionRelease(
+    id: string,
+    toStatus: string,
+    patch?: Partial<ReleaseRecord>,
+    client?: unknown,
+  ): Promise<ReleaseRecord>;
+
+  listReleases(filter?: ListFilter): Promise<{ items: ReleaseRecord[]; total: number }>;
 
   getOperationsAnalytics(): Promise<OperationsOverviewAggregate>;
 }

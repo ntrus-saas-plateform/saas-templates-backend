@@ -13,7 +13,9 @@ import type {
   IncidentTimelineEntry,
   ListFilter,
   MaintenanceWindow,
+  MonitoringProbeResult,
   MonitoringSource,
+  NotificationDelivery,
   OnCallRotation,
   OnCallTeam,
   OperationalAlert,
@@ -23,6 +25,7 @@ import type {
   OperationsOverviewAggregate,
   Problem,
   RecoveryOperation,
+  ReleaseRecord,
   Runbook,
   RunbookVersion,
   ServiceHealthSnapshot,
@@ -289,7 +292,74 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
       requesterId: str(row.requester_id),
       approverId: strOrNull(row.approver_id),
       externalEvidenceRef: strOrNull(row.external_evidence_ref),
+      evidenceKind: strOrNull(row.evidence_kind),
+      evidenceJustification: strOrNull(row.evidence_justification),
       outcome: strOrNull(row.outcome),
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
+    };
+  }
+
+  private mapNotification(row: Row): NotificationDelivery {
+    return {
+      id: str(row.id),
+      eventType: str(row.event_type),
+      channel: str(row.channel),
+      destination: str(row.destination),
+      status: str(row.status),
+      providerRef: strOrNull(row.provider_ref),
+      relatedIncidentId: strOrNull(row.related_incident_id),
+      relatedRotationId: strOrNull(row.related_rotation_id),
+      attempts: num(row.attempts),
+      lastError: strOrNull(row.last_error),
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
+    };
+  }
+
+  private mapRelease(row: Row): ReleaseRecord {
+    return {
+      id: str(row.id),
+      releaseNumber: str(row.release_number),
+      version: str(row.version),
+      buildRef: strOrNull(row.build_ref),
+      artifactDigest: strOrNull(row.artifact_digest),
+      externalEvidenceRef: strOrNull(row.external_evidence_ref),
+      serviceId: strOrNull(row.service_id),
+      environment: strOrNull(row.environment),
+      status: str(row.status),
+      changeId: strOrNull(row.change_id),
+      healthGateStatus: str(row.health_gate_status),
+      deployedAt: asDateOrNull(row.deployed_at),
+      createdBy: str(row.created_by),
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
+    };
+  }
+
+  private mapProbe(row: Row): MonitoringProbeResult {
+    return {
+      id: str(row.id),
+      sourceId: str(row.source_id),
+      probeType: str(row.probe_type),
+      observedAt: asDate(row.observed_at),
+      outcome: str(row.outcome),
+      latencyMs: numOrNull(row.latency_ms),
+      evidence: asJson(row.evidence, {}),
+      createdAt: asDate(row.created_at),
+    };
+  }
+
+  private mapMonitoringSource(row: Row): MonitoringSource {
+    return {
+      id: str(row.id),
+      code: str(row.code),
+      displayName: str(row.display_name),
+      providerType: str(row.provider_type),
+      endpointRef: strOrNull(row.endpoint_ref),
+      status: str(row.status),
+      lastObservedAt: asDateOrNull(row.last_observed_at),
+      metadata: asJson(row.metadata, {}),
       createdAt: asDate(row.created_at),
       updatedAt: asDate(row.updated_at),
     };
@@ -1400,9 +1470,9 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
     const rows = await this.q(
       `INSERT INTO edge_p9_recovery_operations (
          id, operation_type, status, service_id, requester_id, approver_id,
-         external_evidence_ref, outcome
+         external_evidence_ref, evidence_kind, evidence_justification, outcome
        ) VALUES (
-         COALESCE($1::uuid, gen_random_uuid()), $2, COALESCE($3, 'REQUESTED'), $4, $5, $6, $7, $8
+         COALESCE($1::uuid, gen_random_uuid()), $2, COALESCE($3, 'REQUESTED'), $4, $5, $6, $7, $8, $9, $10
        ) RETURNING *`,
       [
         input.id ?? null,
@@ -1412,6 +1482,8 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
         input.requesterId,
         input.approverId ?? null,
         input.externalEvidenceRef,
+        input.evidenceKind ?? null,
+        input.evidenceJustification ?? null,
         input.outcome ?? null,
       ],
       client,
@@ -1464,7 +1536,9 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
          status = $2,
          approver_id = COALESCE($3, approver_id),
          external_evidence_ref = COALESCE($4, external_evidence_ref),
-         outcome = COALESCE($5, outcome),
+         evidence_kind = COALESCE($5, evidence_kind),
+         evidence_justification = COALESCE($6, evidence_justification),
+         outcome = COALESCE($7, outcome),
          updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
@@ -1473,6 +1547,8 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
         toStatus,
         patch.approverId ?? null,
         patch.externalEvidenceRef ?? null,
+        patch.evidenceKind ?? null,
+        patch.evidenceJustification ?? null,
         patch.outcome ?? null,
       ],
       client,
@@ -2014,18 +2090,323 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
 
   async listMonitoringSources(): Promise<MonitoringSource[]> {
     const rows = await this.q(`SELECT * FROM edge_p9_monitoring_sources ORDER BY code`);
-    return rows.map((row) => ({
-      id: str(row.id),
-      code: str(row.code),
-      displayName: str(row.display_name),
-      providerType: str(row.provider_type),
-      endpointRef: strOrNull(row.endpoint_ref),
-      status: str(row.status),
-      lastObservedAt: asDateOrNull(row.last_observed_at),
-      metadata: asJson(row.metadata, {}),
-      createdAt: asDate(row.created_at),
-      updatedAt: asDate(row.updated_at),
-    }));
+    return rows.map((row) => this.mapMonitoringSource(row));
+  }
+
+  async getMonitoringSource(id: string): Promise<MonitoringSource | null> {
+    const rows = await this.q(`SELECT * FROM edge_p9_monitoring_sources WHERE id = $1`, [id]);
+    return rows[0] ? this.mapMonitoringSource(rows[0]) : null;
+  }
+
+  async connectMonitoringSource(
+    input: {
+      code: string;
+      displayName: string;
+      providerType: string;
+      endpointRef?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+    client?: unknown,
+  ): Promise<MonitoringSource> {
+    const rows = await this.q(
+      `INSERT INTO edge_p9_monitoring_sources (
+         code, display_name, provider_type, endpoint_ref, status, metadata
+       ) VALUES ($1, $2, $3, $4, 'CONFIGURED', COALESCE($5::jsonb, '{}'::jsonb))
+       ON CONFLICT (code) DO UPDATE SET
+         display_name = EXCLUDED.display_name,
+         provider_type = EXCLUDED.provider_type,
+         endpoint_ref = EXCLUDED.endpoint_ref,
+         status = 'CONFIGURED',
+         metadata = EXCLUDED.metadata,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        input.code,
+        input.displayName,
+        input.providerType,
+        input.endpointRef ?? null,
+        JSON.stringify(input.metadata ?? {}),
+      ],
+      client,
+    );
+    return this.mapMonitoringSource(rows[0]!);
+  }
+
+  async updateMonitoringSourceStatus(
+    id: string,
+    status: string,
+    patch?: { lastObservedAt?: Date | null; metadata?: Record<string, unknown> },
+    client?: unknown,
+  ): Promise<MonitoringSource> {
+    const rows = await this.q(
+      `UPDATE edge_p9_monitoring_sources SET
+         status = $2,
+         last_observed_at = COALESCE($3, last_observed_at),
+         metadata = COALESCE($4::jsonb, metadata),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        status,
+        patch?.lastObservedAt ?? null,
+        patch?.metadata ? JSON.stringify(patch.metadata) : null,
+      ],
+      client,
+    );
+    if (!rows[0]) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Monitoring source not found');
+    }
+    return this.mapMonitoringSource(rows[0]);
+  }
+
+  async recordMonitoringProbeResult(
+    input: Omit<MonitoringProbeResult, 'id' | 'createdAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<MonitoringProbeResult> {
+    const rows = await this.q(
+      `INSERT INTO edge_p9_monitoring_probe_results (
+         id, source_id, probe_type, observed_at, outcome, latency_ms, evidence
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, COALESCE($7::jsonb, '{}'::jsonb)
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        input.sourceId,
+        input.probeType,
+        input.observedAt,
+        input.outcome,
+        input.latencyMs,
+        JSON.stringify(input.evidence ?? {}),
+      ],
+      client,
+    );
+    return this.mapProbe(rows[0]!);
+  }
+
+  async listMonitoringProbeResults(
+    sourceId?: string,
+    limit = 50,
+  ): Promise<MonitoringProbeResult[]> {
+    const rows = sourceId
+      ? await this.q(
+          `SELECT * FROM edge_p9_monitoring_probe_results WHERE source_id = $1
+           ORDER BY observed_at DESC LIMIT $2`,
+          [sourceId, limit],
+        )
+      : await this.q(
+          `SELECT * FROM edge_p9_monitoring_probe_results ORDER BY observed_at DESC LIMIT $1`,
+          [limit],
+        );
+    return rows.map((r) => this.mapProbe(r));
+  }
+
+  async recordNotificationDelivery(
+    input: Omit<
+      NotificationDelivery,
+      'id' | 'createdAt' | 'updatedAt' | 'attempts' | 'lastError'
+    > & {
+      id?: string;
+      attempts?: number;
+      lastError?: string | null;
+    },
+    client?: unknown,
+  ): Promise<NotificationDelivery> {
+    const rows = await this.q(
+      `INSERT INTO edge_p9_notification_deliveries (
+         id, event_type, channel, destination, status, provider_ref,
+         related_incident_id, related_rotation_id, attempts, last_error
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, COALESCE($5, 'QUEUED'), $6,
+         $7, $8, COALESCE($9, 0), $10
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        input.eventType,
+        input.channel,
+        input.destination,
+        input.status,
+        input.providerRef,
+        input.relatedIncidentId,
+        input.relatedRotationId,
+        input.attempts ?? 0,
+        input.lastError ?? null,
+      ],
+      client,
+    );
+    return this.mapNotification(rows[0]!);
+  }
+
+  async getNotificationDelivery(id: string): Promise<NotificationDelivery | null> {
+    const rows = await this.q(`SELECT * FROM edge_p9_notification_deliveries WHERE id = $1`, [id]);
+    return rows[0] ? this.mapNotification(rows[0]) : null;
+  }
+
+  async updateNotificationDeliveryStatus(
+    id: string,
+    toStatus: string,
+    patch?: {
+      providerRef?: string | null;
+      lastError?: string | null;
+      attempts?: number;
+    },
+    client?: unknown,
+  ): Promise<NotificationDelivery> {
+    const rows = await this.q(
+      `UPDATE edge_p9_notification_deliveries SET
+         status = $2,
+         provider_ref = COALESCE($3, provider_ref),
+         last_error = COALESCE($4, last_error),
+         attempts = COALESCE($5, attempts),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        toStatus,
+        patch?.providerRef ?? null,
+        patch?.lastError ?? null,
+        patch?.attempts ?? null,
+      ],
+      client,
+    );
+    if (!rows[0]) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Notification delivery not found');
+    }
+    return this.mapNotification(rows[0]);
+  }
+
+  async listNotificationDeliveries(
+    filter?: ListFilter,
+  ): Promise<{ items: NotificationDelivery[]; total: number }> {
+    const limit = Math.min(Math.max(filter?.limit ?? 50, 1), 200);
+    const offset = Math.max(filter?.offset ?? 0, 0);
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (filter?.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const countRows = await this.q(
+      `SELECT COUNT(*)::int AS c FROM edge_p9_notification_deliveries ${clause}`,
+      params,
+    );
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p9_notification_deliveries ${clause} ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return { items: rows.map((r) => this.mapNotification(r)), total: num(countRows[0]?.c) };
+  }
+
+  async createRelease(
+    input: Omit<
+      ReleaseRecord,
+      'id' | 'releaseNumber' | 'createdAt' | 'updatedAt' | 'deployedAt'
+    > & {
+      id?: string;
+      releaseNumber?: string;
+      deployedAt?: Date | null;
+    },
+    client?: unknown,
+  ): Promise<ReleaseRecord> {
+    const releaseNumber = input.releaseNumber?.trim() || numbered('REL');
+    const rows = await this.q(
+      `INSERT INTO edge_p9_releases (
+         id, release_number, version, build_ref, artifact_digest, external_evidence_ref,
+         service_id, environment, status, change_id, health_gate_status, deployed_at, created_by
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6,
+         $7, $8, COALESCE($9, 'DRAFT'), $10, COALESCE($11, 'UNKNOWN'), $12, $13
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        releaseNumber,
+        input.version,
+        input.buildRef,
+        input.artifactDigest,
+        input.externalEvidenceRef,
+        input.serviceId,
+        input.environment,
+        input.status,
+        input.changeId,
+        input.healthGateStatus,
+        input.deployedAt ?? null,
+        input.createdBy,
+      ],
+      client,
+    );
+    return this.mapRelease(rows[0]!);
+  }
+
+  async getRelease(id: string): Promise<ReleaseRecord | null> {
+    const rows = await this.q(`SELECT * FROM edge_p9_releases WHERE id = $1`, [id]);
+    return rows[0] ? this.mapRelease(rows[0]) : null;
+  }
+
+  async transitionRelease(
+    id: string,
+    toStatus: string,
+    patch?: Partial<ReleaseRecord>,
+    client?: unknown,
+  ): Promise<ReleaseRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p9_releases SET
+         status = $2,
+         artifact_digest = COALESCE($3, artifact_digest),
+         external_evidence_ref = COALESCE($4, external_evidence_ref),
+         build_ref = COALESCE($5, build_ref),
+         health_gate_status = COALESCE($6, health_gate_status),
+         deployed_at = COALESCE($7, deployed_at),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        toStatus,
+        patch?.artifactDigest ?? null,
+        patch?.externalEvidenceRef ?? null,
+        patch?.buildRef ?? null,
+        patch?.healthGateStatus ?? null,
+        patch?.deployedAt ?? null,
+      ],
+      client,
+    );
+    if (!rows[0]) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Release not found');
+    }
+    return this.mapRelease(rows[0]);
+  }
+
+  async listReleases(
+    filter?: ListFilter,
+  ): Promise<{ items: ReleaseRecord[]; total: number }> {
+    const limit = Math.min(Math.max(filter?.limit ?? 50, 1), 200);
+    const offset = Math.max(filter?.offset ?? 0, 0);
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (filter?.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    if (filter?.serviceId) {
+      params.push(filter.serviceId);
+      where.push(`service_id = $${params.length}`);
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const countRows = await this.q(
+      `SELECT COUNT(*)::int AS c FROM edge_p9_releases ${clause}`,
+      params,
+    );
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p9_releases ${clause} ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return { items: rows.map((r) => this.mapRelease(r)), total: num(countRows[0]?.c) };
   }
 
   async getOperationsAnalytics(): Promise<OperationsOverviewAggregate> {
@@ -2064,7 +2445,9 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
       let availability: 'AVAILABLE' | 'UNAVAILABLE' | 'DEGRADED' | 'NOT_CONFIGURED' =
         'UNAVAILABLE';
       if (st === 'NOT_CONFIGURED') availability = 'NOT_CONFIGURED';
-      else if (st === 'CONNECTED' || st === 'CONFIGURED') availability = 'AVAILABLE';
+      // CONFIGURED ≠ live connectivity — only CONNECTED (after UP probe) is AVAILABLE.
+      else if (st === 'CONNECTED') availability = 'AVAILABLE';
+      else if (st === 'CONFIGURED') availability = 'NOT_CONFIGURED';
       else if (st === 'DEGRADED') availability = 'DEGRADED';
       else availability = 'UNAVAILABLE';
       return {

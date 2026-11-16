@@ -390,6 +390,7 @@ import {
   ApproveChangeUseCase,
   ApproveStatusPublicationUseCase,
   ConfirmProblemRootCauseUseCase,
+  ConnectMonitoringSourceUseCase,
   CreateAutomationUseCase,
   CreateChangeUseCase,
   CreateIncidentUseCase,
@@ -398,6 +399,7 @@ import {
   CreateOperationalRiskUseCase,
   CreateOperationalTaskUseCase,
   CreateProblemUseCase,
+  CreateReleaseUseCase,
   CreateRunbookUseCase,
   CreateServiceRequestUseCase,
   CreateSloUseCase,
@@ -414,10 +416,13 @@ import {
   ListChangesUseCase,
   ListIncidentsUseCase,
   ListMaintenanceUseCase,
+  ListMonitoringProbeResultsUseCase,
+  ListNotificationDeliveriesUseCase,
   ListOnCallRotationsUseCase,
   ListOperationalExceptionsUseCase,
   ListProblemsUseCase,
   ListRecoveryUseCase,
+  ListReleasesUseCase,
   ListRisksUseCase,
   ListRunbooksUseCase,
   ListServiceRequestsUseCase,
@@ -426,6 +431,8 @@ import {
   ListTasksUseCase,
   PublishStatusUpdateUseCase,
   RecordCapacityMeasurementUseCase,
+  RecordMonitoringProbeResultUseCase,
+  RecordNotificationDeliveryUseCase,
   RecordServiceHealthSnapshotUseCase,
   RecordSloMeasurementUseCase,
   RejectChangeUseCase,
@@ -435,6 +442,8 @@ import {
   ScheduleMaintenanceUseCase,
   SubmitChangeUseCase,
   TransitionIncidentUseCase,
+  TransitionReleaseUseCase,
+  UpdateNotificationDeliveryStatusUseCase,
   VerifyRecoveryUseCase,
 } from '../application/platform-operations/operations.use-cases.js';
 import {
@@ -6233,5 +6242,79 @@ export const edgeApplicationProviders: Provider[] = [
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
     ],
+  },
+  {
+    provide: RecordNotificationDeliveryUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RecordNotificationDeliveryUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: UpdateNotificationDeliveryStatusUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new UpdateNotificationDeliveryStatusUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListNotificationDeliveriesUseCase,
+    useFactory: (repo) => new ListNotificationDeliveriesUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateReleaseUseCase,
+    useFactory: (repo, outbox, audit) => new CreateReleaseUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: TransitionReleaseUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new TransitionReleaseUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListReleasesUseCase,
+    useFactory: (repo) => new ListReleasesUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ConnectMonitoringSourceUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ConnectMonitoringSourceUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RecordMonitoringProbeResultUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RecordMonitoringProbeResultUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListMonitoringProbeResultsUseCase,
+    useFactory: (repo) => new ListMonitoringProbeResultsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
   },
 ];

@@ -5,11 +5,17 @@ import type { AuditEventRepositoryPort } from '../../domain/ports/audit-event-re
 import {
   assertAlertTransition,
   assertAutomationExecutionAllowed,
+  assertAutomationNotClaimingExternalSuccess,
   assertChangeTransition,
   assertIncidentTransition,
+  assertMonitoringConnectedRequiresProbe,
+  assertNotificationDeliveryTransition,
+  assertReleaseDeployedEvidence,
+  assertReleaseTransition,
   assertRestoreSuccessRequiresEvidence,
   assertRootCauseConfirmation,
   assertSeparationOfDuties,
+  assertSloMeasurementSourceTrusted,
   assertTrustedHealthSource,
 } from '../../domain/platform-operations/operations-policy.js';
 import type { ServiceOperationsRepositoryPort } from '../../domain/platform-operations/operations-repository.port.js';
@@ -1232,6 +1238,7 @@ export class RecordSloMeasurementUseCase {
     sourceSystem: string;
     correlationId?: string | null;
   }) {
+    assertSloMeasurementSourceTrusted(input.sourceSystem);
     const correlationId = input.correlationId?.trim() || randomUUID();
     return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
       const m = await this.repo.recordSloMeasurement(
@@ -1351,6 +1358,8 @@ export class RequestRecoveryUseCase {
           serviceId: input.serviceId ?? null,
           requesterId: input.actorId,
           externalEvidenceRef: null,
+          evidenceKind: null,
+          evidenceJustification: null,
         },
         client,
       );
@@ -1390,10 +1399,17 @@ export class VerifyRecoveryUseCase {
     actorId: string;
     recoveryId: string;
     externalEvidenceRef: string;
+    evidenceKind: string;
+    evidenceJustification?: string | null;
     outcome?: string | null;
     correlationId?: string | null;
   }) {
-    assertRestoreSuccessRequiresEvidence('VERIFIED', input.externalEvidenceRef);
+    assertRestoreSuccessRequiresEvidence(
+      'VERIFIED',
+      input.externalEvidenceRef,
+      input.evidenceKind,
+      input.evidenceJustification,
+    );
     const existing = await this.repo.getRecovery(input.recoveryId);
     if (!existing) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Recovery not found');
     const correlationId = input.correlationId?.trim() || randomUUID();
@@ -1403,6 +1419,8 @@ export class VerifyRecoveryUseCase {
         'VERIFIED',
         {
           externalEvidenceRef: input.externalEvidenceRef.trim(),
+          evidenceKind: input.evidenceKind.trim(),
+          evidenceJustification: input.evidenceJustification?.trim() ?? null,
           outcome: input.outcome ?? null,
           approverId: input.actorId,
         },
@@ -1761,16 +1779,19 @@ export class ExecuteAutomationUseCase {
       approvedBy: exec.approvedBy,
       status: String(exec.status),
     });
+    const recordedResult: Record<string, unknown> = {
+      ...(input.result ?? {}),
+      executionMode: 'RECORD_ONLY',
+      executedAt: new Date().toISOString(),
+      executedBy: input.actorId,
+      note: 'Recorded execution — provider adapters not wired; no silent success claimed',
+    };
+    assertAutomationNotClaimingExternalSuccess(recordedResult);
     const correlationId = input.correlationId?.trim() || randomUUID();
     return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.executeAutomation(
         input.executionId,
-        {
-          ...(input.result ?? {}),
-          executedAt: new Date().toISOString(),
-          executedBy: input.actorId,
-          note: 'Recorded execution — provider adapters not wired; no silent success claimed',
-        },
+        recordedResult,
         client,
       );
       await enqueue(
@@ -2117,5 +2138,430 @@ export class ListOperationalExceptionsUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
   execute(filter?: { status?: string; limit?: number; offset?: number }) {
     return this.repo.listExceptions(filter);
+  }
+}
+
+export class RecordNotificationDeliveryUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    eventType: string;
+    channel: string;
+    destination: string;
+    status?: string;
+    providerRef?: string | null;
+    relatedIncidentId?: string | null;
+    relatedRotationId?: string | null;
+    correlationId?: string | null;
+  }) {
+    const status = input.status?.trim() || 'QUEUED';
+    if (status === 'DELIVERED' || status === 'ACKNOWLEDGED') {
+      assertNotificationDeliveryTransition('SUBMITTED', status, input.providerRef);
+    }
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const delivery = await this.repo.recordNotificationDelivery(
+        {
+          eventType: input.eventType.trim(),
+          channel: input.channel.trim(),
+          destination: input.destination.trim(),
+          status,
+          providerRef: input.providerRef?.trim() ?? null,
+          relatedIncidentId: input.relatedIncidentId ?? null,
+          relatedRotationId: input.relatedRotationId ?? null,
+        },
+        client,
+      );
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.NOTIFICATION_DELIVERY_RECORDED,
+          aggregateId: delivery.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: { status: delivery.status, channel: delivery.channel },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.NOTIFICATION_DELIVERY_RECORDED,
+          actorId: input.actorId,
+          subjectType: 'NOTIFICATION_DELIVERY',
+          subjectId: delivery.id,
+          details: { status: delivery.status },
+        },
+        client,
+      );
+      return delivery;
+    });
+  }
+}
+
+export class UpdateNotificationDeliveryStatusUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    deliveryId: string;
+    toStatus: string;
+    providerRef?: string | null;
+    lastError?: string | null;
+    correlationId?: string | null;
+  }) {
+    const existing = await this.repo.getNotificationDelivery(input.deliveryId);
+    if (!existing) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Notification delivery not found');
+    }
+    const providerRef = input.providerRef ?? existing.providerRef;
+    assertNotificationDeliveryTransition(String(existing.status), input.toStatus, providerRef);
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateNotificationDeliveryStatus(
+        input.deliveryId,
+        input.toStatus,
+        {
+          providerRef: input.providerRef?.trim() ?? null,
+          lastError: input.lastError ?? null,
+          attempts: existing.attempts + 1,
+        },
+        client,
+      );
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.NOTIFICATION_DELIVERY_TRANSITIONED,
+          aggregateId: updated.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: { from: existing.status, to: updated.status },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.NOTIFICATION_DELIVERY_TRANSITIONED,
+          actorId: input.actorId,
+          subjectType: 'NOTIFICATION_DELIVERY',
+          subjectId: updated.id,
+          details: { from: existing.status, to: updated.status },
+        },
+        client,
+      );
+      return updated;
+    });
+  }
+}
+
+export class ListNotificationDeliveriesUseCase {
+  constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
+  execute(filter?: { status?: string; limit?: number; offset?: number }) {
+    return this.repo.listNotificationDeliveries(filter);
+  }
+}
+
+export class CreateReleaseUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    version: string;
+    buildRef?: string | null;
+    artifactDigest?: string | null;
+    externalEvidenceRef?: string | null;
+    serviceId?: string | null;
+    environment?: string | null;
+    changeId?: string | null;
+    status?: string;
+    healthGateStatus?: string;
+    correlationId?: string | null;
+  }) {
+    const status = input.status?.trim() || 'DRAFT';
+    assertReleaseDeployedEvidence({
+      status,
+      artifactDigest: input.artifactDigest,
+      externalEvidenceRef: input.externalEvidenceRef,
+    });
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const release = await this.repo.createRelease(
+        {
+          version: input.version.trim(),
+          buildRef: input.buildRef?.trim() ?? null,
+          artifactDigest: input.artifactDigest?.trim() ?? null,
+          externalEvidenceRef: input.externalEvidenceRef?.trim() ?? null,
+          serviceId: input.serviceId ?? null,
+          environment: input.environment ?? null,
+          status,
+          changeId: input.changeId ?? null,
+          healthGateStatus: input.healthGateStatus?.trim() || 'UNKNOWN',
+          createdBy: input.actorId,
+          deployedAt: status === 'DEPLOYED' ? new Date() : null,
+        },
+        client,
+      );
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.RELEASE_CREATED,
+          aggregateId: release.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: { releaseNumber: release.releaseNumber, status: release.status },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.RELEASE_CREATED,
+          actorId: input.actorId,
+          subjectType: 'RELEASE',
+          subjectId: release.id,
+          details: { status: release.status },
+        },
+        client,
+      );
+      return release;
+    });
+  }
+}
+
+export class TransitionReleaseUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    releaseId: string;
+    toStatus: string;
+    artifactDigest?: string | null;
+    externalEvidenceRef?: string | null;
+    healthGateStatus?: string | null;
+    correlationId?: string | null;
+  }) {
+    const existing = await this.repo.getRelease(input.releaseId);
+    if (!existing) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Release not found');
+    assertReleaseTransition(String(existing.status), input.toStatus);
+    assertReleaseDeployedEvidence({
+      status: input.toStatus,
+      artifactDigest: input.artifactDigest ?? existing.artifactDigest,
+      externalEvidenceRef: input.externalEvidenceRef ?? existing.externalEvidenceRef,
+    });
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.transitionRelease(
+        input.releaseId,
+        input.toStatus,
+        {
+          artifactDigest: input.artifactDigest?.trim() ?? null,
+          externalEvidenceRef: input.externalEvidenceRef?.trim() ?? null,
+          healthGateStatus: input.healthGateStatus?.trim() ?? null,
+          deployedAt: input.toStatus === 'DEPLOYED' ? new Date() : null,
+        },
+        client,
+      );
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.RELEASE_TRANSITIONED,
+          aggregateId: updated.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: { from: existing.status, to: updated.status },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.RELEASE_TRANSITIONED,
+          actorId: input.actorId,
+          subjectType: 'RELEASE',
+          subjectId: updated.id,
+          details: { from: existing.status, to: updated.status },
+        },
+        client,
+      );
+      return updated;
+    });
+  }
+}
+
+export class ListReleasesUseCase {
+  constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
+  execute(filter?: { status?: string; serviceId?: string; limit?: number; offset?: number }) {
+    return this.repo.listReleases(filter);
+  }
+}
+
+export class ConnectMonitoringSourceUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    code: string;
+    displayName: string;
+    providerType: string;
+    endpointRef?: string | null;
+    metadata?: Record<string, unknown>;
+    correlationId?: string | null;
+  }) {
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const source = await this.repo.connectMonitoringSource(
+        {
+          code: input.code.trim(),
+          displayName: input.displayName.trim(),
+          providerType: input.providerType.trim(),
+          endpointRef: input.endpointRef?.trim() ?? null,
+          metadata: input.metadata ?? {},
+        },
+        client,
+      );
+      // Honest: connect only yields CONFIGURED — never CONNECTED without probe.
+      if (String(source.status) === 'CONNECTED') {
+        throw new DomainError(
+          ErrorCode.CONFLICT,
+          'ConnectMonitoringSource must not yield CONNECTED without UP probe',
+          [{ code: 'MONITORING_CONNECT_CLAIMED_CONNECTED' }],
+        );
+      }
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.MONITORING_SOURCE_CONFIGURED,
+          aggregateId: source.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: { code: source.code, status: source.status },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.MONITORING_SOURCE_CONFIGURED,
+          actorId: input.actorId,
+          subjectType: 'MONITORING_SOURCE',
+          subjectId: source.id,
+          details: { status: source.status },
+        },
+        client,
+      );
+      return source;
+    });
+  }
+}
+
+export class RecordMonitoringProbeResultUseCase {
+  constructor(
+    private readonly repo: ServiceOperationsRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    sourceId: string;
+    probeType: string;
+    outcome: string;
+    latencyMs?: number | null;
+    evidence?: Record<string, unknown>;
+    observedAt?: Date;
+    promoteConnected?: boolean;
+    correlationId?: string | null;
+  }) {
+    const source = await this.repo.getMonitoringSource(input.sourceId);
+    if (!source) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Monitoring source not found');
+    const outcome = input.outcome.trim().toUpperCase();
+    if (input.promoteConnected === true || outcome === 'UP') {
+      // Only promote to CONNECTED when outcome is UP (never invent success).
+      if (outcome === 'UP') {
+        assertMonitoringConnectedRequiresProbe('CONNECTED', outcome);
+      }
+    }
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P9_OUTBOX_TENANT, async (client, enqueue) => {
+      const probe = await this.repo.recordMonitoringProbeResult(
+        {
+          sourceId: input.sourceId,
+          probeType: input.probeType.trim(),
+          observedAt: input.observedAt ?? new Date(),
+          outcome,
+          latencyMs: input.latencyMs ?? null,
+          evidence: input.evidence ?? {},
+        },
+        client,
+      );
+      let updatedSource = source;
+      if (outcome === 'UP') {
+        updatedSource = await this.repo.updateMonitoringSourceStatus(
+          input.sourceId,
+          'CONNECTED',
+          { lastObservedAt: probe.observedAt },
+          client,
+        );
+      } else if (outcome === 'DOWN' || outcome === 'ERROR') {
+        updatedSource = await this.repo.updateMonitoringSourceStatus(
+          input.sourceId,
+          'UNAVAILABLE',
+          { lastObservedAt: probe.observedAt },
+          client,
+        );
+      } else if (outcome === 'DEGRADED') {
+        updatedSource = await this.repo.updateMonitoringSourceStatus(
+          input.sourceId,
+          'DEGRADED',
+          { lastObservedAt: probe.observedAt },
+          client,
+        );
+      }
+      await enqueue(
+        buildOperationsOutboxEvent({
+          eventType: OperationsEventTypes.MONITORING_PROBE_RECORDED,
+          aggregateId: probe.id,
+          correlationId,
+          actorId: input.actorId,
+          payload: {
+            sourceId: probe.sourceId,
+            outcome: probe.outcome,
+            sourceStatus: updatedSource.status,
+          },
+        }),
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: OperationsEventTypes.MONITORING_PROBE_RECORDED,
+          actorId: input.actorId,
+          subjectType: 'MONITORING_PROBE',
+          subjectId: probe.id,
+          details: { outcome: probe.outcome, sourceStatus: updatedSource.status },
+        },
+        client,
+      );
+      return { probe, source: updatedSource };
+    });
+  }
+}
+
+export class ListMonitoringProbeResultsUseCase {
+  constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
+  async execute(sourceId?: string, limit?: number) {
+    const items = await this.repo.listMonitoringProbeResults(sourceId, limit);
+    return { items, total: items.length };
   }
 }

@@ -33,7 +33,9 @@ describe('EdgePlatformOperationsController auth matrix', () => {
     { method: 'postRootCause', permission: 'platform:operations:problems:manage' },
     { method: 'postProblemIncidentLink', permission: 'platform:operations:problems:manage' },
     { method: 'getChanges', permission: 'platform:operations:changes:read' },
-    { method: 'getReleases', permission: 'platform:operations:changes:read' },
+    { method: 'getReleases', permission: 'platform:operations:releases:read' },
+    { method: 'postRelease', permission: 'platform:operations:releases:manage' },
+    { method: 'postTransitionRelease', permission: 'platform:operations:releases:manage' },
     { method: 'postChange', permission: 'platform:operations:changes:manage' },
     { method: 'postSubmitChange', permission: 'platform:operations:changes:manage' },
     { method: 'postApproveChange', permission: 'platform:operations:changes:approve' },
@@ -73,6 +75,12 @@ describe('EdgePlatformOperationsController auth matrix', () => {
       permission: 'platform:operations:automation:manage',
     },
     { method: 'postExecuteAutomation', permission: 'platform:operations:automation:execute' },
+    { method: 'getNotifications', permission: 'platform:operations:notifications:read' },
+    { method: 'postNotification', permission: 'platform:operations:notifications:manage' },
+    { method: 'postNotificationStatus', permission: 'platform:operations:notifications:manage' },
+    { method: 'postMonitoringSource', permission: 'platform:operations:alerts:manage' },
+    { method: 'postMonitoringProbe', permission: 'platform:operations:alerts:manage' },
+    { method: 'getMonitoringProbes', permission: 'platform:operations:alerts:read' },
   ];
 
   for (const { method, permission } of cases) {

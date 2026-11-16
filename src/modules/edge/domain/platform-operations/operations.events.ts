@@ -38,6 +38,12 @@ export const OperationsEventTypes = {
   AUTOMATION_EXECUTION_REQUESTED: 'edge.p9.automation.execution.requested',
   AUTOMATION_EXECUTION_APPROVED: 'edge.p9.automation.execution.approved',
   AUTOMATION_EXECUTED: 'edge.p9.automation.executed',
+  NOTIFICATION_DELIVERY_RECORDED: 'edge.p9.notification.delivery.recorded',
+  NOTIFICATION_DELIVERY_TRANSITIONED: 'edge.p9.notification.delivery.transitioned',
+  RELEASE_CREATED: 'edge.p9.release.created',
+  RELEASE_TRANSITIONED: 'edge.p9.release.transitioned',
+  MONITORING_SOURCE_CONFIGURED: 'edge.p9.monitoring.source.configured',
+  MONITORING_PROBE_RECORDED: 'edge.p9.monitoring.probe.recorded',
 } as const;
 
 export function buildOperationsOutboxEvent(input: {
