@@ -59,6 +59,7 @@ import { EdgeReconciliationController } from './presentation/controllers/reconci
 import { EdgeConnectivityAgentController } from './presentation/controllers/connectivity-agent.controller.js';
 import { EdgeCertificationController } from './presentation/controllers/certification.controller.js';
 import { EdgeTenantManagementController } from './presentation/controllers/tenant-management.controller.js';
+import { EdgePlatformOperationsController } from './presentation/controllers/platform-operations.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -112,6 +113,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeConnectivityAgentController,
     EdgeCertificationController,
     EdgeTenantManagementController,
+    EdgePlatformOperationsController,
   ],
   providers: [
     ...edgeApplicationProviders,

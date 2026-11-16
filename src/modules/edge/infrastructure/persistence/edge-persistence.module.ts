@@ -59,6 +59,8 @@ import { PgConnectivityAgentRepository } from '../connectivity-agent/pg-connecti
 import { PgCertificationRepository } from '../production-certification/pg-certification.repository.js';
 import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../../domain/tenant-management/tenant-management-repository.port.js';
 import { PgTenantManagementRepository } from '../tenant-management/pg-tenant-management.repository.js';
+import { SERVICE_CATALOG_REPOSITORY_PORT } from '../../domain/platform-operations/service-catalog-repository.port.js';
+import { PgServiceCatalogRepository } from '../platform-operations/pg-service-catalog.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -159,6 +161,8 @@ const providers = [
   { provide: CERTIFICATION_REPOSITORY_PORT, useClass: PgCertificationRepository },
   // P8 — Advanced tenant management & governance (migration 108).
   { provide: TENANT_MANAGEMENT_REPOSITORY_PORT, useClass: PgTenantManagementRepository },
+  // P9.1 — Platform operations service catalog (migration 115).
+  { provide: SERVICE_CATALOG_REPOSITORY_PORT, useClass: PgServiceCatalogRepository },
 ];
 
 @Module({

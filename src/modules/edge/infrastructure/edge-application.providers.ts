@@ -374,6 +374,15 @@ import { createLiveCertificationExecutor } from './production-certification/live
 import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../domain/tenant-management/tenant-management-repository.port.js';
 import { TENANT_TECHNICAL_LIFECYCLE_BRIDGE_PORT } from '../domain/tenant-management/tenant-technical-lifecycle-bridge.port.js';
 import { P7TenantTechnicalLifecycleBridge } from './tenant-management/p7-tenant-technical-lifecycle.bridge.js';
+import { SERVICE_CATALOG_REPOSITORY_PORT } from '../domain/platform-operations/service-catalog-repository.port.js';
+import {
+  AddServiceDependencyUseCase,
+  GetPlatformServiceUseCase,
+  ListPlatformServicesUseCase,
+  RegisterPlatformServiceUseCase,
+  RemoveServiceDependencyUseCase,
+  UpdatePlatformServiceUseCase,
+} from '../application/platform-operations/service-catalog.use-cases.js';
 import {
   AddTenantNoteUseCase,
   ApproveExceptionUseCase,
@@ -5707,5 +5716,56 @@ export const edgeApplicationProviders: Provider[] = [
     provide: AcknowledgeFindingUseCase,
     useFactory: (repo, audit) => new AcknowledgeFindingUseCase(repo, audit),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
+  },
+  // --- P9 Platform operations — service catalog --------------------------------
+  {
+    provide: ListPlatformServicesUseCase,
+    useFactory: (repo) => new ListPlatformServicesUseCase(repo),
+    inject: [SERVICE_CATALOG_REPOSITORY_PORT],
+  },
+  {
+    provide: GetPlatformServiceUseCase,
+    useFactory: (repo) => new GetPlatformServiceUseCase(repo),
+    inject: [SERVICE_CATALOG_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterPlatformServiceUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RegisterPlatformServiceUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_CATALOG_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: UpdatePlatformServiceUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new UpdatePlatformServiceUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_CATALOG_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AddServiceDependencyUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new AddServiceDependencyUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_CATALOG_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RemoveServiceDependencyUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RemoveServiceDependencyUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_CATALOG_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
 ];
