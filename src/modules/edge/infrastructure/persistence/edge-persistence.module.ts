@@ -14,6 +14,7 @@ import { EXPERIENCE_REPOSITORY_PORT } from '../../domain/product-experience/expe
 import { ACTIVATION_REPOSITORY_PORT } from '../../domain/readiness-activation/activation-repository.port.js';
 import { LIFECYCLE_REPOSITORY_PORT } from '../../domain/tenant-lifecycle/lifecycle-repository.port.js';
 import { ONBOARDING_REPOSITORY_PORT } from '../../domain/onboarding/onboarding-repository.port.js';
+import { RECONCILIATION_REPOSITORY_PORT } from '../../domain/reconciliation/reconciliation-repository.port.js';
 import { AUDIT_EVENT_REPOSITORY_PORT } from '../../domain/ports/audit-event-repository.port.js';
 import { PRODUCT_REPOSITORY_PORT } from '../../domain/ports/product-repository.port.js';
 import { PRODUCT_VERSION_REPOSITORY_PORT } from '../../domain/ports/product-version-repository.port.js';
@@ -51,6 +52,9 @@ import { PgExperienceRepository } from '../product-experience/pg-experience.repo
 import { PgActivationRepository } from '../readiness-activation/pg-activation.repository.js';
 import { PgLifecycleRepository } from '../tenant-lifecycle/pg-lifecycle.repository.js';
 import { PgOnboardingRepository } from '../onboarding/pg-onboarding.repository.js';
+import { PgReconciliationRepository } from '../reconciliation/pg-reconciliation.repository.js';
+import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../../domain/tenant-management/tenant-management-repository.port.js';
+import { PgTenantManagementRepository } from '../tenant-management/pg-tenant-management.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -143,6 +147,10 @@ const providers = [
   { provide: LIFECYCLE_REPOSITORY_PORT, useClass: PgLifecycleRepository },
   // P7.12 — Onboarding operations (migration 107).
   { provide: ONBOARDING_REPOSITORY_PORT, useClass: PgOnboardingRepository },
+  // P7.13 — Reconciliation & operational governance (migration 109; 108=P8).
+  { provide: RECONCILIATION_REPOSITORY_PORT, useClass: PgReconciliationRepository },
+  // P8 — Advanced tenant management & governance (migration 108).
+  { provide: TENANT_MANAGEMENT_REPOSITORY_PORT, useClass: PgTenantManagementRepository },
 ];
 
 @Module({

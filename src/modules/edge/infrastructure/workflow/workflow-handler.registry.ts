@@ -44,6 +44,11 @@ import {
   type OnboardingLiveExecutor,
 } from '../../domain/onboarding/onboarding-handlers.js';
 import { ONBOARDING_HANDLER_KEYS } from '../../domain/onboarding/onboarding.types.js';
+import {
+  registerReconciliationHandlers,
+  type ReconciliationLiveExecutor,
+} from '../../domain/reconciliation/reconciliation-handlers.js';
+import { RECONCILIATION_HANDLER_KEYS } from '../../domain/reconciliation/reconciliation.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
@@ -53,6 +58,7 @@ export const EXPERIENCE_LIVE_EXECUTOR = Symbol('EXPERIENCE_LIVE_EXECUTOR');
 export const ACTIVATION_LIVE_EXECUTOR = Symbol('ACTIVATION_LIVE_EXECUTOR');
 export const LIFECYCLE_LIVE_EXECUTOR = Symbol('LIFECYCLE_LIVE_EXECUTOR');
 export const ONBOARDING_LIVE_EXECUTOR = Symbol('ONBOARDING_LIVE_EXECUTOR');
+export const RECONCILIATION_LIVE_EXECUTOR = Symbol('RECONCILIATION_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -87,6 +93,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(ONBOARDING_LIVE_EXECUTOR)
     liveOnboarding?: OnboardingLiveExecutor | null,
+    @Optional()
+    @Inject(RECONCILIATION_LIVE_EXECUTOR)
+    liveReconciliation?: ReconciliationLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -133,6 +142,12 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
       this.inner,
       ONBOARDING_HANDLER_KEYS,
       liveOnboarding ?? undefined,
+    );
+    // P7.13 — Reconciliation & operational governance handlers (9th live executor).
+    registerReconciliationHandlers(
+      this.inner,
+      RECONCILIATION_HANDLER_KEYS,
+      liveReconciliation ?? undefined,
     );
   }
 

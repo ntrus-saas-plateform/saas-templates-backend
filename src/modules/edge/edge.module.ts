@@ -55,6 +55,8 @@ import { EdgeExperienceController } from './presentation/controllers/experience.
 import { EdgeActivationController } from './presentation/controllers/activation.controller.js';
 import { EdgeLifecycleController } from './presentation/controllers/lifecycle.controller.js';
 import { EdgeOnboardingController } from './presentation/controllers/onboarding.controller.js';
+import { EdgeReconciliationController } from './presentation/controllers/reconciliation.controller.js';
+import { EdgeTenantManagementController } from './presentation/controllers/tenant-management.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -104,6 +106,8 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeActivationController,
     EdgeLifecycleController,
     EdgeOnboardingController,
+    EdgeReconciliationController,
+    EdgeTenantManagementController,
   ],
   providers: [
     ...edgeApplicationProviders,

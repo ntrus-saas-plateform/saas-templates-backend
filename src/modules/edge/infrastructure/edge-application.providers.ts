@@ -205,6 +205,7 @@ import {
   LIFECYCLE_LIVE_EXECUTOR,
   ONBOARDING_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
+  RECONCILIATION_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
 import { PRODUCT_CONTROL_REPOSITORY_PORT } from '../domain/product-control/product-control-repository.port.js';
@@ -333,6 +334,57 @@ import {
   RequestOnboardingStartUseCase,
 } from '../application/onboarding/onboarding.use-cases.js';
 import { createLiveOnboardingExecutor } from './onboarding/live-onboarding.executor.js';
+// --- P7.13 Reconciliation & operational governance ---------------------------
+import { RECONCILIATION_REPOSITORY_PORT } from '../domain/reconciliation/reconciliation-repository.port.js';
+import {
+  ApproveReconciliationRemediationUseCase,
+  CreateReconciliationPolicyUseCase,
+  CreateReconciliationRunUseCase,
+  CreateReconciliationWaiverUseCase,
+  ListReconciliationUseCase,
+  QuarantineReconciliationFindingUseCase,
+  RequestReconciliationObserveUseCase,
+  RequestReconciliationRemediateUseCase,
+} from '../application/reconciliation/reconciliation.use-cases.js';
+import { createLiveReconciliationExecutor } from './reconciliation/live-reconciliation.executor.js';
+// --- P8 Advanced tenant management & governance --------------------------------
+import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../domain/tenant-management/tenant-management-repository.port.js';
+import {
+  AddTenantNoteUseCase,
+  ApproveExceptionUseCase,
+  ApproveLifecycleActionUseCase,
+  ApproveMigrationUseCase,
+  ApproveRecoveryUseCase,
+  ApproveTerminationUseCase,
+  AssignTenantOwnerUseCase,
+  ExpireExceptionsUseCase,
+  GetPortfolioAnalyticsUseCase,
+  GetTenant360UseCase,
+  GetTenantUseCase,
+  ListActivityUseCase,
+  ListExceptionsUseCase,
+  ListFindingsUseCase,
+  ListLifecycleRequestsUseCase,
+  ListMigrationRequestsUseCase,
+  ListRecoveryRequestsUseCase,
+  ListTerminationRequestsUseCase,
+  ListTenantsUseCase,
+  ManageTenantTagsUseCase,
+  RegisterTenantUseCase,
+  RejectLifecycleActionUseCase,
+  RejectMigrationUseCase,
+  RejectRecoveryUseCase,
+  RejectTerminationUseCase,
+  RequestExceptionUseCase,
+  RequestLifecycleActionUseCase,
+  RequestMigrationUseCase,
+  RequestRecoveryUseCase,
+  RequestTerminationUseCase,
+  RevokeExceptionUseCase,
+  RunReconciliationUseCase as TenantRunReconciliationUseCase,
+  SyncTenantsFromP7UseCase,
+  UpdateTenantMetadataUseCase,
+} from '../application/tenant-management/tenant-management.use-cases.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -512,7 +564,7 @@ import {
   ResolveDisputeUseCase,
   ResolveReconciliationExceptionUseCase,
   RevokePaymentMethodUseCase,
-  RunReconciliationUseCase,
+  RunReconciliationUseCase as BillingRunReconciliationUseCase,
   UpsertBillingPartyUseCase,
   UpsertBillingPolicyUseCase,
 } from '../application/billing/billing-ops.use-cases.js';
@@ -3470,8 +3522,8 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [BILLING_REPOSITORY_PORT],
   },
   {
-    provide: RunReconciliationUseCase,
-    useFactory: (b) => new RunReconciliationUseCase(b),
+    provide: BillingRunReconciliationUseCase,
+    useFactory: (b) => new BillingRunReconciliationUseCase(b),
     inject: [BILLING_REPOSITORY_PORT],
   },
   {
@@ -4833,6 +4885,136 @@ export const edgeApplicationProviders: Provider[] = [
       WORKFLOW_AUTHORIZATION_PORT,
     ],
   },
+  // =========================================================================
+  // P7.13 — Reconciliation & Operational Governance (9th live executor)
+  // =========================================================================
+  {
+    provide: ListReconciliationUseCase,
+    useFactory: (repo) => new ListReconciliationUseCase(repo),
+    inject: [RECONCILIATION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateReconciliationPolicyUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateReconciliationPolicyUseCase(repo, outbox, audit),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateReconciliationRunUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new CreateReconciliationRunUseCase(repo, auth, outbox, audit),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestReconciliationObserveUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestReconciliationObserveUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestReconciliationRemediateUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestReconciliationRemediateUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: ApproveReconciliationRemediationUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new ApproveReconciliationRemediationUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: CreateReconciliationWaiverUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateReconciliationWaiverUseCase(repo, outbox, audit),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: QuarantineReconciliationFindingUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new QuarantineReconciliationFindingUseCase(repo, auth, outbox, audit),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RECONCILIATION_LIVE_EXECUTOR,
+    useFactory: (repo, wfRepo, auth) =>
+      createLiveReconciliationExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+      }),
+    inject: [
+      RECONCILIATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
     useFactory: (
@@ -4844,6 +5026,7 @@ export const edgeApplicationProviders: Provider[] = [
       activation,
       lifecycle,
       onboarding,
+      reconciliation,
     ) =>
       new WorkflowHandlerRegistry(
         pci,
@@ -4854,6 +5037,7 @@ export const edgeApplicationProviders: Provider[] = [
         activation,
         lifecycle,
         onboarding,
+        reconciliation,
       ),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
@@ -4864,6 +5048,259 @@ export const edgeApplicationProviders: Provider[] = [
       ACTIVATION_LIVE_EXECUTOR,
       LIFECYCLE_LIVE_EXECUTOR,
       ONBOARDING_LIVE_EXECUTOR,
+      RECONCILIATION_LIVE_EXECUTOR,
     ],
+  },
+  // --- P8 Advanced tenant management & governance --------------------------------
+  {
+    provide: ListTenantsUseCase,
+    useFactory: (repo) => new ListTenantsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: GetTenantUseCase,
+    useFactory: (repo) => new GetTenantUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: GetTenant360UseCase,
+    useFactory: (repo) => new GetTenant360UseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: GetPortfolioAnalyticsUseCase,
+    useFactory: (repo) => new GetPortfolioAnalyticsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterTenantUseCase,
+    useFactory: (repo, outbox, audit) => new RegisterTenantUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: SyncTenantsFromP7UseCase,
+    useFactory: (repo) => new SyncTenantsFromP7UseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateTenantMetadataUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new UpdateTenantMetadataUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AssignTenantOwnerUseCase,
+    useFactory: (repo, outbox, audit) => new AssignTenantOwnerUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ManageTenantTagsUseCase,
+    useFactory: (repo) => new ManageTenantTagsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: AddTenantNoteUseCase,
+    useFactory: (repo) => new AddTenantNoteUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestLifecycleActionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RequestLifecycleActionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveLifecycleActionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ApproveLifecycleActionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectLifecycleActionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RejectLifecycleActionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestExceptionUseCase,
+    useFactory: (repo, outbox, audit) => new RequestExceptionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveExceptionUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveExceptionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RevokeExceptionUseCase,
+    useFactory: (repo, outbox, audit) => new RevokeExceptionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ExpireExceptionsUseCase,
+    useFactory: (repo) => new ExpireExceptionsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: TenantRunReconciliationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new TenantRunReconciliationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListFindingsUseCase,
+    useFactory: (repo) => new ListFindingsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ListActivityUseCase,
+    useFactory: (repo) => new ListActivityUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ListLifecycleRequestsUseCase,
+    useFactory: (repo) => new ListLifecycleRequestsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ListExceptionsUseCase,
+    useFactory: (repo) => new ListExceptionsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestMigrationUseCase,
+    useFactory: (repo, outbox, audit) => new RequestMigrationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveMigrationUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveMigrationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectMigrationUseCase,
+    useFactory: (repo, outbox, audit) => new RejectMigrationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListMigrationRequestsUseCase,
+    useFactory: (repo) => new ListMigrationRequestsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestRecoveryUseCase,
+    useFactory: (repo, outbox, audit) => new RequestRecoveryUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveRecoveryUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveRecoveryUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectRecoveryUseCase,
+    useFactory: (repo, outbox, audit) => new RejectRecoveryUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListRecoveryRequestsUseCase,
+    useFactory: (repo) => new ListRecoveryRequestsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RequestTerminationUseCase,
+    useFactory: (repo, outbox, audit) => new RequestTerminationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveTerminationUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveTerminationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectTerminationUseCase,
+    useFactory: (repo, outbox, audit) => new RejectTerminationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListTerminationRequestsUseCase,
+    useFactory: (repo) => new ListTerminationRequestsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
   },
 ];
