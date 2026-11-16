@@ -2,8 +2,8 @@
 
 **Campagne :** audit indépendant adversarial P8  
 **Date :** 2026-11-16  
-**Git (début audit) :** backend `feature/console` @ `799e255b5bbb52afe2a2214ee1c4e717caf45a17` (ahead, non poussé) · frontend @ `5b83a1b` (P8 console `8bce479` / `225c4a1`)  
-**Preuve max observée :** **E2** (Vitest policy/use-cases/auth) — **pas E3/E4/E5**  
+**Git (début audit) :** backend `cd064ee` · frontend `5b83a1b` (non poussés)  
+**Preuve max observée :** **E2** (Vitest policy/use-cases/auth) ? **pas E3/E4/E5**  
 **Module pivot :** `src/modules/edge/**/tenant-management/`  
 **Migrations :** `108_edge_p8_advanced_tenant_management.sql`, `112_edge_p8_audit_remediation.sql`
 
@@ -15,12 +15,12 @@
 
 | | Audit start | Post-remédiation |
 |--|-------------|------------------|
-| Backend | `799e255b5bbb52afe2a2214ee1c4e717caf45a17` | `799e255b5bbb52afe2a2214ee1c4e717caf45a17=<à renseigner>` |
-| Frontend | `5b83a1b` | `FRONTEND_SHA_POST_REMEDIATION=<à renseigner>` |
+| Backend | `cd064ee` | `d5e3879` (remediation `799e255`) |
+| Frontend | `5b83a1b` | `8b89662` |
 
 ## Push
 
-**Non effectué** — branches `feature/console` **ahead** de `origin` (backend `799e255b5bbb52afe2a2214ee1c4e717caf45a17`, frontend `5b83a1b`).
+**Non effectué** ? branches `feature/console` **ahead** de `origin`.
 
 ## Critères certification
 
