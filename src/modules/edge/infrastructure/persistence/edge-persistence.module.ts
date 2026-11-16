@@ -15,6 +15,8 @@ import { ACTIVATION_REPOSITORY_PORT } from '../../domain/readiness-activation/ac
 import { LIFECYCLE_REPOSITORY_PORT } from '../../domain/tenant-lifecycle/lifecycle-repository.port.js';
 import { ONBOARDING_REPOSITORY_PORT } from '../../domain/onboarding/onboarding-repository.port.js';
 import { RECONCILIATION_REPOSITORY_PORT } from '../../domain/reconciliation/reconciliation-repository.port.js';
+import { CERTIFICATION_REPOSITORY_PORT } from '../../domain/production-certification/certification-repository.port.js';
+import { CONNECTIVITY_AGENT_REPOSITORY_PORT } from '../../domain/connectivity-agent/connectivity-agent-repository.port.js';
 import { AUDIT_EVENT_REPOSITORY_PORT } from '../../domain/ports/audit-event-repository.port.js';
 import { PRODUCT_REPOSITORY_PORT } from '../../domain/ports/product-repository.port.js';
 import { PRODUCT_VERSION_REPOSITORY_PORT } from '../../domain/ports/product-version-repository.port.js';
@@ -53,6 +55,8 @@ import { PgActivationRepository } from '../readiness-activation/pg-activation.re
 import { PgLifecycleRepository } from '../tenant-lifecycle/pg-lifecycle.repository.js';
 import { PgOnboardingRepository } from '../onboarding/pg-onboarding.repository.js';
 import { PgReconciliationRepository } from '../reconciliation/pg-reconciliation.repository.js';
+import { PgConnectivityAgentRepository } from '../connectivity-agent/pg-connectivity-agent.repository.js';
+import { PgCertificationRepository } from '../production-certification/pg-certification.repository.js';
 import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../../domain/tenant-management/tenant-management-repository.port.js';
 import { PgTenantManagementRepository } from '../tenant-management/pg-tenant-management.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
@@ -149,6 +153,10 @@ const providers = [
   { provide: ONBOARDING_REPOSITORY_PORT, useClass: PgOnboardingRepository },
   // P7.13 — Reconciliation & operational governance (migration 109; 108=P8).
   { provide: RECONCILIATION_REPOSITORY_PORT, useClass: PgReconciliationRepository },
+  // P7.14 — Connectivity agent & registry (migration 110).
+  { provide: CONNECTIVITY_AGENT_REPOSITORY_PORT, useClass: PgConnectivityAgentRepository },
+  // P7.15 — Production certification & evidence pack (migration 111).
+  { provide: CERTIFICATION_REPOSITORY_PORT, useClass: PgCertificationRepository },
   // P8 — Advanced tenant management & governance (migration 108).
   { provide: TENANT_MANAGEMENT_REPOSITORY_PORT, useClass: PgTenantManagementRepository },
 ];

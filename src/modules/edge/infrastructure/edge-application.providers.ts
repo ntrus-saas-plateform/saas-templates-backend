@@ -206,6 +206,8 @@ import {
   ONBOARDING_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
   RECONCILIATION_LIVE_EXECUTOR,
+  AGENT_LIVE_EXECUTOR,
+  CERTIFICATION_LIVE_EXECUTOR,
   WorkflowHandlerRegistry,
 } from './workflow/workflow-handler.registry.js';
 import { PRODUCT_CONTROL_REPOSITORY_PORT } from '../domain/product-control/product-control-repository.port.js';
@@ -347,6 +349,27 @@ import {
   RequestReconciliationRemediateUseCase,
 } from '../application/reconciliation/reconciliation.use-cases.js';
 import { createLiveReconciliationExecutor } from './reconciliation/live-reconciliation.executor.js';
+// --- P7.14 Connectivity Agent & Edge Agent Registry ---------------------------
+import { CONNECTIVITY_AGENT_REPOSITORY_PORT } from '../domain/connectivity-agent/connectivity-agent-repository.port.js';
+import {
+  CreateConnectivityAgentUseCase,
+  ListConnectivityAgentsUseCase,
+  RequestConnectivityAgentCommandUseCase,
+  RequestConnectivityAgentRegisterUseCase,
+  RequestConnectivityAgentRevokeUseCase,
+} from '../application/connectivity-agent/connectivity-agent.use-cases.js';
+import { createLiveConnectivityAgentExecutor } from './connectivity-agent/live-connectivity-agent.executor.js';
+// --- P7.15 Production certification & evidence pack ---------------------------
+import { CERTIFICATION_REPOSITORY_PORT } from '../domain/production-certification/certification-repository.port.js';
+import {
+  AttachCertificationEvidenceUseCase,
+  CreateCertificationPackageUseCase,
+  ListCertificationUseCase,
+  RequestCertificationAssembleUseCase,
+  RequestCertificationCertifyUseCase,
+  RequestCertificationRevokeUseCase,
+} from '../application/production-certification/certification.use-cases.js';
+import { createLiveCertificationExecutor } from './production-certification/live-certification.executor.js';
 // --- P8 Advanced tenant management & governance --------------------------------
 import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../domain/tenant-management/tenant-management-repository.port.js';
 import {
@@ -381,9 +404,20 @@ import {
   RequestRecoveryUseCase,
   RequestTerminationUseCase,
   RevokeExceptionUseCase,
+  AcknowledgeFindingUseCase,
+  EvaluateTenantRiskUseCase,
+  ExecuteBulkOperationUseCase,
+  ExportTenantsUseCase,
+  ListBulkOperationsUseCase,
+  ListHealthSnapshotsUseCase,
+  ListReconciliationRunsUseCase,
+  ListRiskAssessmentsUseCase,
+  PreviewBulkOperationUseCase,
+  RecordHealthSnapshotUseCase,
   RunReconciliationUseCase as TenantRunReconciliationUseCase,
   SyncTenantsFromP7UseCase,
   UpdateTenantMetadataUseCase,
+  UpdateTenantPoliciesUseCase,
 } from '../application/tenant-management/tenant-management.use-cases.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
@@ -5015,6 +5049,213 @@ export const edgeApplicationProviders: Provider[] = [
       WORKFLOW_AUTHORIZATION_PORT,
     ],
   },
+  // =========================================================================
+  // P7.14 — Connectivity Agent & Edge Agent Registry (10th live executor)
+  // =========================================================================
+  {
+    provide: ListConnectivityAgentsUseCase,
+    useFactory: (repo) => new ListConnectivityAgentsUseCase(repo),
+    inject: [CONNECTIVITY_AGENT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateConnectivityAgentUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new CreateConnectivityAgentUseCase(repo, auth, outbox, audit),
+    inject: [
+      CONNECTIVITY_AGENT_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestConnectivityAgentRegisterUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConnectivityAgentRegisterUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CONNECTIVITY_AGENT_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestConnectivityAgentCommandUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConnectivityAgentCommandUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CONNECTIVITY_AGENT_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestConnectivityAgentRevokeUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestConnectivityAgentRevokeUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CONNECTIVITY_AGENT_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: AGENT_LIVE_EXECUTOR,
+    useFactory: (repo, wfRepo, auth) =>
+      createLiveConnectivityAgentExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+      }),
+    inject: [
+      CONNECTIVITY_AGENT_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+    ],
+  },
+  // =========================================================================
+  // P7.15 — Production Certification & Evidence Pack (11th live executor)
+  // =========================================================================
+  {
+    provide: ListCertificationUseCase,
+    useFactory: (repo) => new ListCertificationUseCase(repo),
+    inject: [CERTIFICATION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateCertificationPackageUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateCertificationPackageUseCase(repo, outbox, audit),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AttachCertificationEvidenceUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new AttachCertificationEvidenceUseCase(repo, outbox, audit),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestCertificationAssembleUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestCertificationAssembleUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestCertificationCertifyUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestCertificationCertifyUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestCertificationRevokeUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestCertificationRevokeUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: CERTIFICATION_LIVE_EXECUTOR,
+    useFactory: (repo, wfRepo, auth) =>
+      createLiveCertificationExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+      }),
+    inject: [
+      CERTIFICATION_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
     useFactory: (
@@ -5027,6 +5268,8 @@ export const edgeApplicationProviders: Provider[] = [
       lifecycle,
       onboarding,
       reconciliation,
+      agent,
+      certification,
     ) =>
       new WorkflowHandlerRegistry(
         pci,
@@ -5038,6 +5281,8 @@ export const edgeApplicationProviders: Provider[] = [
         lifecycle,
         onboarding,
         reconciliation,
+        agent,
+        certification,
       ),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
@@ -5049,6 +5294,8 @@ export const edgeApplicationProviders: Provider[] = [
       LIFECYCLE_LIVE_EXECUTOR,
       ONBOARDING_LIVE_EXECUTOR,
       RECONCILIATION_LIVE_EXECUTOR,
+      AGENT_LIVE_EXECUTOR,
+      CERTIFICATION_LIVE_EXECUTOR,
     ],
   },
   // --- P8 Advanced tenant management & governance --------------------------------
@@ -5302,5 +5549,80 @@ export const edgeApplicationProviders: Provider[] = [
     provide: ListTerminationRequestsUseCase,
     useFactory: (repo) => new ListTerminationRequestsUseCase(repo),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ExportTenantsUseCase,
+    useFactory: (repo, outbox, audit) => new ExportTenantsUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PreviewBulkOperationUseCase,
+    useFactory: (repo) => new PreviewBulkOperationUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: ExecuteBulkOperationUseCase,
+    useFactory: (repo, outbox, audit) => new ExecuteBulkOperationUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListBulkOperationsUseCase,
+    useFactory: (repo) => new ListBulkOperationsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: RecordHealthSnapshotUseCase,
+    useFactory: (repo, outbox, audit) => new RecordHealthSnapshotUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListHealthSnapshotsUseCase,
+    useFactory: (repo) => new ListHealthSnapshotsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: EvaluateTenantRiskUseCase,
+    useFactory: (repo, outbox, audit) => new EvaluateTenantRiskUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListRiskAssessmentsUseCase,
+    useFactory: (repo) => new ListRiskAssessmentsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: UpdateTenantPoliciesUseCase,
+    useFactory: (repo, outbox, audit) => new UpdateTenantPoliciesUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListReconciliationRunsUseCase,
+    useFactory: (repo) => new ListReconciliationRunsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: AcknowledgeFindingUseCase,
+    useFactory: (repo, audit) => new AcknowledgeFindingUseCase(repo, audit),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT, AUDIT_EVENT_REPOSITORY_PORT],
   },
 ];

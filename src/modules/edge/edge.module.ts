@@ -56,6 +56,8 @@ import { EdgeActivationController } from './presentation/controllers/activation.
 import { EdgeLifecycleController } from './presentation/controllers/lifecycle.controller.js';
 import { EdgeOnboardingController } from './presentation/controllers/onboarding.controller.js';
 import { EdgeReconciliationController } from './presentation/controllers/reconciliation.controller.js';
+import { EdgeConnectivityAgentController } from './presentation/controllers/connectivity-agent.controller.js';
+import { EdgeCertificationController } from './presentation/controllers/certification.controller.js';
 import { EdgeTenantManagementController } from './presentation/controllers/tenant-management.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
@@ -107,6 +109,8 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeLifecycleController,
     EdgeOnboardingController,
     EdgeReconciliationController,
+    EdgeConnectivityAgentController,
+    EdgeCertificationController,
     EdgeTenantManagementController,
   ],
   providers: [

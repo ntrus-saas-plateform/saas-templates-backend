@@ -49,6 +49,16 @@ import {
   type ReconciliationLiveExecutor,
 } from '../../domain/reconciliation/reconciliation-handlers.js';
 import { RECONCILIATION_HANDLER_KEYS } from '../../domain/reconciliation/reconciliation.types.js';
+import {
+  registerConnectivityAgentHandlers,
+  type ConnectivityAgentLiveExecutor,
+} from '../../domain/connectivity-agent/connectivity-agent-handlers.js';
+import { CONNECTIVITY_AGENT_HANDLER_KEYS } from '../../domain/connectivity-agent/connectivity-agent.types.js';
+import {
+  registerCertificationHandlers,
+  type CertificationLiveExecutor,
+} from '../../domain/production-certification/certification-handlers.js';
+import { CERTIFICATION_HANDLER_KEYS } from '../../domain/production-certification/certification.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
@@ -59,6 +69,9 @@ export const ACTIVATION_LIVE_EXECUTOR = Symbol('ACTIVATION_LIVE_EXECUTOR');
 export const LIFECYCLE_LIVE_EXECUTOR = Symbol('LIFECYCLE_LIVE_EXECUTOR');
 export const ONBOARDING_LIVE_EXECUTOR = Symbol('ONBOARDING_LIVE_EXECUTOR');
 export const RECONCILIATION_LIVE_EXECUTOR = Symbol('RECONCILIATION_LIVE_EXECUTOR');
+export const AGENT_LIVE_EXECUTOR = Symbol('AGENT_LIVE_EXECUTOR');
+/** 11th live executor — P7.15 Production Certification. */
+export const CERTIFICATION_LIVE_EXECUTOR = Symbol('CERTIFICATION_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -96,6 +109,12 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(RECONCILIATION_LIVE_EXECUTOR)
     liveReconciliation?: ReconciliationLiveExecutor | null,
+    @Optional()
+    @Inject(AGENT_LIVE_EXECUTOR)
+    liveAgent?: ConnectivityAgentLiveExecutor | null,
+    @Optional()
+    @Inject(CERTIFICATION_LIVE_EXECUTOR)
+    liveCertification?: CertificationLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -148,6 +167,18 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
       this.inner,
       RECONCILIATION_HANDLER_KEYS,
       liveReconciliation ?? undefined,
+    );
+    // P7.14 — Connectivity agent handlers (10th live executor).
+    registerConnectivityAgentHandlers(
+      this.inner,
+      CONNECTIVITY_AGENT_HANDLER_KEYS,
+      liveAgent ?? undefined,
+    );
+    // P7.15 — Production certification handlers (11th live executor).
+    registerCertificationHandlers(
+      this.inner,
+      CERTIFICATION_HANDLER_KEYS,
+      liveCertification ?? undefined,
     );
   }
 
