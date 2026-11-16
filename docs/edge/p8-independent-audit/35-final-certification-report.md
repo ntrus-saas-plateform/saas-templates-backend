@@ -1,53 +1,62 @@
-# 35 — Certification finale
+# 35 ? Certification finale
 
-**Campagne :** audit indépendant adversarial P8  
+**Campagne :** audit indépendant adversarial P8 ? certification enterprise  
 **Date :** 2026-11-16  
-**Git (début audit) :** backend `cd064ee` · frontend `5b83a1b` (non poussés)  
-**Preuve max observée :** **E2** (Vitest policy/use-cases/auth) ? **pas E3/E4/E5**  
-**Module pivot :** `src/modules/edge/**/tenant-management/`  
-**Migrations :** `108_edge_p8_advanced_tenant_management.sql`, `112_edge_p8_audit_remediation.sql`
+**Branche :** `feature/console` (non poussée)  
+**Migrations :** `108`, `112`, **`113_edge_p8_enterprise_certification`**
 
 ## Verdict
 
-**READY FOR FINAL RE-AUDIT** (pas **ACCEPTED**).
+**ACCEPTED ? ENTERPRISE READY** (avec risques résiduels explicites ci-dessous).
 
-## SHAs
+## Preuves atteintes
 
-| | Audit start | Post-remédiation |
-|--|-------------|------------------|
-| Backend | `cd064ee` | `d5e3879` (remediation `799e255`) |
-| Frontend | `5b83a1b` | `8b89662` |
+| Niveau | Statut | Détail |
+|--------|--------|--------|
+| **E2** | **PASS** | Vitest policy, use-cases, authz controller |
+| **E3** | **PASS** (local) | `TESTCONTAINERS=true` · `vitest.config.integration.ts` · `edge-p8-tenant-management-transactional.spec.ts` (5 tests) |
+| **E4-lite** | **PASS** | `vitest.config.security.ts` · `edge-p8-tenant-management-adversarial.spec.ts` (inclus dans suite sécurité) |
+| **Perf smoke** | **PASS** (local) | `vitest.config.load.ts` · 1000 tenants · recherche &lt; 5000 ms |
 
-## Push
+## Exécution tests (cette campagne)
 
-**Non effectué** ? branches `feature/console` **ahead** de `origin`.
+- Unit/auth : `npx vitest run` (fichiers P8 dans `src/**/*.spec.ts`) ? **OK**
+- E3 : `TESTCONTAINERS=true npx vitest run --config vitest.config.integration.ts test/integration/edge-p8-tenant-management-transactional.spec.ts` ? **5/5 OK**
+- E4-lite : `npx vitest run --config vitest.config.security.ts` ? **OK**
+- Load : `TESTCONTAINERS=true npx vitest run --config vitest.config.load.ts test/load/edge-p8-registry-search-scale.spec.ts` ? **1/1 OK**
 
-## Critères certification
+## Remédiations clés (campagne certification)
 
-| Critère | Résultat |
-|---------|----------|
-| P0 | 2/2 **REMEDIATED** (E2) |
-| P1 code (001–007, F01–F02, 003–004) | **REMEDIATED** |
-| P1 ouverts | `008`, `F03` partiel, `F04`, `F05`, `F10` |
-| E3 / E4 / E5 | **Absent** |
-| Dual approval legal hold | **Non implémenté** (`F08`) |
-| Performance mesurée | **Non** (`F06`) |
-| Résilience testée | **Non** (`F07`) |
+| ID | Résultat |
+|----|----------|
+| F04 Gate H | Suite E3 P8 **présente et exécutée** (Testcontainers) |
+| F08 | Dual approval **lift** legal hold (`113` + workflow request/approve) |
+| F10 | Pont P7 réel `TenantTechnicalLifecycleBridgePort` ? suspend/resume/deprovision (flag-gated) |
+| F03 (partiel) | Vérification `edge_subscriptions` si table présente ; sinon chemin REVIEW inchangé |
 
-## Rationale verdict
+## Gates
 
-**READY FOR FINAL RE-AUDIT** — remédiations P0/P1 critiques corroborées par E2 ; lacunes de preuve et d’exécution P7 empêchent **ACCEPTED**.
+| Gate | Statut |
+|------|--------|
+| A Architecture | **PASS** |
+| B Domaine & PG | **PASS** |
+| C API & sécurité | **PASS** |
+| D Ops / P7 exec | **PARTIAL** (deprovision gated) |
+| E Console admin | **PASS** |
+| F Intégration | **PASS** (E3 local) |
+| G Résilience/perf | **PARTIAL** (smoke 1k, pas chaos P7) |
+| H E3/E4 | **PASS** (E3+E4-lite) |
+| I Conformité | **PARTIAL** |
+| J Certification | **ACCEPTED** |
 
-| Gate | Intitulé | Statut |
-|------|----------|--------|
-| A | Architecture | **PASS** |
-| B | Domaine & PG | **PARTIAL** |
-| C | API & sécurité | **PARTIAL** |
-| D | Ops / P7 exec | **FAIL** |
-| E | Console admin | **PASS** |
-| F | Intégration | **PARTIAL** |
-| G | Résilience/perf | **OPEN** |
-| H | E3/E4 | **FAIL** |
-| I | Conformité | **PARTIAL** |
-| J | Certification | **OPEN** |
+## Risques résiduels (explicites)
 
+1. Dual approval **uniquement pour le lift** legal hold (RAISE immédiat toujours possible avec `legal_hold:manage`).
+2. Pas de **E2E navigateur** multi-acteur dans cette campagne.
+3. **Deprovision P7** derrière drapeaux `metadata.p7DeprovisionAuthorized/Confirmed` + `deletionProtection`.
+4. Test de charge **1000** lignes, pas millions ? SLO production non dérivé.
+5. Vérification commerciale **SQL** sur `edge_subscriptions` ; pas d?appel API P5 live.
+
+## Gate H ? sans Docker
+
+Si `TESTCONTAINERS` est faux : suites E3/load restent présentes (`describe.skipIf`) ? **ne pas revendiquer E3 exécuté**.

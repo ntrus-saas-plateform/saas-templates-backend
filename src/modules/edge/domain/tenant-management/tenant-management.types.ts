@@ -90,6 +90,11 @@ export enum LifecycleRequestType {
   ARCHIVE = 'ARCHIVE',
 }
 
+export enum LegalHoldChangeAction {
+  RAISE = 'RAISE',
+  LIFT = 'LIFT',
+}
+
 export enum GovernanceRequestStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
@@ -270,6 +275,23 @@ export type TenantNoteRecord = {
   noteType: string;
   body: string;
   createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type LegalHoldChangeRequestRecord = {
+  id: string;
+  tenantRegistryId: string;
+  action: LegalHoldChangeAction | string;
+  status: GovernanceRequestStatus | string;
+  justification: string;
+  requestedBy: string;
+  approverId: string | null;
+  approvedAt: Date | null;
+  rejectedReason: string | null;
+  correlationId: string | null;
+  idempotencyKey: string;
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -7,10 +7,13 @@ import {
   assertAdministrativeTransition,
   assertJustification,
   assertHealthSnapshotSource,
+  assertLegalHoldLiftRequiresWorkflow,
   assertLifecycleApprovalAllowedUnderLegalHold,
   assertLifecycleRequestAllowedUnderLegalHold,
   assertNotLegalHold,
   assertSeparationOfDuties,
+  p8TenantDeprovisionAllowed,
+  P7_DELEGATED_LIFECYCLE_TYPES,
   canRequestLifecycle,
   isApprovableStatus,
   BULK_SENSITIVE_TYPES,
@@ -31,6 +34,7 @@ import {
   TENANT_MANAGEMENT_REPOSITORY_PORT,
   type TenantManagementRepositoryPort,
 } from '../../domain/tenant-management/tenant-management-repository.port.js';
+import type { TenantTechnicalLifecycleBridgePort } from '../../domain/tenant-management/tenant-technical-lifecycle-bridge.port.js';
 import {
   buildTenantManagementOutboxEvent,
   EDGE_P8_OUTBOX_TENANT,
@@ -44,6 +48,7 @@ import {
   GovernanceRequestStatus,
   GovernanceStatus,
   HealthStatus,
+  LegalHoldChangeAction,
   LifecycleRequestType,
   MigrationRequestStatus,
   MigrationType,
@@ -285,6 +290,32 @@ export class RegisterTenantUseCase {
     const slug = (input.tenantSlug?.trim() || slugifyTenantCode(code)) || slugifyTenantCode(code);
     const correlationId = input.correlationId?.trim() || randomUUID();
 
+    let subscriptionCommercialVerified = false;
+    const subscriptionRef = input.subscriptionId?.trim() ?? '';
+    if (subscriptionRef) {
+      const verification = await this.repo.verifySubscriptionProduct(
+        subscriptionRef,
+        input.productId,
+      );
+      if (verification === 'NOT_FOUND') {
+        throw new DomainError(
+          ErrorCode.VALIDATION_ERROR,
+          'subscriptionId not found in edge_subscriptions',
+          [{ code: 'SUBSCRIPTION_NOT_FOUND', subscriptionId: subscriptionRef }],
+        );
+      }
+      if (verification === 'PRODUCT_MISMATCH') {
+        throw new DomainError(
+          ErrorCode.VALIDATION_ERROR,
+          'subscription product_id does not match tenant productId',
+          [{ code: 'SUBSCRIPTION_PRODUCT_MISMATCH', subscriptionId: subscriptionRef }],
+        );
+      }
+      if (verification === 'VERIFIED') {
+        subscriptionCommercialVerified = true;
+      }
+    }
+
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const existing = await this.repo.getByProductTenantId(input.productTenantId);
       const now = new Date();
@@ -295,6 +326,9 @@ export class RegisterTenantUseCase {
         (input.subscriptionId !== undefined &&
           input.subscriptionId !== null &&
           input.subscriptionId.trim() !== '');
+
+      const commercialUnverifiedOnly =
+        commercialRefsProvided && !subscriptionCommercialVerified;
 
       let record: TenantRegistryRecord;
       let unverifiedCommercial = false;
@@ -328,9 +362,11 @@ export class RegisterTenantUseCase {
           region: input.region ?? existing.region,
           administrativeStatus: existing.administrativeStatus,
           technicalStatus: existing.technicalStatus,
-          governanceStatus: commercialRefsProvided
+          governanceStatus: commercialUnverifiedOnly
             ? GovernanceStatus.REVIEW_REQUIRED
-            : existing.governanceStatus,
+            : subscriptionCommercialVerified
+              ? GovernanceStatus.COMPLIANT
+              : existing.governanceStatus,
           healthStatus: existing.healthStatus,
           riskLevel: existing.riskLevel,
           platformTenantRef: existing.platformTenantRef,
@@ -356,7 +392,7 @@ export class RegisterTenantUseCase {
           createdBy: existing.createdBy,
           updatedBy: input.actorId,
         };
-        unverifiedCommercial = commercialRefsProvided;
+        unverifiedCommercial = commercialUnverifiedOnly;
         record = await this.repo.upsertByProductTenantId(upsertPayload, client);
       } else {
         const base: Omit<TenantRegistryRecord, 'id' | 'createdAt' | 'updatedAt' | 'version'> = {
@@ -376,7 +412,11 @@ export class RegisterTenantUseCase {
           region: input.region ?? null,
           administrativeStatus: AdministrativeStatus.PENDING_REVIEW,
           technicalStatus: TechnicalStatus.UNKNOWN,
-          governanceStatus: GovernanceStatus.REVIEW_REQUIRED,
+          governanceStatus: commercialUnverifiedOnly
+            ? GovernanceStatus.REVIEW_REQUIRED
+            : subscriptionCommercialVerified
+              ? GovernanceStatus.COMPLIANT
+              : GovernanceStatus.REVIEW_REQUIRED,
           healthStatus: HealthStatus.UNKNOWN,
           riskLevel: RiskLevel.UNKNOWN,
           platformTenantRef: null,
@@ -402,7 +442,7 @@ export class RegisterTenantUseCase {
           createdBy: input.actorId,
           updatedBy: input.actorId,
         };
-        unverifiedCommercial = commercialRefsProvided;
+        unverifiedCommercial = commercialUnverifiedOnly;
         record = await this.repo.registerTenant(base, client);
       }
 
@@ -958,6 +998,7 @@ export class ApproveLifecycleActionUseCase {
     private readonly repo: TenantManagementRepositoryPort,
     private readonly outbox: ControlPlaneOutboxTransactionService,
     private readonly audit: AuditEventRepositoryPort,
+    private readonly p7Bridge: TenantTechnicalLifecycleBridgePort | null = null,
   ) {}
 
   async execute(input: { actorId: string; requestId: string; correlationId?: string | null }) {
@@ -982,8 +1023,76 @@ export class ApproveLifecycleActionUseCase {
       ? null
       : p7ApprovalAdministrativeIntent(request.requestType, String(tenant.administrativeStatus));
     const nextAdmin = immediateAdmin ? nextStatusAfterApproval(request.requestType) : null;
-    const delegation = immediateAdmin ? 'P8_ADMIN' : 'P7_PENDING';
+    let delegation = immediateAdmin ? 'P8_ADMIN' : 'P7_PENDING';
     const correlationId = input.correlationId?.trim() || randomUUID();
+    const bridgeInputBase = {
+      lifecycleRecordId: tenant.lifecycleRecordId ?? '',
+      actorId: input.actorId,
+      correlationId,
+      idempotencyKey: `p8-lifecycle-bridge-${request.id}`,
+      reason: request.justification,
+    };
+    let p7WorkflowId: string | null = null;
+    const p7BridgeResult: Record<string, unknown> = {};
+    const requestType = String(request.requestType);
+
+    if (
+      !immediateAdmin &&
+      P7_DELEGATED_LIFECYCLE_TYPES.has(requestType) &&
+      this.p7Bridge
+    ) {
+      if (!tenant.lifecycleRecordId) {
+        p7BridgeResult.outcome = 'SKIPPED_NO_RECORD';
+        p7BridgeResult.reason = 'NO_P7_LIFECYCLE_RECORD_ID';
+      } else if (requestType === LifecycleRequestType.SUSPEND) {
+        const bridgeOut = await this.p7Bridge.requestSuspend(bridgeInputBase);
+        Object.assign(p7BridgeResult, bridgeOut);
+        if (bridgeOut.outcome === 'STARTED' && bridgeOut.workflowId) {
+          delegation = 'P7_STARTED';
+          p7WorkflowId = bridgeOut.workflowId;
+        } else if (bridgeOut.outcome === 'FAILED') {
+          delegation = 'P7_PENDING';
+        }
+      } else if (requestType === LifecycleRequestType.RESUME) {
+        const bridgeOut = await this.p7Bridge.requestResume(bridgeInputBase);
+        Object.assign(p7BridgeResult, bridgeOut);
+        if (bridgeOut.outcome === 'STARTED' && bridgeOut.workflowId) {
+          delegation = 'P7_STARTED';
+          p7WorkflowId = bridgeOut.workflowId;
+        } else if (bridgeOut.outcome === 'FAILED') {
+          delegation = 'P7_PENDING';
+        }
+      } else if (
+        requestType === LifecycleRequestType.DEACTIVATE ||
+        requestType === LifecycleRequestType.TERMINATE
+      ) {
+        if (p8TenantDeprovisionAllowed(tenant)) {
+          const bridgeOut = await this.p7Bridge.requestDeprovision({
+            ...bridgeInputBase,
+            authorized: true,
+            confirmed: true,
+          });
+          Object.assign(p7BridgeResult, bridgeOut);
+          if (bridgeOut.outcome === 'STARTED' && bridgeOut.workflowId) {
+            delegation = 'P7_STARTED';
+            p7WorkflowId = bridgeOut.workflowId;
+          } else if (bridgeOut.outcome === 'FAILED') {
+            delegation = 'P7_PENDING';
+          }
+        } else {
+          p7BridgeResult.outcome = 'SKIPPED_NO_RECORD';
+          p7BridgeResult.reason = 'DEPROVISION_FLAG_GATED';
+          delegation = 'P7_PENDING';
+        }
+      }
+    } else if (
+      !immediateAdmin &&
+      P7_DELEGATED_LIFECYCLE_TYPES.has(requestType) &&
+      !tenant.lifecycleRecordId
+    ) {
+      p7BridgeResult.outcome = 'SKIPPED_NO_RECORD';
+      p7BridgeResult.reason = 'NO_P7_LIFECYCLE_RECORD_ID';
+    }
 
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       let tenantVersion = tenant.version;
@@ -1021,9 +1130,11 @@ export class ApproveLifecycleActionUseCase {
           status: GovernanceRequestStatus.APPROVED,
           approverId: input.actorId,
           approvedAt: new Date(),
+          p7WorkflowId: p7WorkflowId ?? undefined,
           result: {
             delegation,
             administrativeTransition: nextAdmin ?? intentAdmin,
+            p7Bridge: p7BridgeResult,
           },
         },
         request.version,
@@ -2849,6 +2960,262 @@ export class UpdateTenantPoliciesUseCase {
   }
 }
 
+export class RequestLegalHoldChangeUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    tenantRegistryId: string;
+    action: LegalHoldChangeAction | string;
+    justification: string;
+    idempotencyKey: string;
+    correlationId?: string | null;
+  }) {
+    assertJustification(input.justification);
+    const action = String(input.action);
+    if (action !== LegalHoldChangeAction.RAISE && action !== LegalHoldChangeAction.LIFT) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'action must be RAISE or LIFT');
+    }
+    const tenant = await this.repo.getById(input.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+    if (action === LegalHoldChangeAction.RAISE && tenant.legalHold) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Legal hold is already active');
+    }
+    if (action === LegalHoldChangeAction.LIFT && !tenant.legalHold) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Legal hold is not active');
+    }
+
+    const existing = await this.repo.getLegalHoldChangeRequestByIdempotency(input.idempotencyKey);
+    if (existing) return existing;
+
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const record = await this.repo.createLegalHoldChangeRequest(
+        {
+          tenantRegistryId: tenant.id,
+          action,
+          status: GovernanceRequestStatus.PENDING,
+          justification: input.justification.trim(),
+          requestedBy: input.actorId,
+          approverId: null,
+          approvedAt: null,
+          rejectedReason: null,
+          correlationId,
+          idempotencyKey: input.idempotencyKey,
+        },
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_REQUESTED,
+          aggregateId: record.id,
+          correlationId,
+          payload: { tenantRegistryId: tenant.id, action },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_REQUESTED,
+          actorId: input.actorId,
+          subjectType: 'LEGAL_HOLD_REQUEST',
+          subjectId: record.id,
+          details: { tenantRegistryId: tenant.id, action },
+        },
+        client,
+      );
+
+      return record;
+    });
+  }
+}
+
+export class ApproveLegalHoldChangeUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    requestId: string;
+    correlationId?: string | null;
+  }) {
+    const request = await this.repo.getLegalHoldChangeRequest(input.requestId);
+    if (!request) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Legal hold change request not found');
+    }
+    if (String(request.status) !== GovernanceRequestStatus.PENDING) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Legal hold change request is not pending');
+    }
+    assertSeparationOfDuties(request.requestedBy, input.actorId);
+
+    const tenant = await this.repo.getById(request.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+
+    const targetLegalHold = String(request.action) === LegalHoldChangeAction.RAISE;
+    if (targetLegalHold === tenant.legalHold) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Legal hold state already matches requested action');
+    }
+
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const updatedTenant = await this.repo.updateLegalHold(
+        tenant.id,
+        targetLegalHold,
+        tenant.version,
+        input.actorId,
+        client,
+      );
+
+      const updated = await this.repo.updateLegalHoldChangeRequest(
+        request.id,
+        {
+          status: GovernanceRequestStatus.APPROVED,
+          approverId: input.actorId,
+          approvedAt: new Date(),
+        },
+        request.version,
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_APPROVED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: {
+            tenantRegistryId: tenant.id,
+            action: request.action,
+            legalHold: targetLegalHold,
+            approverId: input.actorId,
+          },
+        }),
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGED,
+          aggregateId: updatedTenant.id,
+          correlationId,
+          payload: {
+            legalHold: targetLegalHold,
+            actorId: input.actorId,
+            justification: request.justification,
+            previousLegalHold: tenant.legalHold,
+            viaApproval: true,
+          },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_APPROVED,
+          actorId: input.actorId,
+          subjectType: 'LEGAL_HOLD_REQUEST',
+          subjectId: updated.id,
+          details: { legalHold: targetLegalHold },
+        },
+        client,
+      );
+
+      return { request: updated, tenant: updatedTenant };
+    });
+  }
+}
+
+export class RejectLegalHoldChangeUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    requestId: string;
+    rejectedReason: string;
+    correlationId?: string | null;
+  }) {
+    const request = await this.repo.getLegalHoldChangeRequest(input.requestId);
+    if (!request) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Legal hold change request not found');
+    }
+    if (String(request.status) !== GovernanceRequestStatus.PENDING) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Legal hold change request is not pending');
+    }
+    assertSeparationOfDuties(request.requestedBy, input.actorId);
+    const reason = input.rejectedReason.trim();
+    if (reason.length < 4) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'rejectedReason is required');
+    }
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const updated = await this.repo.updateLegalHoldChangeRequest(
+        request.id,
+        {
+          status: GovernanceRequestStatus.REJECTED,
+          approverId: input.actorId,
+          rejectedReason: reason,
+        },
+        request.version,
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_REJECTED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { rejectedReason: reason, approverId: input.actorId },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGE_REJECTED,
+          actorId: input.actorId,
+          subjectType: 'LEGAL_HOLD_REQUEST',
+          subjectId: updated.id,
+          details: { rejectedReason: reason },
+        },
+        client,
+      );
+
+      return updated;
+    });
+  }
+}
+
+export class ListLegalHoldChangeRequestsUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(filter: {
+    tenantRegistryId?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.repo.listLegalHoldChangeRequests(filter);
+  }
+}
+
 export class UpdateLegalHoldUseCase {
   constructor(
     private readonly repo: TenantManagementRepositoryPort,
@@ -2880,6 +3247,8 @@ export class UpdateLegalHoldUseCase {
     if (input.legalHold === tenant.legalHold) {
       return tenant;
     }
+
+    assertLegalHoldLiftRequiresWorkflow(tenant.legalHold, input.legalHold);
 
     const correlationId = input.correlationId?.trim() || randomUUID();
     const justification = input.justification.trim();

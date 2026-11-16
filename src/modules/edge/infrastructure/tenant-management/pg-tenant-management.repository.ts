@@ -11,6 +11,7 @@ import type {
   CommercialProjection,
   ConfigurationRef,
   ExceptionRecord,
+  LegalHoldChangeRequestRecord,
   HealthSnapshotRecord,
   LifecycleRequestRecord,
   MigrationRequestRecord,
@@ -212,6 +213,25 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
       createdAt: asDate(row.created_at),
       updatedAt: asDate(row.updated_at),
       version: num(row.version),
+    };
+  }
+
+  private mapLegalHoldChangeRequest(row: Row): LegalHoldChangeRequestRecord {
+    return {
+      id: str(row.id),
+      tenantRegistryId: str(row.tenant_registry_id),
+      action: str(row.action),
+      status: str(row.status),
+      justification: str(row.justification),
+      requestedBy: str(row.requested_by),
+      approverId: strOrNull(row.approver_id),
+      approvedAt: asDateOrNull(row.approved_at),
+      rejectedReason: strOrNull(row.rejected_reason),
+      correlationId: strOrNull(row.correlation_id),
+      idempotencyKey: str(row.idempotency_key),
+      version: num(row.version),
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
     };
   }
 
@@ -2593,6 +2613,142 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
       count: num(r.c),
       productTenantIds: (r.ids ?? []).map((id) => str(id)),
     }));
+  }
+
+  async verifySubscriptionProduct(
+    subscriptionId: string,
+    productId: string,
+    client?: unknown,
+  ): Promise<'UNAVAILABLE_TABLE' | 'NOT_FOUND' | 'PRODUCT_MISMATCH' | 'VERIFIED'> {
+    if (!(await this.tableExists('edge_subscriptions'))) {
+      return 'UNAVAILABLE_TABLE';
+    }
+    const rows = await this.q<{ product_id: unknown }>(
+      `SELECT product_id FROM edge_subscriptions WHERE id = $1`,
+      [subscriptionId],
+      client,
+    );
+    if (!rows[0]) return 'NOT_FOUND';
+    if (str(rows[0].product_id) !== productId) return 'PRODUCT_MISMATCH';
+    return 'VERIFIED';
+  }
+
+  async createLegalHoldChangeRequest(
+    input: Omit<LegalHoldChangeRequestRecord, 'id' | 'createdAt' | 'updatedAt' | 'version'> & {
+      id?: string;
+      version?: number;
+    },
+    client?: unknown,
+  ): Promise<LegalHoldChangeRequestRecord> {
+    try {
+      const rows = await this.q(
+        `INSERT INTO edge_p8_legal_hold_requests (
+           id, tenant_registry_id, action, status, justification, requested_by,
+           approver_id, approved_at, rejected_reason, correlation_id, idempotency_key, version
+         ) VALUES (
+           COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+           COALESCE($12, 1)
+         ) RETURNING *`,
+        [
+          input.id ?? null,
+          input.tenantRegistryId,
+          input.action,
+          input.status,
+          input.justification,
+          input.requestedBy,
+          input.approverId,
+          input.approvedAt,
+          input.rejectedReason,
+          input.correlationId,
+          input.idempotencyKey,
+          input.version ?? 1,
+        ],
+        client,
+      );
+      return this.mapLegalHoldChangeRequest(rows[0]!);
+    } catch (err) {
+      this.rethrow(err, 'Legal hold change request idempotency collision');
+    }
+  }
+
+  async getLegalHoldChangeRequest(id: string): Promise<LegalHoldChangeRequestRecord | null> {
+    const rows = await this.q(`SELECT * FROM edge_p8_legal_hold_requests WHERE id = $1`, [id]);
+    return rows[0] ? this.mapLegalHoldChangeRequest(rows[0]) : null;
+  }
+
+  async getLegalHoldChangeRequestByIdempotency(
+    key: string,
+  ): Promise<LegalHoldChangeRequestRecord | null> {
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_legal_hold_requests WHERE idempotency_key = $1`,
+      [key],
+    );
+    return rows[0] ? this.mapLegalHoldChangeRequest(rows[0]) : null;
+  }
+
+  async listLegalHoldChangeRequests(filter: {
+    tenantRegistryId?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: LegalHoldChangeRequestRecord[]; total: number }> {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter.tenantRegistryId) {
+      params.push(filter.tenantRegistryId);
+      clauses.push(`tenant_registry_id = $${params.length}`);
+    }
+    if (filter.status) {
+      params.push(filter.status);
+      clauses.push(`status = $${params.length}`);
+    }
+    const clause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = Math.min(filter.limit ?? 50, 200);
+    const offset = filter.offset ?? 0;
+    const countRows = await this.q<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM edge_p8_legal_hold_requests ${clause}`,
+      params,
+    );
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_legal_hold_requests ${clause}
+       ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return {
+      items: rows.map((r) => this.mapLegalHoldChangeRequest(r)),
+      total: num(countRows[0]?.c),
+    };
+  }
+
+  async updateLegalHoldChangeRequest(
+    id: string,
+    patch: Partial<LegalHoldChangeRequestRecord>,
+    expectedVersion: number,
+    client?: unknown,
+  ): Promise<LegalHoldChangeRequestRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_legal_hold_requests SET
+         status = COALESCE($3, status),
+         approver_id = COALESCE($4, approver_id),
+         approved_at = COALESCE($5, approved_at),
+         rejected_reason = COALESCE($6, rejected_reason),
+         version = version + 1,
+         updated_at = NOW()
+       WHERE id = $1 AND version = $2
+       RETURNING *`,
+      [
+        id,
+        expectedVersion,
+        patch.status ?? null,
+        patch.approverId === undefined ? null : patch.approverId,
+        patch.approvedAt === undefined ? null : patch.approvedAt,
+        patch.rejectedReason === undefined ? null : patch.rejectedReason,
+      ],
+      client,
+    );
+    if (!rows[0]) this.conflict();
+    return this.mapLegalHoldChangeRequest(rows[0]!);
   }
 
   async detectDuplicateAccountProductRefs(): Promise<

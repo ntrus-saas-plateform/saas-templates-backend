@@ -2,6 +2,7 @@ import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-er
 import {
   assertAdministrativeTransition,
   assertJustification,
+  assertLegalHoldLiftRequiresWorkflow,
   assertNotLegalHold,
   assertSeparationOfDuties,
   canRequestLifecycle,
@@ -92,6 +93,12 @@ describe('P8 tenant-management-policy', () => {
         openCriticalFindings: 2,
       }).riskLevel,
     ).toBe(RiskLevel.CRITICAL);
+  });
+
+  it('requires workflow for legal hold lift', () => {
+    expect(() => assertLegalHoldLiftRequiresWorkflow(true, false)).toThrow();
+    expect(() => assertLegalHoldLiftRequiresWorkflow(true, true)).not.toThrow();
+    expect(() => assertLegalHoldLiftRequiresWorkflow(false, false)).not.toThrow();
   });
 
   it('restores governance after exception revoke', () => {

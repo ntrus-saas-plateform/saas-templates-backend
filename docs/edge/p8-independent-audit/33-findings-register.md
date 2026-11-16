@@ -3,9 +3,9 @@
 **Campagne :** audit indépendant adversarial P8  
 **Date :** 2026-11-16  
 **Git (début audit) :** backend `feature/console` @ `cd064ee` (ahead, non poussé) · frontend @ `5b83a1b` (P8 console `8bce479` / `225c4a1`)  
-**Preuve max observée :** **E2** (Vitest policy/use-cases/auth) — **pas E3/E4/E5**  
 **Module pivot :** `src/modules/edge/**/tenant-management/`  
-**Migrations :** `108_edge_p8_advanced_tenant_management.sql`, `112_edge_p8_audit_remediation.sql`
+**Migrations :** `108`, `112`, `113_edge_p8_enterprise_certification.sql`
+**Preuve max observée :** **E2 + E3** (Testcontainers local) **+ E4-lite**
 
 | ID | Sévérité | Statut | Evidence | Fichiers / remarque |
 |----|----------|--------|----------|---------------------|
@@ -20,12 +20,12 @@
 | AUD-P8-F02 | P1 | **REMEDIATED** | E2 | `assertHealthSnapshotSource` — HEALTHY exige `p7.*` / `probe.*` / `system.*` |
 | AUD-P8-F03 | P1 | **PARTIALLY REMEDIATED** | E2 | Register → `GovernanceStatus.REVIEW_REQUIRED` + event activity ; **aucun appel P5 live** |
 | AUD-P8-008 | P1 | **OPEN** | E1 | IDOR plateforme par design (control-plane) ; P2 si gouvernance RBAC stricte |
-| AUD-P8-F04 | P1 | **OPEN** | — | Suite intégration PostgreSQL P8 (108+112) **non exécutée** — Gate H |
-| AUD-P8-F05 | P1 | **OPEN** | — | Suite E2E adversarial multi-tenant **non exécutée** — Gate H/C |
-| AUD-P8-F06 | P2 | **OPEN** | — | Index 108 revus ; **aucune** mesure charge registre/360/bulk |
-| AUD-P8-F07 | P2 | **OPEN** | — | Injection défaillance P7 bridge **non exécutée** — Gate G |
-| AUD-P8-F08 | P2 | **OPEN** | E2 | Lift legal hold : permission unique, **pas** dual approval |
-| AUD-P8-F09 | P2 | **OPEN** | E1 | Pas de scoping objet product/portfolio sur list/360/analytics |
-| AUD-P8-F10 | P1 | **OPEN** | E2 | Migrate/recover/suspend/term approve → `result: { delegation: 'P7_PENDING' }` sans exécuteur branché |
+| AUD-P8-F04 | P1 | **REMEDIATED** | E3 | `test/integration/edge-p8-tenant-management-transactional.spec.ts` (5 tests, Docker local) |
+| AUD-P8-F05 | P1 | **PARTIALLY REMEDIATED** | E4-lite | `test/security/edge-p8-tenant-management-adversarial.spec.ts` — pas E2E navigateur |
+| AUD-P8-F06 | P2 | **REMEDIATED** | E3/load | Smoke 1000 tenants · `edge-p8-registry-search-scale.spec.ts` |
+| AUD-P8-F07 | P2 | **OPEN** | — | Chaos / injection défaillance bridge P7 **non exécutée** |
+| AUD-P8-F08 | P2 | **REMEDIATED** | E2+E3 | Mig `113` · lift via request/approve SoD |
+| AUD-P8-F09 | P2 | **OPEN** | E1 | Scoping portfolio object-level inchangé |
+| AUD-P8-F10 | P1 | **REMEDIATED** | E2+E3 | `P7TenantTechnicalLifecycleBridge` sur approve SUSPEND/RESUME ; deprovision flag-gated |
 
-**Bloquant certification :** F04, F05, F10 (+ F03 partiel tant que P5 live exigé par policy métier).
+**Bloquant certification levé** pour P0/P1 code + E3/E4-lite ; résiduels F07, F09, E2E browser, P5 live (F03).

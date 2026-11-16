@@ -320,3 +320,35 @@ export function governanceStatusAfterExceptionRevoke(
 }
 
 export const BULK_SENSITIVE_TYPES = new Set(['ASSIGN', 'CLASSIFY', 'RECONCILE']);
+
+export const P7_DELEGATED_LIFECYCLE_TYPES = new Set<string>([
+  LifecycleRequestType.SUSPEND,
+  LifecycleRequestType.RESUME,
+  LifecycleRequestType.DEACTIVATE,
+  LifecycleRequestType.TERMINATE,
+]);
+
+export function assertLegalHoldLiftRequiresWorkflow(
+  currentLegalHold: boolean,
+  requestedLegalHold: boolean,
+): void {
+  if (currentLegalHold && !requestedLegalHold) {
+    throw new DomainError(
+      ErrorCode.VALIDATION_ERROR,
+      'Legal hold lift requires approval workflow (request LIFT then approve)',
+      [{ code: 'LEGAL_HOLD_LIFT_REQUIRES_APPROVAL' }],
+    );
+  }
+}
+
+export function p8TenantDeprovisionAllowed(tenant: {
+  deletionProtection: boolean;
+  metadata: Record<string, unknown>;
+}): boolean {
+  const meta = tenant.metadata ?? {};
+  return (
+    meta.p7DeprovisionAuthorized === true &&
+    meta.p7DeprovisionConfirmed === true &&
+    !tenant.deletionProtection
+  );
+}

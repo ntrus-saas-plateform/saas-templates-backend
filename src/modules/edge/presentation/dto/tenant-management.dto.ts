@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -630,7 +631,7 @@ export class ReconciliationFindingsQueryDto extends GovernanceListQueryDto {
 }
 
 export class PreviewBulkOperationDto {
-  @ApiProperty({ enum: ['TAG', 'ASSIGN', 'CLASSIFY', 'EXPORT', 'REVIEW', 'RECONCILE'] })
+  @ApiProperty({ enum: ['TAG', 'ASSIGN', 'CLASSIFY', 'REVIEW', 'RECONCILE'] })
   @IsString()
   operationType!: string;
 
@@ -676,6 +677,28 @@ export class UpdateLegalHoldDto {
   @IsString()
   @MinLength(8)
   justification!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class RequestLegalHoldChangeDto {
+  @ApiProperty({ enum: ['RAISE', 'LIFT'] })
+  @IsString()
+  @IsIn(['RAISE', 'LIFT'])
+  action!: 'RAISE' | 'LIFT';
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  justification!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  idempotencyKey!: string;
 
   @ApiPropertyOptional()
   @IsOptional()

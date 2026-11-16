@@ -6,11 +6,16 @@ import {
   GovernanceRequestStatus,
   GovernanceStatus,
   HealthStatus,
+  LegalHoldChangeAction,
   LifecycleRequestType,
   RiskLevel,
 } from '../../domain/tenant-management/tenant-management.types.js';
+import type { TenantTechnicalLifecycleBridgePort } from '../../domain/tenant-management/tenant-technical-lifecycle-bridge.port.js';
 import {
+  ApproveLegalHoldChangeUseCase,
   ApproveLifecycleActionUseCase,
+  RequestLegalHoldChangeUseCase,
+  UpdateLegalHoldUseCase,
   EvaluateTenantRiskUseCase,
   ExecuteBulkOperationUseCase,
   RecordHealthSnapshotUseCase,
@@ -296,5 +301,105 @@ describe('P8 tenant-management use cases', () => {
     await uc.execute({ actorId: 'approver-b', requestId: request.id });
 
     expect(updateTenant).not.toHaveBeenCalled();
+  });
+
+  it('ApproveLifecycleActionUseCase delegates SUSPEND to P7 bridge when lifecycleRecordId present', async () => {
+    const tenant = {
+      ...baseTenant(),
+      lifecycleRecordId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    };
+    const request = {
+      id: 'lr-bridge',
+      tenantRegistryId: tenant.id,
+      requestType: LifecycleRequestType.SUSPEND,
+      status: GovernanceRequestStatus.WAITING_APPROVAL,
+      requestedBy: 'requester-a',
+      version: 1,
+      justification: 'suspend justification text',
+    };
+    const bridge: TenantTechnicalLifecycleBridgePort = {
+      requestSuspend: vi.fn().mockResolvedValue({
+        workflowId: 'wf-999',
+        outcome: 'STARTED',
+      }),
+      requestResume: vi.fn(),
+      requestDeprovision: vi.fn(),
+    };
+    const repo = {
+      getLifecycleRequest: vi.fn().mockResolvedValue(request),
+      getById: vi.fn().mockResolvedValue(tenant),
+      updateTenant: vi.fn(),
+      updateLifecycleRequest: vi.fn().mockImplementation(async (_id, patch) => ({
+        ...request,
+        ...patch,
+        status: GovernanceRequestStatus.APPROVED,
+      })),
+    } as unknown as TenantManagementRepositoryPort;
+    const outbox = {
+      runWithOutbox: vi.fn(async (_t, fn) => fn({}, vi.fn())),
+    };
+    const audit = { create: vi.fn() };
+
+    const uc = new ApproveLifecycleActionUseCase(repo, outbox as never, audit as never, bridge);
+    const updated = await uc.execute({ actorId: 'approver-b', requestId: request.id });
+
+    expect(bridge.requestSuspend).toHaveBeenCalled();
+    expect(updated.result).toMatchObject({
+      delegation: 'P7_STARTED',
+      p7Bridge: { outcome: 'STARTED', workflowId: 'wf-999' },
+    });
+  });
+
+  it('UpdateLegalHoldUseCase blocks direct lift', async () => {
+    const tenant = { ...baseTenant(), legalHold: true, version: 3 };
+    const repo = {
+      getById: vi.fn().mockResolvedValue(tenant),
+    } as unknown as TenantManagementRepositoryPort;
+    const uc = new UpdateLegalHoldUseCase(repo, {} as never, {} as never);
+    await expect(
+      uc.execute({
+        actorId: 'admin',
+        tenantRegistryId: tenant.id,
+        expectedVersion: 3,
+        legalHold: false,
+        justification: 'attempt direct lift',
+        legalHoldPermissionGranted: true,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it('ApproveLegalHoldChangeUseCase lifts hold with SoD', async () => {
+    const tenant = { ...baseTenant(), legalHold: true, version: 2 };
+    const request = {
+      id: 'lh-approve',
+      tenantRegistryId: tenant.id,
+      action: LegalHoldChangeAction.LIFT,
+      status: GovernanceRequestStatus.PENDING,
+      requestedBy: 'requester-a',
+      version: 1,
+      justification: 'approved lift justification',
+    };
+    const repo = {
+      getLegalHoldChangeRequest: vi.fn().mockResolvedValue(request),
+      getById: vi.fn().mockResolvedValue(tenant),
+      updateLegalHold: vi.fn().mockResolvedValue({ ...tenant, legalHold: false, version: 3 }),
+      updateLegalHoldChangeRequest: vi.fn().mockResolvedValue({
+        ...request,
+        status: GovernanceRequestStatus.APPROVED,
+      }),
+    } as unknown as TenantManagementRepositoryPort;
+    const outbox = {
+      runWithOutbox: vi.fn(async (_t, fn) => fn({}, vi.fn())),
+    };
+    const audit = { create: vi.fn() };
+    const uc = new ApproveLegalHoldChangeUseCase(repo, outbox as never, audit as never);
+    await uc.execute({ actorId: 'approver-b', requestId: request.id });
+    expect(repo.updateLegalHold).toHaveBeenCalledWith(
+      tenant.id,
+      false,
+      tenant.version,
+      'approver-b',
+      expect.anything(),
+    );
   });
 });

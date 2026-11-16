@@ -32,6 +32,9 @@ export const TenantManagementEventTypes = {
   RISK_EVALUATED: 'edge.p8.tenant.risk.evaluated',
   EXPORT_REQUESTED: 'edge.p8.tenant.export.requested',
   LEGAL_HOLD_CHANGED: 'edge.p8.tenant.legal_hold.changed',
+  LEGAL_HOLD_CHANGE_REQUESTED: 'edge.p8.tenant.legal_hold.change.requested',
+  LEGAL_HOLD_CHANGE_APPROVED: 'edge.p8.tenant.legal_hold.change.approved',
+  LEGAL_HOLD_CHANGE_REJECTED: 'edge.p8.tenant.legal_hold.change.rejected',
   GOVERNANCE_STATUS_CHANGED: 'edge.p8.tenant.governance.status.changed',
 } as const;
 

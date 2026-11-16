@@ -6,6 +6,7 @@ import type {
   ConfigurationRef,
   ExceptionRecord,
   HealthSnapshotRecord,
+  LegalHoldChangeRequestRecord,
   LifecycleRequestRecord,
   MigrationRequestRecord,
   RecoveryRequestRecord,
@@ -278,6 +279,36 @@ export interface TenantManagementRepositoryPort {
     actorId: string,
     client?: unknown,
   ): Promise<TenantRegistryRecord>;
+
+  verifySubscriptionProduct(
+    subscriptionId: string,
+    productId: string,
+    client?: unknown,
+  ): Promise<'UNAVAILABLE_TABLE' | 'NOT_FOUND' | 'PRODUCT_MISMATCH' | 'VERIFIED'>;
+
+  createLegalHoldChangeRequest(
+    input: Omit<
+      LegalHoldChangeRequestRecord,
+      'id' | 'createdAt' | 'updatedAt' | 'version'
+    > & { id?: string; version?: number },
+    client?: unknown,
+  ): Promise<LegalHoldChangeRequestRecord>;
+  getLegalHoldChangeRequest(id: string): Promise<LegalHoldChangeRequestRecord | null>;
+  getLegalHoldChangeRequestByIdempotency(
+    key: string,
+  ): Promise<LegalHoldChangeRequestRecord | null>;
+  listLegalHoldChangeRequests(filter: {
+    tenantRegistryId?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: LegalHoldChangeRequestRecord[]; total: number }>;
+  updateLegalHoldChangeRequest(
+    id: string,
+    patch: Partial<LegalHoldChangeRequestRecord>,
+    expectedVersion: number,
+    client?: unknown,
+  ): Promise<LegalHoldChangeRequestRecord>;
   updateGovernancePolicies(
     id: string,
     patch: {

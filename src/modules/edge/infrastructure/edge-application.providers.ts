@@ -372,9 +372,12 @@ import {
 import { createLiveCertificationExecutor } from './production-certification/live-certification.executor.js';
 // --- P8 Advanced tenant management & governance --------------------------------
 import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../domain/tenant-management/tenant-management-repository.port.js';
+import { TENANT_TECHNICAL_LIFECYCLE_BRIDGE_PORT } from '../domain/tenant-management/tenant-technical-lifecycle-bridge.port.js';
+import { P7TenantTechnicalLifecycleBridge } from './tenant-management/p7-tenant-technical-lifecycle.bridge.js';
 import {
   AddTenantNoteUseCase,
   ApproveExceptionUseCase,
+  ApproveLegalHoldChangeUseCase,
   ApproveLifecycleActionUseCase,
   ApproveMigrationUseCase,
   ApproveRecoveryUseCase,
@@ -387,6 +390,7 @@ import {
   ListActivityUseCase,
   ListExceptionsUseCase,
   ListFindingsUseCase,
+  ListLegalHoldChangeRequestsUseCase,
   ListLifecycleRequestsUseCase,
   ListMigrationRequestsUseCase,
   ListRecoveryRequestsUseCase,
@@ -394,11 +398,13 @@ import {
   ListTenantsUseCase,
   ManageTenantTagsUseCase,
   RegisterTenantUseCase,
+  RejectLegalHoldChangeUseCase,
   RejectLifecycleActionUseCase,
   RejectMigrationUseCase,
   RejectRecoveryUseCase,
   RejectTerminationUseCase,
   RequestExceptionUseCase,
+  RequestLegalHoldChangeUseCase,
   RequestLifecycleActionUseCase,
   RequestMigrationUseCase,
   RequestRecoveryUseCase,
@@ -5311,6 +5317,10 @@ export const edgeApplicationProviders: Provider[] = [
   },
   // --- P8 Advanced tenant management & governance --------------------------------
   {
+    provide: TENANT_TECHNICAL_LIFECYCLE_BRIDGE_PORT,
+    useClass: P7TenantTechnicalLifecycleBridge,
+  },
+  {
     provide: ListTenantsUseCase,
     useFactory: (repo) => new ListTenantsUseCase(repo),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
@@ -5385,12 +5395,13 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ApproveLifecycleActionUseCase,
-    useFactory: (repo, outbox, audit) =>
-      new ApproveLifecycleActionUseCase(repo, outbox, audit),
+    useFactory: (repo, outbox, audit, bridge) =>
+      new ApproveLifecycleActionUseCase(repo, outbox, audit, bridge),
     inject: [
       TENANT_MANAGEMENT_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
+      TENANT_TECHNICAL_LIFECYCLE_BRIDGE_PORT,
     ],
   },
   {
@@ -5625,6 +5636,41 @@ export const edgeApplicationProviders: Provider[] = [
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
     ],
+  },
+  {
+    provide: RequestLegalHoldChangeUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RequestLegalHoldChangeUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveLegalHoldChangeUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ApproveLegalHoldChangeUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectLegalHoldChangeUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RejectLegalHoldChangeUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ListLegalHoldChangeRequestsUseCase,
+    useFactory: (repo) => new ListLegalHoldChangeRequestsUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
   },
   {
     provide: UpdateLegalHoldUseCase,

@@ -55,6 +55,22 @@ describe('EdgeTenantManagementController authz', () => {
       method: 'postTenantLegalHold',
       permission: 'platform:tenant_management:legal_hold:manage',
     },
+    {
+      method: 'postTenantLegalHoldRequest',
+      permission: 'platform:tenant_management:legal_hold:manage',
+    },
+    {
+      method: 'listLegalHoldRequests',
+      permission: 'platform:tenant_management:legal_hold:approve',
+    },
+    {
+      method: 'approveLegalHoldRequest',
+      permission: 'platform:tenant_management:legal_hold:approve',
+    },
+    {
+      method: 'rejectLegalHoldRequest',
+      permission: 'platform:tenant_management:legal_hold:approve',
+    },
     { method: 'tenantLifecycleRequest', permission: 'platform:tenant_management:lifecycle:request' },
   ];
 

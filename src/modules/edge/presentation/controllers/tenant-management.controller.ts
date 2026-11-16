@@ -21,6 +21,7 @@ import {
   AcknowledgeFindingUseCase,
   AddTenantNoteUseCase,
   ApproveExceptionUseCase,
+  ApproveLegalHoldChangeUseCase,
   ApproveLifecycleActionUseCase,
   ApproveMigrationUseCase,
   ApproveRecoveryUseCase,
@@ -38,6 +39,7 @@ import {
   ListExceptionsUseCase,
   ListFindingsUseCase,
   ListHealthSnapshotsUseCase,
+  ListLegalHoldChangeRequestsUseCase,
   ListLifecycleRequestsUseCase,
   ListMigrationRequestsUseCase,
   ListTenantReconciliationRunsUseCase,
@@ -49,11 +51,13 @@ import {
   PreviewBulkOperationUseCase,
   RecordHealthSnapshotUseCase,
   RegisterTenantUseCase,
+  RejectLegalHoldChangeUseCase,
   RejectLifecycleActionUseCase,
   RejectMigrationUseCase,
   RejectRecoveryUseCase,
   RejectTerminationUseCase,
   RequestExceptionUseCase,
+  RequestLegalHoldChangeUseCase,
   RequestLifecycleActionUseCase,
   RequestMigrationUseCase,
   RequestRecoveryUseCase,
@@ -81,6 +85,7 @@ import {
   RejectLifecycleActionDto,
   RemoveTenantTagQueryDto,
   RequestExceptionDto,
+  RequestLegalHoldChangeDto,
   RequestLifecycleActionDto,
   RequestMigrationDto,
   RequestRecoveryDto,
@@ -154,6 +159,10 @@ export class EdgeTenantManagementController {
     private readonly listRisk: ListRiskAssessmentsUseCase,
     private readonly updatePolicies: UpdateTenantPoliciesUseCase,
     private readonly updateLegalHold: UpdateLegalHoldUseCase,
+    private readonly requestLegalHoldChange: RequestLegalHoldChangeUseCase,
+    private readonly listLegalHoldChanges: ListLegalHoldChangeRequestsUseCase,
+    private readonly approveLegalHoldChange: ApproveLegalHoldChangeUseCase,
+    private readonly rejectLegalHoldChange: RejectLegalHoldChangeUseCase,
     private readonly listReconciliationRuns: ListTenantReconciliationRunsUseCase,
     private readonly acknowledgeFinding: AcknowledgeFindingUseCase,
   ) {}
@@ -677,6 +686,58 @@ export class EdgeTenantManagementController {
       securityPolicyRef: body.securityPolicyRef,
       dataResidencyRef: body.dataResidencyRef,
       deletionProtection: body.deletionProtection,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Get('edge/tenant-management/legal-hold-requests')
+  @RequireEdgePermissions('platform:tenant_management:legal_hold:approve')
+  async listLegalHoldRequests(@Query() query: GovernanceListQueryDto) {
+    return this.listLegalHoldChanges.execute(query);
+  }
+
+  @Post('edge/tenant-management/legal-hold-requests/:id/approve')
+  @RequireEdgePermissions('platform:tenant_management:legal_hold:approve')
+  async approveLegalHoldRequest(
+    @Param('id') id: string,
+    @Body() body: ApproveLifecycleActionDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.approveLegalHoldChange.execute({
+      actorId: actorId(req),
+      requestId: id,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Post('edge/tenant-management/legal-hold-requests/:id/reject')
+  @RequireEdgePermissions('platform:tenant_management:legal_hold:approve')
+  async rejectLegalHoldRequest(
+    @Param('id') id: string,
+    @Body() body: RejectLifecycleActionDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.rejectLegalHoldChange.execute({
+      actorId: actorId(req),
+      requestId: id,
+      rejectedReason: body.rejectedReason,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Post('edge/tenants/:id/legal-hold-requests')
+  @RequireEdgePermissions('platform:tenant_management:legal_hold:manage')
+  async postTenantLegalHoldRequest(
+    @Param('id') id: string,
+    @Body() body: RequestLegalHoldChangeDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.requestLegalHoldChange.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      action: body.action,
+      justification: body.justification,
+      idempotencyKey: body.idempotencyKey,
       correlationId: body.correlationId?.trim() || randomUUID(),
     });
   }
