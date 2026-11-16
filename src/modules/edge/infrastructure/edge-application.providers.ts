@@ -3803,18 +3803,22 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: PRODUCT_CONTROL_LIVE_EXECUTOR,
-    useFactory: (handshake, discoverContract, discoverCapabilities, health) =>
+    useFactory: (handshake, discoverContract, discoverCapabilities, health, auth, wfRepo) =>
       createLiveProductControlExecutor({
         handshake,
         discoverContract,
         discoverCapabilities,
         health,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
       }),
     inject: [
       HandshakeProductControlEndpointUseCase,
       DiscoverProductControlContractUseCase,
       DiscoverProductControlCapabilitiesUseCase,
       HealthCheckProductControlEndpointUseCase,
+      WORKFLOW_AUTHORIZATION_PORT,
+      WORKFLOW_REPOSITORY_PORT,
     ],
   },
   { provide: SECRETS_PROVIDER_PORT, useFactory: () => new EncryptedSecretsProvider() },
@@ -3964,6 +3968,8 @@ export const edgeApplicationProviders: Provider[] = [
       verifyBackupPolicy,
       reconcile,
       deprovision,
+      auth,
+      wfRepo,
     ) =>
       createLiveInfrastructureExecutor({
         validatePlan,
@@ -3980,6 +3986,8 @@ export const edgeApplicationProviders: Provider[] = [
         verifyBackupPolicy,
         reconcile,
         deprovision,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
       }),
     inject: [
       ValidateResourcePlanUseCase,
@@ -3996,6 +4004,8 @@ export const edgeApplicationProviders: Provider[] = [
       VerifyBackupPolicyUseCase,
       ReconcileResourceUseCase,
       DeprovisionResourceUseCase,
+      WORKFLOW_AUTHORIZATION_PORT,
+      WORKFLOW_REPOSITORY_PORT,
     ],
   },
   {

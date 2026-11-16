@@ -77,15 +77,16 @@ export function isRequiredEvidenceSatisfied(
 ): boolean {
   if (!item.required) return true;
   const s = String(item.itemStatus);
+  // AUD-P0-06: WAIVED is NOT satisfiable via client attach — only ATTACHED/VERIFIED.
   return (
     s === CertificationEvidenceItemStatus.ATTACHED ||
-    s === CertificationEvidenceItemStatus.VERIFIED ||
-    s === CertificationEvidenceItemStatus.WAIVED
+    s === CertificationEvidenceItemStatus.VERIFIED
   );
 }
 
 /**
- * CRITICAL: cannot CERTIFY if any required evidence is MISSING or FAILED.
+ * CRITICAL: cannot CERTIFY unless every required evidence is ATTACHED or VERIFIED.
+ * PENDING / WAIVED / MISSING / FAILED all block.
  */
 export function evaluateCertificationGates(
   items: Array<
@@ -95,20 +96,13 @@ export function evaluateCertificationGates(
   const blocking: GateEvaluation['blocking'] = [];
   for (const item of items) {
     if (!item.required) continue;
+    if (isRequiredEvidenceSatisfied(item)) continue;
     const status = String(item.itemStatus);
-    if (status === CertificationEvidenceItemStatus.MISSING) {
-      blocking.push({
-        evidenceKey: item.evidenceKey,
-        status,
-        reason: `Required evidence ${item.evidenceKey} is MISSING`,
-      });
-    } else if (status === CertificationEvidenceItemStatus.FAILED) {
-      blocking.push({
-        evidenceKey: item.evidenceKey,
-        status,
-        reason: `Required evidence ${item.evidenceKey} is FAILED`,
-      });
-    }
+    blocking.push({
+      evidenceKey: item.evidenceKey,
+      status,
+      reason: `Required evidence ${item.evidenceKey} is ${status} (need ATTACHED|VERIFIED)`,
+    });
   }
   return {
     ready: blocking.length === 0,
@@ -172,14 +166,12 @@ export function canCertify(input: {
     Pick<CertificationEvidenceItemRecord, 'evidenceKey' | 'required' | 'itemStatus'>
   >;
 }): CertificationDecision {
-  if (
-    input.packageStatus !== CertificationPackageStatus.READY &&
-    input.packageStatus !== CertificationPackageStatus.FAILED
-  ) {
+  // AUD-P0-06: CERTIFY only from READY — FAILED requires re-assemble first.
+  if (input.packageStatus !== CertificationPackageStatus.READY) {
     return {
       allowed: false,
       code: CertificationErrorCode.NOT_READY,
-      reason: `Certify requires READY (or retry from FAILED); current=${input.packageStatus}`,
+      reason: `Certify requires READY; current=${input.packageStatus}`,
     };
   }
   const gates = evaluateCertificationGates(input.evidenceItems);

@@ -199,7 +199,10 @@ export function createLiveExperienceExecutor(deps: {
   void deps.secrets;
 
   const validateLease = async (input: WorkflowHandlerInput): Promise<LeaseValidationResult | null> => {
-    if (!deps.lease) return null;
+    // AUD-P1-04: lease is mandatory — missing port fails closed.
+    if (!deps.lease) {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease port not wired' };
+    }
     if (!Number.isInteger(input.fencingToken) || input.fencingToken < 1) {
       return {
         valid: false,
@@ -303,7 +306,7 @@ export function createLiveExperienceExecutor(deps: {
     const startedAt = Date.now();
     const s = snap(input);
 
-    if (deps.lease) {
+    {
       const leaseCheck = await validateLease(input);
       if (leaseCheck && !leaseCheck.valid) {
         await recordEvidence(
@@ -606,6 +609,13 @@ export function createLiveExperienceExecutor(deps: {
               return fail(
                 ExperienceErrorCode.WEB_ORIGIN_INVALID,
                 originCheck.issues[0]?.message ?? 'Invalid web origin',
+              );
+            }
+            // AUD-P1-05: fail-closed — redirects require at least one verified domain binding.
+            if (redirectUris.length > 0 && verifiedHosts.length === 0) {
+              return fail(
+                ExperienceErrorCode.DOMAIN_OWNERSHIP_UNVERIFIED,
+                'Cannot register redirect URIs before verified domain bindings exist',
               );
             }
             if (verifiedHosts.length > 0) {

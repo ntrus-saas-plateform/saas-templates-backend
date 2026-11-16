@@ -36,3 +36,8 @@ SET
   )
 WHERE code IN ('PRIVATE_CLOUD', 'ON_PREMISE')
   AND (metadata->>'seedTier') IS DISTINCT FROM 'AVAILABLE_DOCUMENTED';
+
+-- AUD-P2-01 remediation: track migration version.
+INSERT INTO schema_migrations (version)
+VALUES ('097_edge_p7_deployment_profile_certification_remediation')
+ON CONFLICT DO NOTHING;

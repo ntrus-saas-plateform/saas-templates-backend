@@ -117,7 +117,10 @@ export function createLiveConfigurationExecutor(deps: {
   void deps.secrets;
 
   const validateLease = async (input: WorkflowHandlerInput): Promise<LeaseValidationResult | null> => {
-    if (!deps.lease) return null;
+    // AUD-P1-04: lease is mandatory — missing port fails closed.
+    if (!deps.lease) {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease port not wired' };
+    }
     if (!Number.isInteger(input.fencingToken) || input.fencingToken < 1) {
       return {
         valid: false,
@@ -222,7 +225,7 @@ export function createLiveConfigurationExecutor(deps: {
     const startedAt = Date.now();
     const s = snap(input);
 
-    if (deps.lease) {
+    {
       const leaseCheck = await validateLease(input);
       if (leaseCheck && !leaseCheck.valid) {
         await recordEvidence(

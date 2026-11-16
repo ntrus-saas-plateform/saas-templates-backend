@@ -806,14 +806,31 @@ export class AssignTenantConfigurationUseCase {
     }
 
     const desiredEntitlements = extractEntitlements(input.desiredConfig);
+    // AUD-P0-04: never trust client-supplied grantedEntitlements as the P5 ceiling.
+    // Until a bound P5 entitlement snapshot is loaded server-side, only empty desired
+    // entitlement maps are allowed (fail-closed).
+    const serverGrantedCeiling: EntitlementMaps = {
+      capabilities: {},
+      featureFlags: {},
+      quotas: {},
+      limits: {},
+    };
+    void input.grantedEntitlements;
+    if (!input.entitlementSnapshotRef?.trim()) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'entitlementSnapshotRef from P5 authority required; client grantedEntitlements are not authoritative',
+        [{ code: ConfigurationErrorCode.ENTITLEMENT_EXPANSION }],
+      );
+    }
     const expansion = assertNoEntitlementExpansion({
-      granted: input.grantedEntitlements,
+      granted: serverGrantedCeiling,
       desired: desiredEntitlements,
     });
     if (!expansion.ok) {
       throw new DomainError(
         ErrorCode.FORBIDDEN,
-        'Desired entitlements expand beyond P5 granted snapshot',
+        'Desired entitlements expand beyond server-side P5 granted ceiling (fail-closed)',
         [{ code: ConfigurationErrorCode.ENTITLEMENT_EXPANSION, issues: expansion.issues }],
       );
     }

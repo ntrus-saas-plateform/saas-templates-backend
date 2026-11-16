@@ -1168,7 +1168,12 @@ export class ReceiveProductControlCallbackUseCase {
       let status = ControlCallbackStatus.RECEIVED;
       let rejectionReason: string | null = null;
 
-      if (input.signature) {
+      // AUD-P1-02: signature required — missing signature is REJECTED (fail-closed).
+      if (!input.signature?.trim()) {
+        status = ControlCallbackStatus.REJECTED;
+        rejectionReason = 'SIGNATURE_REQUIRED';
+        signatureValid = false;
+      } else {
         const verified = await this.signatures.verify({
           algorithm: input.signatureAlg ?? 'HS256',
           payload: JSON.stringify(input.payload),

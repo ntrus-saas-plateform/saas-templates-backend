@@ -279,3 +279,27 @@ CREATE TABLE IF NOT EXISTS edge_p7_configuration_evidence (
 
 CREATE INDEX IF NOT EXISTS idx_edge_p7_configuration_evidence_assignment
   ON edge_p7_configuration_evidence (assignment_id, created_at DESC);
+
+-- AUD-P1-03 remediation: role binds + schema_migrations tracking (were missing).
+INSERT INTO edge_role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM edge_roles r
+CROSS JOIN edge_permissions p
+WHERE r.code = 'EDGE_PLATFORM_SUPER_ADMIN'
+  AND (p.code LIKE 'platform:configuration:%' OR p.code LIKE 'platform:entitlement:%')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO edge_role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM edge_roles r
+INNER JOIN edge_permissions p ON p.code IN (
+  'platform:configuration:read',
+  'platform:configuration:history:read',
+  'platform:entitlement:read'
+)
+WHERE r.code = 'EDGE_PLATFORM_OPERATOR'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO schema_migrations (version)
+VALUES ('103_edge_p7_configuration_entitlement_deployment')
+ON CONFLICT DO NOTHING;

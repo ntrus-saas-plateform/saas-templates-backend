@@ -506,11 +506,26 @@ export class AttachCertificationEvidenceUseCase {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, guard.reason, [{ code: guard.code }]);
     }
 
-    const status =
-      input.itemStatus ??
-      (input.sourceRef
-        ? CertificationEvidenceItemStatus.ATTACHED
-        : CertificationEvidenceItemStatus.MISSING);
+    // AUD-P0-06: clients cannot set WAIVED/VERIFIED/required=false to fake CERTIFY.
+    const requested = String(input.itemStatus ?? '').toUpperCase();
+    if (
+      requested === CertificationEvidenceItemStatus.WAIVED ||
+      requested === CertificationEvidenceItemStatus.VERIFIED
+    ) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Client cannot set evidence to WAIVED/VERIFIED — attach with sourceRef only',
+        [{ code: CertificationErrorCode.VALIDATION }],
+      );
+    }
+    if (!input.sourceRef?.trim()) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'sourceRef required to attach certification evidence',
+        [{ code: CertificationErrorCode.VALIDATION }],
+      );
+    }
+    const status = CertificationEvidenceItemStatus.ATTACHED;
 
     return this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client) => {
       const item = await this.repo.upsertEvidenceItem(
@@ -518,12 +533,12 @@ export class AttachCertificationEvidenceUseCase {
           packageId: pkg.id,
           evidenceKey: input.evidenceKey.trim(),
           phaseCode: input.phaseCode ?? input.evidenceKey.trim().toUpperCase(),
-          required: input.required ?? true,
+          required: true,
           itemStatus: status,
-          sourceRef: input.sourceRef ?? null,
+          sourceRef: input.sourceRef!.trim(),
           checksum: input.checksum ?? null,
           details: input.details ?? {},
-          attachedAt: status === CertificationEvidenceItemStatus.MISSING ? null : new Date(),
+          attachedAt: new Date(),
         },
         client,
       );

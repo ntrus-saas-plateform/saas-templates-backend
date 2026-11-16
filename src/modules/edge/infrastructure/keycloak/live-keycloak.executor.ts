@@ -887,6 +887,18 @@ export function createLiveKeycloakExecutor(deps: {
               `OIDC issuer "${issuer}" does not belong to the registered server`,
             );
           }
+          // AUD-P1-01: reject discovery JWKS/token endpoints outside registered origin.
+          try {
+            const expectedOrigin = new URL(conn.baseUrl).origin;
+            if (new URL(jwksUri).origin !== expectedOrigin || new URL(tokenEndpoint).origin !== expectedOrigin) {
+              return fail(
+                KeycloakErrorCode.DISCOVERY_INVALID,
+                'OIDC jwks_uri/token_endpoint must share the registered Keycloak origin',
+              );
+            }
+          } catch {
+            return fail(KeycloakErrorCode.DISCOVERY_INVALID, 'OIDC discovery URLs malformed');
+          }
 
           const existing = await deps.repo.getOidcConfiguration(ctx.topology.id);
           const oidc =
@@ -1142,10 +1154,17 @@ export function createLiveKeycloakExecutor(deps: {
           let jwksValidated = false;
           if (oidc && oidc.jwksUri) {
             try {
-              const res = await fetch(oidc.jwksUri);
-              if (res.ok) {
-                const jwks = (await res.json()) as { keys?: unknown[] };
-                jwksValidated = Array.isArray(jwks.keys) && jwks.keys.length > 0;
+              // AUD-P1-01: JWKS fetch must stay on the registered Keycloak origin (anti-SSRF).
+              const expectedOrigin = new URL(conn.baseUrl).origin;
+              const jwksOrigin = new URL(oidc.jwksUri).origin;
+              if (jwksOrigin !== expectedOrigin) {
+                jwksValidated = false;
+              } else {
+                const res = await fetch(oidc.jwksUri);
+                if (res.ok) {
+                  const jwks = (await res.json()) as { keys?: unknown[] };
+                  jwksValidated = Array.isArray(jwks.keys) && jwks.keys.length > 0;
+                }
               }
             } catch {
               jwksValidated = false;

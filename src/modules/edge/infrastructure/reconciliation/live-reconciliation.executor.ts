@@ -143,7 +143,10 @@ export function createLiveReconciliationExecutor(deps: {
   const validateLease = async (
     input: WorkflowHandlerInput,
   ): Promise<LeaseValidationResult | null> => {
-    if (!deps.lease) return null;
+    // AUD-P1-04: lease is mandatory — missing port fails closed.
+    if (!deps.lease) {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease port not wired' };
+    }
     if (!Number.isInteger(input.fencingToken) || input.fencingToken < 1) {
       return {
         valid: false,
@@ -179,21 +182,9 @@ export function createLiveReconciliationExecutor(deps: {
     const provisioningRequestId =
       str(s.provisioningRequestId) ?? bound.provisioningRequestId ?? null;
 
-    // Fail-closed when provisioningRequestId is bound — trust material required
-    if (provisioningRequestId && (!rowId || version == null)) {
+    // AUD-P0-05: never allow UNBOUND mutations — fail-closed without bound auth.
+    if (!rowId || version == null || !provisioningRequestId) {
       return { allowed: false, reason: 'TRUST_MATERIAL_MISSING', rowId, version };
-    }
-    if (!provisioningRequestId && (!rowId || version == null)) {
-      // Unbound observe may proceed without P7.1 when no provisioning request is attached
-      return {
-        allowed: true,
-        view: {
-          authorizationRowId: rowId ?? 'UNBOUND',
-          authorizationVersion: version ?? 0,
-        } as WorkflowReadyAuthorizationView,
-        rowId: rowId ?? 'UNBOUND',
-        version: version ?? 0,
-      };
     }
 
     let view: WorkflowReadyAuthorizationView | null;
@@ -269,7 +260,7 @@ export function createLiveReconciliationExecutor(deps: {
     const startedAt = Date.now();
     const s = snap(input);
 
-    if (deps.lease) {
+    {
       const leaseCheck = await validateLease(input);
       if (leaseCheck && !leaseCheck.valid) {
         await recordEvidence(

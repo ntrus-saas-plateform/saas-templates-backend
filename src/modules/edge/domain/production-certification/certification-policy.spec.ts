@@ -72,7 +72,7 @@ describe('evaluateCertificationGates / canCertify', () => {
     if (!d.allowed) expect(d.code).toBe(CertificationErrorCode.EVIDENCE_FAILED);
   });
 
-  it('allows CERTIFY when all required evidence are ATTACHED/VERIFIED/WAIVED', () => {
+  it('allows CERTIFY when all required evidence are ATTACHED/VERIFIED (WAIVED does not count)', () => {
     const items = [
       ...readyItems.slice(0, -2),
       {
@@ -83,7 +83,7 @@ describe('evaluateCertificationGates / canCertify', () => {
       {
         evidenceKey: 'p713_reconciliation',
         required: true,
-        itemStatus: CertificationEvidenceItemStatus.WAIVED,
+        itemStatus: CertificationEvidenceItemStatus.VERIFIED,
       },
       {
         evidenceKey: 'p714_agents',
@@ -98,6 +98,32 @@ describe('evaluateCertificationGates / canCertify', () => {
         evidenceItems: items,
       }),
     ).toEqual({ allowed: true });
+  });
+
+  it('blocks CERTIFY when required evidence is only WAIVED', () => {
+    const items = [
+      ...readyItems.slice(0, -1),
+      {
+        evidenceKey: 'p713_reconciliation',
+        required: true,
+        itemStatus: CertificationEvidenceItemStatus.WAIVED,
+      },
+    ];
+    expect(evaluateCertificationGates(items).ready).toBe(false);
+    const d = canCertify({
+      packageStatus: CertificationPackageStatus.READY,
+      evidenceItems: items,
+    });
+    expect(d.allowed).toBe(false);
+  });
+
+  it('denies CERTIFY when package is FAILED (must re-assemble to READY)', () => {
+    const d = canCertify({
+      packageStatus: CertificationPackageStatus.FAILED,
+      evidenceItems: readyItems,
+    });
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) expect(d.code).toBe(CertificationErrorCode.NOT_READY);
   });
 
   it('denies CERTIFY when package is not READY', () => {

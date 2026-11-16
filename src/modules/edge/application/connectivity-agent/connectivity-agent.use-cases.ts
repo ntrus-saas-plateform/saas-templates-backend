@@ -727,6 +727,31 @@ export class RequestConnectivityAgentCommandUseCase {
     if (!guard.allowed) {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, guard.reason, [{ code: guard.code }]);
     }
+    // AUD-P1-06: allowlisted command types only; signatureRef mandatory.
+    const ALLOWED_AGENT_COMMANDS = new Set([
+      'HEARTBEAT',
+      'HEALTH_CHECK',
+      'SYNC_STATUS',
+      'FETCH_CONFIG',
+      'APPLY_CONFIG',
+      'REPORT_METRICS',
+      'REVOKE_LOCAL',
+    ]);
+    const commandType = input.commandType.trim().toUpperCase();
+    if (!ALLOWED_AGENT_COMMANDS.has(commandType)) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        `commandType ${input.commandType} is not allowlisted`,
+        [{ code: ConnectivityAgentErrorCode.VALIDATION }],
+      );
+    }
+    if (!input.signatureRef?.trim()) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        'signatureRef required for agent commands',
+        [{ code: ConnectivityAgentErrorCode.VALIDATION }],
+      );
+    }
 
     const meta = agent.metadata ?? {};
     const authorizationRowId =
@@ -749,11 +774,11 @@ export class RequestConnectivityAgentCommandUseCase {
       const created = await this.repo.createCommand(
         {
           agentId: agent.id,
-          commandType: input.commandType.trim(),
+          commandType,
           commandStatus: AgentCommandStatus.PENDING,
           nonce: input.nonce.trim().toLowerCase(),
           payloadRef: input.payloadRef ?? null,
-          signatureRef: input.signatureRef ?? null,
+          signatureRef: input.signatureRef!.trim(),
           provisioningRequestId,
           authorizationRowId,
           authorizationVersion,

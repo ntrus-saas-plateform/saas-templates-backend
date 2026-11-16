@@ -461,29 +461,27 @@ async function revalidateReconciliationAuth(
 ) {
   const boundProv = provisioningRequestId ?? record.provisioningRequestId ?? null;
   // P7.1 fail-closed when provisioningRequestId is bound
-  if (boundProv) {
-    if (!record.authorizationRowId || record.authorizationVersion == null) {
-      throw new DomainError(
-        ErrorCode.FORBIDDEN,
-        'Reconciliation run has no bound P7.1 authorization (fail-closed)',
-        [{ code: ReconciliationErrorCode.AUTHORIZATION_FAILED }],
-      );
-    }
-    const revalidated = await auth.revalidateBoundAuthorization({
-      authorizationRowId: record.authorizationRowId,
-      authorizationVersion: record.authorizationVersion,
-      provisioningRequestId: boundProv,
-    });
-    if (!revalidated) {
-      throw new DomainError(
-        ErrorCode.FORBIDDEN,
-        'P7.1 authorization not valid for reconciliation operation',
-        [{ code: ReconciliationErrorCode.AUTHORIZATION_FAILED }],
-      );
-    }
-    return revalidated;
+  // AUD-P1-07 / AUD-P0-05: unbound reconciliation is fail-closed (no null authOk path).
+  if (!boundProv || !record.authorizationRowId || record.authorizationVersion == null) {
+    throw new DomainError(
+      ErrorCode.FORBIDDEN,
+      'Reconciliation requires bound P7.1 authorization (fail-closed)',
+      [{ code: ReconciliationErrorCode.AUTHORIZATION_FAILED }],
+    );
   }
-  return null;
+  const revalidated = await auth.revalidateBoundAuthorization({
+    authorizationRowId: record.authorizationRowId,
+    authorizationVersion: record.authorizationVersion,
+    provisioningRequestId: boundProv,
+  });
+  if (!revalidated) {
+    throw new DomainError(
+      ErrorCode.FORBIDDEN,
+      'P7.1 authorization not valid for reconciliation operation',
+      [{ code: ReconciliationErrorCode.AUTHORIZATION_FAILED }],
+    );
+  }
+  return revalidated;
 }
 
 export class CreateReconciliationRunUseCase {

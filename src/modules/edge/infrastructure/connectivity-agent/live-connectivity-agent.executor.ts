@@ -98,7 +98,10 @@ export function createLiveConnectivityAgentExecutor(deps: {
   const validateLease = async (
     input: WorkflowHandlerInput,
   ): Promise<LeaseValidationResult | null> => {
-    if (!deps.lease) return null;
+    // AUD-P1-04: lease is mandatory — missing port fails closed.
+    if (!deps.lease) {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease port not wired' };
+    }
     if (!Number.isInteger(input.fencingToken) || input.fencingToken < 1) {
       return {
         valid: false,
@@ -134,19 +137,9 @@ export function createLiveConnectivityAgentExecutor(deps: {
     const provisioningRequestId =
       str(s.provisioningRequestId) ?? bound.provisioningRequestId ?? null;
 
-    if (provisioningRequestId && (!rowId || version == null)) {
+    // AUD-P0-05: never allow UNBOUND mutations — fail-closed without bound auth.
+    if (!rowId || version == null || !provisioningRequestId) {
       return { allowed: false, reason: 'TRUST_MATERIAL_MISSING', rowId, version };
-    }
-    if (!provisioningRequestId && (!rowId || version == null)) {
-      return {
-        allowed: true,
-        view: {
-          authorizationRowId: rowId ?? 'UNBOUND',
-          authorizationVersion: version ?? 0,
-        } as WorkflowReadyAuthorizationView,
-        rowId: rowId ?? 'UNBOUND',
-        version: version ?? 0,
-      };
     }
 
     let view: WorkflowReadyAuthorizationView | null;
@@ -220,7 +213,7 @@ export function createLiveConnectivityAgentExecutor(deps: {
     const actorId = str(s.actorId) ?? input.workerId ?? 'workflow-worker';
 
     try {
-      if (deps.lease) {
+      {
         const leaseCheck = await validateLease(input);
         if (leaseCheck && !leaseCheck.valid) {
           return fail(

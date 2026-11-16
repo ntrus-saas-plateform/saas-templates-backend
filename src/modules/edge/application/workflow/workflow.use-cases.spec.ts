@@ -2,9 +2,42 @@ import { describe, expect, it, vi } from 'vitest';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { assertFencingToken } from '../../domain/workflow/fencing.js';
 import { WorkflowHandlerRegistry } from '../../infrastructure/workflow/workflow-handler.registry.js';
-import { CreateWorkflowDefinitionUseCase } from './workflow.use-cases.js';
+import {
+  CreateWorkflowDefinitionUseCase,
+  definitionRequiresProvisioningAuthorization,
+} from './workflow.use-cases.js';
 
 describe('workflow application', () => {
+  it('AUD-P0-03: mutative definitions require provisioning authorization bind', () => {
+    expect(
+      definitionRequiresProvisioningAuthorization({
+        steps: [{ key: 'a', type: 'HANDLER', handlerKey: 'noop:checkpoint' }],
+      }),
+    ).toBe(false);
+    expect(
+      definitionRequiresProvisioningAuthorization({
+        steps: [{ key: 'a', type: 'HANDLER', handlerKey: 'product_control.handshake' }],
+      }),
+    ).toBe(false);
+    expect(
+      definitionRequiresProvisioningAuthorization({
+        steps: [{ key: 'a', type: 'HANDLER', handlerKey: 'infrastructure.provision_network' }],
+      }),
+    ).toBe(true);
+    expect(
+      definitionRequiresProvisioningAuthorization({
+        steps: [
+          {
+            key: 'a',
+            type: 'HANDLER',
+            handlerKey: 'noop:checkpoint',
+            compensationHandlerKey: 'keycloak.provision_realm',
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it('registers noop + product_control foundation + unimplemented mutative handlers', async () => {
     const registry = new WorkflowHandlerRegistry();
     expect(registry.has('noop:approve')).toBe(true);

@@ -48,6 +48,35 @@ import {
   type WorkflowInstanceRecord,
   type WorkflowStepRecord,
 } from '../../domain/workflow/workflow.types.js';
+import { PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS } from '../../domain/product-control/product-control.types.js';
+
+/** Handlers that may run without a P7.1 provisioning authorization bind. */
+const NON_MUTATIVE_HANDLER_ALLOWLIST = new Set<string>([
+  'noop:approve',
+  'noop:checkpoint',
+  ...PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS,
+]);
+
+/**
+ * AUD-P0-03: any definition step outside the non-mutative allowlist requires
+ * a bound P5 provisioning authorization (fail-closed).
+ */
+export function definitionRequiresProvisioningAuthorization(
+  snapshot: WorkflowDefinitionSnapshot,
+): boolean {
+  for (const step of snapshot.steps ?? []) {
+    const key = typeof step.handlerKey === 'string' ? step.handlerKey : '';
+    if (key && !NON_MUTATIVE_HANDLER_ALLOWLIST.has(key)) {
+      return true;
+    }
+    const comp =
+      typeof step.compensationHandlerKey === 'string' ? step.compensationHandlerKey : '';
+    if (comp && !NON_MUTATIVE_HANDLER_ALLOWLIST.has(comp)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -381,6 +410,15 @@ export class CreateWorkflowInstanceUseCase {
     }
     validateDefinition(ver.snapshot);
 
+    const requiresAuth = definitionRequiresProvisioningAuthorization(ver.snapshot);
+    // AUD-P0-03: mutative definitions cannot be created unbound.
+    if (requiresAuth && !input.provisioningRequestId) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Mutative workflow definitions require provisioningRequestId (P7.1 bind fail-closed)',
+      );
+    }
+
     let authView = null as Awaited<ReturnType<WorkflowAuthorizationPort['getWorkflowReadyRequest']>>;
     if (input.provisioningRequestId) {
       authView = await this.auth.getWorkflowReadyRequest(input.provisioningRequestId);
@@ -390,6 +428,11 @@ export class CreateWorkflowInstanceUseCase {
           'Provisioning request is not workflow-ready (fail-closed)',
         );
       }
+    } else if (requiresAuth) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Mutative workflow create refused without bound authorization',
+      );
     }
     if (input.placementDecisionId) {
       const place = await this.placement.getWorkflowReadyPlacement(input.placementDecisionId);
@@ -516,12 +559,22 @@ export class StartWorkflowUseCase {
     if (!wf) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Workflow not found');
     assertInstanceTransition(wf.state, WorkflowInstanceState.READY);
 
+    const requiresAuth = definitionRequiresProvisioningAuthorization(wf.definitionSnapshot);
+    // AUD-P0-03: refuse start when mutative workflow is unbound.
+    if (requiresAuth && !wf.authorizationRowId) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Mutative workflow start refused without bound authorization (fail-closed)',
+      );
+    }
+
     if (wf.authorizationRowId) {
-      const ok = await this.auth.isAuthorizationStillValid({
+      const view = await this.auth.revalidateBoundAuthorization({
         authorizationRowId: wf.authorizationRowId,
-        expectedVersion: wf.authorizationVersion,
+        authorizationVersion: wf.authorizationVersion ?? 0,
+        provisioningRequestId: wf.provisioningRequestId,
       });
-      if (!ok) {
+      if (!view) {
         throw new DomainError(ErrorCode.FORBIDDEN, 'Authorization no longer valid (fail-closed)');
       }
     }

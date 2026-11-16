@@ -129,6 +129,11 @@ export class CreateWorkflowInstanceDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID('4')
+  /**
+   * Required for mutative definitions (infra/Keycloak/config/activation/…).
+   * Optional only for noop / Product Control foundation discovery workflows.
+   * Server enforces bind fail-closed (AUD-P0-03).
+   */
   provisioningRequestId?: string;
 
   @ApiPropertyOptional({ format: 'uuid' })
