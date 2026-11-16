@@ -12,8 +12,8 @@
 
 | Repo | HEAD | P7.7 remediation | Push |
 |------|------|------------------|------|
-| `saas-templates-backend` | `bbd2cc3b0f1d19251bdff25a0c6d89befcc897af` (`bbd2cc3`) on `feature/console` | **COMMITTED locally** | See push attempt below — do not claim remote publication on 403 |
-| `saas-template-frontend` | `d7dcb2eb4181070d643ca3300ca5250ff6c097ed` (`d7dcb2e`) on `feature/console` | Clean working tree (no additional P7.7 remediation diff) | Same remote permission constraints as backend |
+| `saas-templates-backend` | Remediation `bbd2cc3b0f1d19251bdff25a0c6d89befcc897af`; tip on `feature/console` = `git rev-parse HEAD` (docs commits may follow) | **COMMITTED locally** | **FAILED — HTTP 403** — `Permission to ntrus-saas-plateform/saas-templates-backend.git denied to kabikaAsyst` |
+| `saas-template-frontend` | `d7dcb2eb4181070d643ca3300ca5250ff6c097ed` (`d7dcb2e`) on `feature/console` | Clean working tree (no additional P7.7 remediation diff) | **FAILED — HTTP 403** — `Permission to ntrus-saas-plateform/saas-template-frontend.git denied to kabikaAsyst` |
 
 ## Fixed defects (this remediation)
 
