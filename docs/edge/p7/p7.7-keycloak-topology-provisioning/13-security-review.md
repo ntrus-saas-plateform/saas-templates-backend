@@ -1,6 +1,6 @@
 # P7.7 — Security Review
 
-**Date:** 2026-11-12 · Scope: P7.7 Keycloak topology provisioning (Edge Control Plane only).
+**Date:** 2026-11-16 · Scope: P7.7 Keycloak topology provisioning + security/integration remediation (Edge Control Plane only).
 
 ## Threat model & controls
 
@@ -8,9 +8,9 @@
 |---|--------|----------------|-----------|-------------|
 | T1 | **SSRF** — API-driven calls to attacker host (cloud metadata, internal services) | `baseUrl`, realm names, OIDC issuer/discovery | `assertSameOrigin()` host/port/scheme check on every request; discovery URL built internally from registered origin; endpoints never from client input; non-loopback requires HTTPS; `allow_private_network` attestation for lab targets | Security suite (5 SSRF tests); live hostile-realm test (404 on registered server) |
 | T2 | **Secret leakage** (DB, logs, API, evidence, events) | server/client credentials, tokens | `credential_ref`-only schema (+ schema-guard test); vault required or registration fails; `redactSensitive` on outbound text; `redactSecrets` on evidence/snapshots/events; writeOnly DTO field; audit masks ref; console masks `••••••••` | Security masking tests; DB opaque-ref test; live health/redaction tests; frontend masking test |
-| T3 | **Stale-worker mutations** (split brain, out-of-order ops) | P7.4 workers | `isValidFencingToken` (integer `>= 1`) in execute **and** compensate, checked before any Keycloak call; optimistic `version` on all updates; in-flight de-dup per operation key | Security fencing tests (defect #2 fix) |
-| T4 | **Unauthorized provisioning / privilege escalation** | HTTP API, workflow launch | Per-route `platform:keycloak:*` permissions (7 codes, role-scoped grants); P7.1 authorization revalidated fail-closed at create, launch and `validate_plan`; placement confirmed; deprovision needs `platform:keycloak:deprovision` + `authorized` + `confirmed` | Security P7.1 fail-closed tests (3); controller guards; DB permission seed |
-| T5 | **Authorization bypass by omission** (no/revoked/expired auth) | use cases, plan validation | `revalidateAuthorization` returns fail-closed `AUTHORIZATION_REVOKED` when the workflow view is absent; `RequestKeycloakProvisioningUseCase` refuses without `provisioningRequestId`; plan validation rejects invalid/expired/revoked | Security tests (2) + unit suites |
+| T3 | **Stale-worker mutations** (split brain, out-of-order ops) | P7.4 workers | Authoritative `WorkflowLeasePort` / `RepositoryWorkflowLeaseValidator` compares supplied token to **persisted** lease (worker, expiry, status) before every Keycloak mutation and compensation — never token-vs-self; optimistic `version` on writes | Security P7.1/P7.4 harness (stale worker A after B reclaim) |
+| T4 | **Unauthorized provisioning / privilege escalation** | HTTP API, workflow launch | Per-route `platform:keycloak:*`; canonical P7.1 revalidation in live executor before each sensitive op; reconcile cannot launch provision definition | Security harness + routing spec + live revocation (0 provider calls) |
+| T5 | **Authorization bypass by omission** (no/revoked/expired/stale/timeout) | live executor + use cases | Missing refs/records/versions, revoked/expired, product/tenant/request mismatch, service timeout → DENY + durable evidence; snapshot flags can only DENY | Security harness + live §1 |
 | T6 | **Open redirect / token theft via client config** | redirect URIs, web origins | `validateRedirectUris`/`validateWebOrigins` — wildcards, `null`, templates, non-http(s) rejected; PKCE S256, implicit flow & direct grants disabled; issuer must belong to registered origin | Security redirect test; plan validation |
 | T7 | **Business-IAM boundary crossing** (Edge managing tenant end-users/roles) | schema + executor | No user/membership/invitation tables or operations exist; org rows are `technical_purpose`; provider constraints `noBusinessUsers`/`noBusinessRoles`; mandate comments in migration 102 | DB suite asserts provider constraints; code review of executor |
 | T8 | **Destructive operations without ownership** | deprovision path | Restricted handler key; `WAITING_APPROVAL` default; both flags required before a workflow is even created; `deletion_protection` default TRUE; realm deletion deferred to retention policy | Handler unit tests; controller DTO |
@@ -32,15 +32,14 @@
 
 **Trust boundaries:** (1) Edge ⇄ Keycloak server (SSRF + TLS + token), (2) Edge ⇄ vault (ref indirection), (3) Edge ⇄ P7.1 authorization (fail-closed revalidation), (4) API ⇄ workflow engine (mutations only via steps).
 
-## Verification summary (executed 2026-11-12)
+## Verification summary (executed 2026-11-16)
 
 | Suite | What it proves | Result |
 |-------|----------------|--------|
-| Security (12 P7.7 tests inside 58/58) | SSRF, masking, fencing, P7.1 fail-closed, redirect policy | **PASS** |
-| Live Keycloak (8/8, KC 26.0.7) | Real admin API, origin confinement, secret-once, redaction, health leak-free | **PASS** |
-| DB integration (7/7) | Schema guards, opaque refs, uniqueness, optimistic locking, evidence/history/reconciliation | **PASS** |
-| Unit (within 855/855) | State machine, plan validation, handler fencing/compensation | **PASS** |
-| Frontend (6 within 120/120) | RBAC gates, credential masking, explicit destructive actions | **PASS** |
+| Security (**89/89**) | SSRF, masking, authoritative fencing, P7.1 fail-closed (0 mutations on deny), redirect policy | **PASS** |
+| Live Keycloak (**12/12**, KC 26.0.7) | Realm + **org create**, live reconcile, live revocation, origin confinement, redaction | **PASS** |
+| Unit (**861/861**) | State machine, plan validation, handlers | **PASS** |
+| Frontend working tree | Clean on `feature/console` | **PASS** |
 
 ## Keycloak 26 hardening notes
 
@@ -54,10 +53,10 @@
 | Risk | Severity | Mitigation / next step |
 |------|----------|------------------------|
 | Evidence/audit redaction is convention + tests, not a schema-level scanner | Low | Future: JSONB validator on `evidence` writes |
-| Model B org creation path untested live | Medium | Add `createOrganization` live test (feature already enabled in container) |
+| Model B org creation path | Closed | Live §4 create + adoption + recovery executed |
 | Loopback HTTP allowed under attestation — misconfiguration could expose local admin traffic | Low | Environment check blocks PRODUCTION; operator attestation required |
-| Frontend inherited TS debt (85 pre-existing errors outside P7.7) | Low (quality) | Separate cleanup; P7.7 files are clean |
-| Push to GitHub blocked (HTTP 403) — changes uncommitted/unpushed | Process | Owner permission fix on `ntrus-saas-plateform/*` (known since P7.6) |
+| Frontend inherited TS debt outside P7.7 | Low (quality) | Separate cleanup |
+| Push to GitHub may still be HTTP 403 | Process | Owner permission fix on `ntrus-saas-plateform/*`; local commit only until allowed |
 
 ## Out of scope for this review
 

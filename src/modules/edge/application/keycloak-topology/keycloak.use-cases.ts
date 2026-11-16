@@ -54,6 +54,12 @@ import type { SecretsProviderPort } from '../../domain/infrastructure-provisioni
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
 async function requireAudit(
   audit: AuditEventRepositoryPort,
   input: {
@@ -65,8 +71,17 @@ async function requireAudit(
   },
   client: unknown,
 ): Promise<void> {
+  // `edge_audit_events.actor_id` / `subject_id` are UUID columns. Workflow
+  // workers use free-form ids (`live-worker-a`, `workflow-worker:<instance>`).
+  // Bind only real UUIDs to the typed columns; keep the raw refs in details.
+  const details: Record<string, unknown> = { ...input.details };
+  const actorId = isUuid(input.actorId) ? input.actorId : null;
+  if (actorId === null && input.actorId) details.actorRef = input.actorId;
+  const subjectId = isUuid(input.subjectId) ? input.subjectId : null;
+  if (subjectId === null && input.subjectId) details.subjectRef = input.subjectId;
+
   try {
-    await audit.create(input, client);
+    await audit.create({ ...input, actorId, subjectId, details }, client);
   } catch (err) {
     throw new DomainError(
       ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -119,23 +134,29 @@ async function revalidateAuthorization(
     provisioningRequestId?: string | null;
   },
 ): Promise<{ ok: boolean; reason: string }> {
-  const wfAuthView =
-    params.workflowId && params.authorizationId
-      ? await auth.revalidateBoundAuthorization({
-          authorizationRowId: params.authorizationId,
-          authorizationVersion: params.authorizationVersion ?? 1,
-          provisioningRequestId: params.provisioningRequestId ?? null,
-        })
-      : null;
+  const rowId = params.authorizationId ?? null;
+  const version = params.authorizationVersion ?? null;
 
-  if (!wfAuthView && params.provisioningRequestId) {
-    // Fail-closed: request exists but not workflow-ready (revoked/expired).
+  // 1) Bound authorization row + version → canonical revalidation.
+  if (rowId && version != null) {
+    const view = await auth.revalidateBoundAuthorization({
+      authorizationRowId: rowId,
+      authorizationVersion: version,
+      provisioningRequestId: params.provisioningRequestId ?? null,
+    });
+    if (view) return { ok: true, reason: 'OK' };
+    return { ok: false, reason: 'AUTHORIZATION_INVALID' };
+  }
+
+  // 2) Only a provisioning request → resolve it through the canonical port.
+  if (params.provisioningRequestId) {
+    const view = await auth.getWorkflowReadyRequest(params.provisioningRequestId);
+    if (view) return { ok: true, reason: 'OK' };
     return { ok: false, reason: 'AUTHORIZATION_REVOKED' };
   }
-  if (!wfAuthView && !params.authorizationId) {
-    return { ok: false, reason: 'AUTHORIZATION_MISSING' };
-  }
-  return { ok: Boolean(wfAuthView), reason: wfAuthView ? 'OK' : 'AUTHORIZATION_INVALID' };
+
+  // 3) No canonical identity at all → fail closed.
+  return { ok: false, reason: 'AUTHORIZATION_MISSING' };
 }
 
 // ---------------------------------------------------------------------------
@@ -524,19 +545,42 @@ export class CreateKeycloakTopologyUseCase {
       ]);
     }
 
-    // P7.1 revalidation (fail-closed) when bound to a provisioning request.
+    // P7.1 revalidation (fail-closed) — resolves the canonical identity that is
+    // persisted on the topology and re-checked before every later mutation.
+    let boundAuthorization: { authorizationId: string; authorizationVersion: number } | null = null;
     if (input.provisioningRequestId || (input.authorizationId && input.authorizationVersion)) {
-      const revalidated = await revalidateAuthorization(this.auth, {
-        workflowId: '',
-        authorizationId: input.authorizationId,
-        authorizationVersion: input.authorizationVersion,
-        provisioningRequestId: input.provisioningRequestId,
-      });
-      if (!revalidated.ok) {
-        throw new DomainError(ErrorCode.FORBIDDEN, `P7.1 authorization not valid: ${revalidated.reason}`, [
-          { code: KeycloakErrorCode.AUTHORIZATION_FAILED, reason: revalidated.reason },
+      const view =
+        input.authorizationId && input.authorizationVersion != null
+          ? await this.auth.revalidateBoundAuthorization({
+              authorizationRowId: input.authorizationId,
+              authorizationVersion: input.authorizationVersion,
+              provisioningRequestId: input.provisioningRequestId ?? null,
+            })
+          : input.provisioningRequestId
+            ? await this.auth.getWorkflowReadyRequest(input.provisioningRequestId)
+            : null;
+      if (!view) {
+        throw new DomainError(
+          ErrorCode.FORBIDDEN,
+          'P7.1 authorization not valid: AUTHORIZATION_INVALID',
+          [{ code: KeycloakErrorCode.AUTHORIZATION_FAILED, reason: 'AUTHORIZATION_INVALID' }],
+        );
+      }
+      // The authorization must belong to THIS tenant and product.
+      if (view.productId && view.productId !== input.productId) {
+        throw new DomainError(ErrorCode.FORBIDDEN, 'P7.1 authorization product mismatch', [
+          { code: KeycloakErrorCode.AUTHORIZATION_FAILED, reason: 'AUTHORIZATION_PRODUCT_MISMATCH' },
         ]);
       }
+      if (view.productTenantId && view.productTenantId !== input.tenantId) {
+        throw new DomainError(ErrorCode.FORBIDDEN, 'P7.1 authorization tenant mismatch', [
+          { code: KeycloakErrorCode.AUTHORIZATION_FAILED, reason: 'AUTHORIZATION_TENANT_MISMATCH' },
+        ]);
+      }
+      boundAuthorization = {
+        authorizationId: view.authorizationRowId,
+        authorizationVersion: view.authorizationVersion,
+      };
     }
     // P7.3 placement (fail-closed) when a decision was provided.
     if (input.placementDecisionId) {
@@ -590,8 +634,10 @@ export class CreateKeycloakTopologyUseCase {
           tenantId: input.tenantId,
           productId: input.productId,
           subscriptionId: input.subscriptionId ?? null,
-          authorizationId: input.authorizationId ?? null,
-          authorizationVersion: input.authorizationVersion ?? null,
+          authorizationId:
+            boundAuthorization?.authorizationId ?? input.authorizationId ?? null,
+          authorizationVersion:
+            boundAuthorization?.authorizationVersion ?? input.authorizationVersion ?? null,
           placementDecisionId: input.placementDecisionId ?? null,
           deploymentProfileId: input.deploymentProfileId ?? null,
           deploymentProfileVersion: input.deploymentProfileVersion ?? null,
@@ -882,10 +928,15 @@ export class RequestKeycloakProvisioningUseCase {
         [{ code: KeycloakErrorCode.AUTHORIZATION_FAILED }],
       );
     }
-    await revalidateAuthorization(this.auth, {
+    const revalidated = await revalidateAuthorization(this.auth, {
       workflowId: '',
       provisioningRequestId: input.provisioningRequestId,
     });
+    if (!revalidated.ok) {
+      throw new DomainError(ErrorCode.FORBIDDEN, `P7.1 authorization not valid: ${revalidated.reason}`, [
+        { code: KeycloakErrorCode.AUTHORIZATION_FAILED, reason: revalidated.reason },
+      ]);
+    }
 
     const definition = await ensureKeycloakDefinition(
       this.wfRepo,
@@ -1203,10 +1254,13 @@ export async function ensureKeycloakDefinition(
       },
       client,
     );
-    const version = await repo.getLatestDefinitionVersion(created.definition.id);
-    if (!version) {
-      throw new DomainError(ErrorCode.DEPENDENCY_UNAVAILABLE, 'Workflow definition version missing');
-    }
+    // The definition and its version row were just inserted by THIS transaction
+    // (`createDefinition` writes both with the same client). Reading them back
+    // through the pool (`getLatestDefinitionVersion` has no client overload)
+    // would run on another connection that cannot see uncommitted rows and
+    // spuriously fail with "Workflow definition version missing". Use the
+    // version record returned by `createDefinition` instead.
+    const version = created.version;
     await repo.publishDefinitionVersion(created.definition.id, version.versionNumber, version.snapshot, client);
     const validated = await repo.setDefinitionStatus(
       created.definition.id,
@@ -1322,12 +1376,24 @@ export class LaunchTopologyWorkflowUseCase {
       // default TRUE simply forces the approval step in the deprovision handler.
     }
 
+    // The requested definition must be the registered one for this workflow
+    // type — an unused/mismatched definitionCode is rejected (routing safety).
+    const expectedKind = kindForWorkflowType(input.workflowType);
+    const expectedCode = KEYCLOAK_WORKFLOW_DEFINITIONS[expectedKind].code;
+    if (input.definitionCode !== expectedCode) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        `definitionCode "${input.definitionCode}" does not match workflowType "${input.workflowType}" (expected "${expectedCode}")`,
+        [{ code: KeycloakErrorCode.VALIDATION, expected: expectedCode }],
+      );
+    }
+
     const definition = await ensureKeycloakDefinition(
       this.wfRepo,
       this.outbox,
       this.audit,
       input.actorId,
-      kindForWorkflowType(input.workflowType),
+      expectedKind,
     );
 
     const instance = await this.createInstance.execute({

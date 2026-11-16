@@ -49,6 +49,12 @@ import {
   type WorkflowStepRecord,
 } from '../../domain/workflow/workflow.types.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
 async function requireAudit(
   audit: AuditEventRepositoryPort,
   input: {
@@ -60,8 +66,20 @@ async function requireAudit(
   },
   client: unknown,
 ): Promise<void> {
+  // `edge_audit_events.actor_id` and `subject_id` are UUID columns, while
+  // workflow actors are free-form identifiers (worker ids such as
+  // `workflow-worker:<instance>` come from configuration). Binding a non-UUID
+  // would abort the whole durable audit write and fail the mutation. Keep the
+  // audit write durable and lossless instead: bind UUIDs to the typed columns
+  // and persist the raw identifiers inside `details` (`actorRef`/`subjectRef`).
+  const details: Record<string, unknown> = { ...input.details };
+  const actorId = isUuid(input.actorId) ? input.actorId : null;
+  if (actorId === null && input.actorId) details.actorRef = input.actorId;
+  const subjectId = isUuid(input.subjectId) ? input.subjectId : null;
+  if (subjectId === null && input.subjectId) details.subjectRef = input.subjectId;
+
   try {
-    await audit.create(input, client);
+    await audit.create({ ...input, actorId, subjectId, details }, client);
   } catch (err) {
     throw new DomainError(
       ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -794,11 +812,17 @@ export class ClaimStepUseCase {
     private readonly audit: AuditEventRepositoryPort,
   ) {}
 
-  async execute(input: { workerId: string; leaseMs?: number; handlerKeys?: string[] }) {
+  async execute(input: {
+    workerId: string;
+    leaseMs?: number;
+    handlerKeys?: string[];
+    workflowId?: string;
+  }) {
     const claimed = await this.repo.claimStepForUpdateSkipLocked({
       workerId: input.workerId,
       leaseMs: input.leaseMs ?? 30_000,
       handlerKeys: input.handlerKeys,
+      workflowId: input.workflowId,
     });
     if (!claimed) return null;
     await this.outbox.runWithOutbox(EDGE_P7_OUTBOX_TENANT, async (client, enqueue) => {
@@ -888,8 +912,9 @@ export class CompleteStepUseCase {
       });
       if (input.checkpoint) {
         const seq =
-          (await this.repo.listSteps(wf.id)).filter((s) => s.status === WorkflowStepStatus.SUCCEEDED)
-            .length || 1;
+          (await this.repo.listSteps(wf.id, client)).filter(
+            (s) => s.status === WorkflowStepStatus.SUCCEEDED,
+          ).length || 1;
         await this.repo.createCheckpoint(
           {
             workflowId: wf.id,
@@ -941,7 +966,9 @@ export class CompleteStepUseCase {
   }
 
   private async advanceDependents(wf: WorkflowInstanceRecord, client: unknown) {
-    const steps = await this.repo.listSteps(wf.id);
+    // MUST read steps on the same transaction client as completeStep — a pool
+    // read would miss the uncommitted SUCCEEDED status and leave dependents PENDING forever.
+    const steps = await this.repo.listSteps(wf.id, client);
     const byKey = new Map(steps.map((s) => [s.stepKey, s]));
     for (const s of steps) {
       if (s.status !== WorkflowStepStatus.PENDING) continue;
@@ -961,7 +988,7 @@ export class CompleteStepUseCase {
     client: unknown,
     enqueue: (event: IntegrationEvent<unknown>) => Promise<string>,
   ) {
-    const steps = await this.repo.listSteps(wf.id);
+    const steps = await this.repo.listSteps(wf.id, client);
     const allDone = steps.every(
       (s) =>
         s.status === WorkflowStepStatus.SUCCEEDED ||
@@ -1750,6 +1777,19 @@ export class ExecuteClaimedStepUseCase {
       workflowInput: claimed.workflow.inputSnapshot,
       correlationId: claimed.workflow.correlationId,
       workerId: claimed.workerId,
+      // Authoritative workflow-level identity (P7.1/P7.4). These come from the
+      // PERSISTED instance row — never from caller-supplied snapshot flags —
+      // and override anything present in workflowInput/inputSnapshot.
+      executionContext: {
+        provisioningRequestId: claimed.workflow.provisioningRequestId,
+        authorizationRowId:
+          claimed.workflow.authorizationRowId ?? claimed.workflow.authorizationId,
+        authorizationId: claimed.workflow.authorizationId,
+        authorizationVersion: claimed.workflow.authorizationVersion,
+        productId: claimed.workflow.productId,
+        accountId: claimed.workflow.accountId,
+        workflowState: claimed.workflow.state,
+      },
     });
 
     if (outcome.status === 'SUCCEEDED') {

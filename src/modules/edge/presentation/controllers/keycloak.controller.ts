@@ -197,7 +197,10 @@ export class EdgeKeycloakController {
         profileOptions: body.profileOptions ?? {},
       },
       validationContext: {
-        authorizationValid: true, // revalidated fail-closed in use case + workflow
+        // These flags are NOT trusted as authorization: the use case performs a
+        // canonical P7.1 revalidation (fail-closed) before and inside the
+        // workflow. They only describe the post-revalidation plan context.
+        authorizationValid: true,
         authorizationExpired: false,
         authorizationRevoked: false,
         placementValid: true,
@@ -222,15 +225,13 @@ export class EdgeKeycloakController {
       actorId: actorId(req),
       correlationId: body.correlationId?.trim() || randomUUID(),
       idempotencyKey: body.idempotencyKey ?? `p77-rec-${id}-${Date.now()}`,
-      definitionCode: 'p77.keycloak.topology.provision',
+      definitionCode: 'p77.keycloak.topology.reconcile',
       workflowType: 'keycloak.topology.reconcile',
       topologyId: id,
       provisioningRequestId: body.provisioningRequestId ?? null,
       snapshot: {
         topologyId: id,
         operation: 'reconcile',
-        runReconcile:
-          'keycloak.reconcile_topology,',
       },
     });
   }
@@ -249,7 +250,7 @@ export class EdgeKeycloakController {
       actorId: actorId(req),
       correlationId: body.correlationId?.trim() || randomUUID(),
       idempotencyKey: `p77-dep-${id}-${Date.now()}`,
-      definitionCode: 'p77.keycloak.topology.provision',
+      definitionCode: 'p77.keycloak.topology.deprovision',
       workflowType: 'keycloak.topology.deprovision',
       destructive: true,
       authorized: body.authorized === true,

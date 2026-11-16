@@ -272,21 +272,28 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
     const info = (await res.json()) as {
       systemInfo?: Record<string, unknown>;
       profileInfo?: { version?: string; name?: string };
-      features?: string[];
+      // KC 26+ returns FeatureRepresentation objects `{ name, enabled, … }`,
+      // not bare strings. Older builds occasionally exposed string names.
+      features?: Array<string | { name?: string; enabled?: boolean }>;
       profileInfoMap?: Record<string, { enabled: boolean }>;
     };
     const version =
       (typeof info.profileInfo?.version === 'string' ? info.profileInfo.version : null) ??
       (typeof info.systemInfo?.version === 'string' ? String(info.systemInfo.version) : null);
 
-    // Feature detection: explicit feature list when exposed (KC 26+), else version gate.
-    const featureList = Array.isArray(info.features) ? info.features.map(String) : null;
+    // Feature detection: KC 26 serverinfo feature list (object form) first,
+    // then a live Organizations API probe (404 "not enabled for this realm"
+    // still means the server supports Organizations — it is a per-realm switch),
+    // then a version gate as last resort.
+    const organizationsByFeature = isOrganizationFeatureEnabled(info.features);
     const organizationsByProbe = await this.probeOrganizations(conn);
-    const organizationsSupported = organizationsByProbe
-      ? true
-      : featureList
-        ? featureList.some((f) => /organization/i.test(f))
-        : version ? isVersionAtLeast(version, 26, 0) : false;
+    const organizationsSupported =
+      organizationsByFeature === true ||
+      organizationsByProbe === true ||
+      (organizationsByFeature === null &&
+        organizationsByProbe === null &&
+        !!version &&
+        isVersionAtLeast(version, 26, 0));
 
     return {
       serverId: '',
@@ -300,21 +307,74 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
       rawEvidence: {
         serverinfoStatus: res.status,
         profileName: info.profileInfo?.name ?? null,
-        featuresCount: featureList?.length ?? null,
+        featuresCount: Array.isArray(info.features) ? info.features.length : null,
+        organizationsByFeature,
         organizationsProbe: organizationsByProbe,
       },
     };
   }
 
-  /** Probe the real Organizations admin API (404/405 ⇒ unsupported). */
-  private async probeOrganizations(conn: KeycloakAdminConnection): Promise<boolean> {
+  /**
+   * Probe the Organizations admin API on the admin realm.
+   * Returns:
+   *   true  — endpoint exists (incl. realm-gated 404 "not enabled")
+   *   false — definitively unsupported (405/501/missing route)
+   *   null  — inconclusive (transport / unexpected)
+   */
+  private async probeOrganizations(
+    conn: KeycloakAdminConnection,
+  ): Promise<boolean | null> {
     try {
       const res = await this.adminFetch(conn, '/organizations?max=1', { method: 'GET' });
-      if (res.status === 404 || res.status === 405 || res.status === 501) return false;
-      if (res.status === 401 || res.status === 403) return true; // endpoint exists, perms limited
-      return res.status >= 200 && res.status < 300;
+      if (res.status === 405 || res.status === 501) return false;
+      if (res.status === 401 || res.status === 403) return true;
+      if (res.status >= 200 && res.status < 300) return true;
+      if (res.status === 404) {
+        const detail = JSON.stringify(res.body ?? {});
+        // KC 26: feature is on the server, but this realm has organizationsEnabled=false.
+        if (/not enabled for this realm/i.test(detail)) return true;
+        return false;
+      }
+      return null;
     } catch {
-      return false;
+      return null;
+    }
+  }
+
+  /**
+   * Keycloak 26 Organizations are a per-realm switch (`organizationsEnabled`).
+   * Creating an organization against a realm that still has the flag off yields
+   * HTTP 404 "Organizations not enabled for this realm." — enable idempotently.
+   */
+  private async ensureOrganizationsEnabled(
+    conn: KeycloakAdminConnection,
+    realmName: string,
+  ): Promise<void> {
+    const res = await this.adminFetch(
+      conn,
+      `/realms/${encodeURIComponent(realmName)}`,
+      { method: 'GET', realm: 'master', scope: 'root' },
+    );
+    if (res.status === 404) {
+      throw new Error(`Keycloak realm not found while enabling organizations: ${realmName}`);
+    }
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`Keycloak realm read failed while enabling organizations: ${res.status}`);
+    }
+    const row = (res.body ?? {}) as Record<string, unknown>;
+    if (row.organizationsEnabled === true) return;
+    const put = await this.adminFetch(
+      conn,
+      `/realms/${encodeURIComponent(realmName)}`,
+      {
+        method: 'PUT',
+        realm: 'master',
+        scope: 'root',
+        body: { ...row, organizationsEnabled: true },
+      },
+    );
+    if (put.status !== 204 && put.status !== 200) {
+      throw new Error(`Keycloak organizationsEnabled update failed: ${put.status}`);
     }
   }
 
@@ -348,7 +408,14 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
     return this.exclusive(`realm:${target.realmName}`, async () => {
       // RECONCILE before create: a network error after create must not double-create.
       const observed = await this.realmExists(conn, target.realmName);
-      if (observed.exists) return observed;
+      if (observed.exists) {
+        // Shared-org topologies need the per-realm Organizations switch even when
+        // the realm was created earlier without it (idempotent adoption path).
+        if (realmNeedsOrganizations(target)) {
+          await this.ensureOrganizationsEnabled(conn, target.realmName);
+        }
+        return this.realmExists(conn, target.realmName);
+      }
 
       const payload = buildRealmPayload(target);
       const res = await this.adminFetch(conn, '/realms', {
@@ -359,7 +426,12 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
       });
       if (res.status === 409) {
         const again = await this.realmExists(conn, target.realmName);
-        if (again.exists) return again; // concurrent creation won — adopt it
+        if (again.exists) {
+          if (realmNeedsOrganizations(target)) {
+            await this.ensureOrganizationsEnabled(conn, target.realmName);
+          }
+          return this.realmExists(conn, target.realmName);
+        }
         throw new Error(`Keycloak realm conflict: ${target.realmName}`);
       }
       if (res.status !== 201 && res.status !== 204 && res.status !== 200) {
@@ -374,6 +446,9 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
       // carries the new realm's `<realm>-realm` admin roles (Keycloak expands
       // the composite `admin` role at mint time only).
       this.invalidateToken(conn);
+      if (realmNeedsOrganizations(target)) {
+        await this.ensureOrganizationsEnabled(conn, target.realmName);
+      }
       const after = await this.realmExists(conn, target.realmName);
       if (!after.exists) throw new Error(`Keycloak realm ${target.realmName} not visible after create`);
       return after;
@@ -385,16 +460,34 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
     realmName: string,
     settings: Record<string, unknown>,
   ): Promise<void> {
-    const current = await this.realmExists(conn, realmName);
-    if (!current.exists) throw new Error(`Keycloak realm not found: ${realmName}`);
-    const payload = { ...(current.settings ?? {}), ...settings };
+    // KC Admin API PUT /realms/{realm} replaces the representation: always
+    // start from the FULL current realm document, then overlay only the
+    // allow-listed settings with Keycloak 26 field names. Merging the thin
+    // `settingsOf()` projection (or legacy aliases like `ssoSessionIdle`)
+    // yields HTTP 400.
+    const resGet = await this.adminFetch(
+      conn,
+      `/realms/${encodeURIComponent(realmName)}`,
+      { method: 'GET', realm: 'master', scope: 'root' },
+    );
+    if (resGet.status === 404) throw new Error(`Keycloak realm not found: ${realmName}`);
+    if (resGet.status < 200 || resGet.status >= 300) {
+      throw new Error(`Keycloak realm read failed: ${resGet.status}`);
+    }
+    const current = (resGet.body ?? {}) as Record<string, unknown>;
+    const patch = normalizeRealmSettingsPatch(settings);
+    const payload = { ...current, ...patch, realm: current.realm ?? realmName };
     const res = await this.adminFetch(
       conn,
       `/realms/${encodeURIComponent(realmName)}`,
       { method: 'PUT', realm: 'master', scope: 'root', body: payload },
     );
     if (res.status !== 204 && res.status !== 200) {
-      throw new Error(`Keycloak realm update failed: ${res.status}`);
+      const detail =
+        res.body && typeof res.body === 'object'
+          ? ` — ${redactSensitive(JSON.stringify(res.body).slice(0, 300))}`
+          : '';
+      throw new Error(`Keycloak realm update failed: ${res.status}${detail}`);
     }
   }
 
@@ -438,19 +531,34 @@ export class HttpKeycloakAdminAdapter implements KeycloakProviderPort {
     name: string,
   ): Promise<KeycloakOrganizationObservation> {
     return this.exclusive(`org:${realmName}:${alias}`, async () => {
+      // Per-realm switch must be on before any Organizations Admin API call.
+      await this.ensureOrganizationsEnabled(conn, realmName);
       const observed = await this.organizationExists(conn, realmName, alias);
       if (observed.exists) return observed;
+      // KC 26 Organizations Admin API rejects creates without at least one
+      // domain (`You must provide at least one domain`). Use a technical,
+      // non-routable domain derived from the alias — never a business identity.
+      const technicalDomain = `${alias.replace(/[^a-z0-9-]/gi, '').toLowerCase() || 'edge'}.edge.internal`;
       const res = await this.adminFetch(conn, '/organizations', {
         method: 'POST',
         realm: realmName,
-        body: { name, alias },
+        body: {
+          name,
+          alias,
+          enabled: true,
+          domains: [{ name: technicalDomain, verified: false }],
+        },
       });
       if (res.status === 409) {
         const again = await this.organizationExists(conn, realmName, alias);
         if (again.exists) return again;
       }
       if (res.status !== 201 && res.status !== 204 && res.status !== 200) {
-        throw new Error(`Keycloak organization create failed: ${res.status}`);
+        const detail =
+          res.body && typeof res.body === 'object'
+            ? ` — ${redactSensitive(JSON.stringify(res.body).slice(0, 300))}`
+            : '';
+        throw new Error(`Keycloak organization create failed: ${res.status}${detail}`);
       }
       const after = await this.organizationExists(conn, realmName, alias);
       if (!after.exists) throw new Error(`Keycloak organization ${alias} not visible after create`);
@@ -646,7 +754,60 @@ function settingsOf(row: Record<string, unknown>): Record<string, unknown> {
     passwordPolicy: row.passwordPolicy,
     offlineSessionIdleTimeout: row.offlineSessionIdleTimeout,
     refreshTokenMaxReuse: row.refreshTokenMaxReuse,
+    organizationsEnabled: row.organizationsEnabled,
   };
+}
+
+function realmNeedsOrganizations(target: KeycloakTopologyTarget): boolean {
+  if (/SHARED_REALM_ORGANIZATIONS/i.test(target.topologyType)) return true;
+  const s = target.realmSettings ?? {};
+  return s.organizationsEnabled === true;
+}
+
+/** Map Edge/legacy setting aliases onto Keycloak 26 RealmRepresentation fields. */
+function normalizeRealmSettingsPatch(settings: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const idle = settings.ssoSessionIdleTimeout ?? settings.ssoSessionIdle;
+  const max = settings.ssoSessionMaxLifespan ?? settings.ssoSessionMax;
+  const offlineIdle = settings.offlineSessionIdleTimeout ?? settings.offlineSessionIdle;
+  if (settings.sslRequired !== undefined) out.sslRequired = String(settings.sslRequired);
+  if (idle !== undefined) out.ssoSessionIdleTimeout = Number(idle);
+  if (max !== undefined) out.ssoSessionMaxLifespan = Number(max);
+  if (settings.accessTokenLifespan !== undefined) {
+    out.accessTokenLifespan = Number(settings.accessTokenLifespan);
+  }
+  if (offlineIdle !== undefined) out.offlineSessionIdleTimeout = Number(offlineIdle);
+  if (settings.revokeRefreshToken !== undefined) {
+    out.revokeRefreshToken = Boolean(settings.revokeRefreshToken);
+  }
+  if (settings.refreshTokenMaxReuse !== undefined) {
+    out.refreshTokenMaxReuse = Number(settings.refreshTokenMaxReuse);
+  }
+  if (typeof settings.passwordPolicy === 'string') out.passwordPolicy = settings.passwordPolicy;
+  if (settings.organizationsEnabled !== undefined) {
+    out.organizationsEnabled = Boolean(settings.organizationsEnabled);
+  }
+  return out;
+}
+
+/**
+ * Parse KC serverinfo features.
+ * @returns true/false when the list is present; null when the list is absent.
+ */
+export function isOrganizationFeatureEnabled(
+  features: Array<string | { name?: string; enabled?: boolean }> | undefined,
+): boolean | null {
+  if (!Array.isArray(features)) return null;
+  for (const f of features) {
+    if (typeof f === 'string' && /organization/i.test(f)) return true;
+    if (f && typeof f === 'object') {
+      const name = String(f.name ?? '');
+      if (/^ORGANIZATION$/i.test(name) || /organization/i.test(name)) {
+        return f.enabled !== false;
+      }
+    }
+  }
+  return false;
 }
 
 function buildRealmPayload(target: KeycloakTopologyTarget): Record<string, unknown> {
@@ -655,6 +816,7 @@ function buildRealmPayload(target: KeycloakTopologyTarget): Record<string, unkno
   const idle = s.ssoSessionIdleTimeout ?? s.ssoSessionIdle;
   const max = s.ssoSessionMaxLifespan ?? s.ssoSessionMax;
   const offlineIdle = s.offlineSessionIdleTimeout ?? s.offlineSessionIdle;
+  const organizationsEnabled = realmNeedsOrganizations(target);
   return {
     realm: target.realmName,
     enabled: true,
@@ -677,5 +839,7 @@ function buildRealmPayload(target: KeycloakTopologyTarget): Record<string, unkno
     passwordPolicy: typeof s.passwordPolicy === 'string' ? s.passwordPolicy : undefined,
     // Tech hardening defaults — no user self-registration in Edge-provisioned realms.
     userManagedAccessAllowed: false,
+    // KC 26 Organizations: server feature + per-realm switch (both required).
+    ...(organizationsEnabled ? { organizationsEnabled: true } : {}),
   };
 }

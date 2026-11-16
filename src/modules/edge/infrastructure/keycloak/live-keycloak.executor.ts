@@ -17,16 +17,27 @@ import {
   KeycloakTopologyStatus,
   KeycloakTopologyType,
   type KeycloakHandlerKey,
+  type KeycloakTopologyRecord,
 } from '../../domain/keycloak-topology/keycloak.types.js';
 import type {
   WorkflowHandlerInput,
   WorkflowHandlerOutcome,
 } from '../../domain/workflow/workflow-handler.port.js';
 import type { SecretsProviderPort } from '../../domain/infrastructure-provisioning/secrets-provider.port.js';
-import { assertFencingToken } from '../../domain/workflow/fencing.js';
+import type {
+  WorkflowAuthorizationPort,
+  WorkflowReadyAuthorizationView,
+} from '../../domain/workflow/workflow-authorization.port.js';
+import type {
+  LeaseValidationResult,
+  WorkflowLeasePort,
+} from '../../domain/workflow/workflow-lease.port.js';
 import { validateRedirectUris, validateWebOrigins, deriveOrgAlias } from '../../domain/keycloak-topology/keycloak-plan.js';
 import { redactSecrets } from '../../application/keycloak-topology/keycloak.use-cases.js';
 import { redactSensitive } from './keycloak-admin.adapter.js';
+
+/** P7.1 revalidation must answer fast — a hung service fails CLOSED. */
+const AUTHORIZATION_TIMEOUT_MS = 5_000;
 
 function snap(input: WorkflowHandlerInput): Record<string, unknown> {
   return { ...input.workflowInput, ...input.inputSnapshot, ...input.executionContext };
@@ -43,23 +54,106 @@ function fail(
   message: string,
   retryable = false,
 ): WorkflowHandlerOutcome {
+  const safe = redactSensitive(message);
   return {
     status: 'FAILED',
     errorClass: code,
-    message: redactSensitive(message),
+    message: safe,
     retryable:
       retryable ||
       code === KeycloakErrorCode.TIMEOUT ||
       code === KeycloakErrorCode.SERVER_UNAVAILABLE ||
       code === KeycloakErrorCode.DEPENDENCY_UNAVAILABLE,
-    diagnostics: { handler: 'p7.7' },
+    diagnostics: { handler: 'p7.7', message: safe },
+  };
+}
+
+/**
+ * Snapshot denial flags are honored as DENIALS only — they can never grant
+ * authorization (P7.7 mandate §1.11). Absent fields are not "valid" either:
+ * they simply carry no signal, and the canonical P7.1 revalidation decides.
+ * Both boolean and string representations are accepted (mandate §1 test list).
+ */
+function isTrueFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    return v === 'true' || v === '1';
+  }
+  return false;
+}
+function isFalseFlag(value: unknown): boolean {
+  if (value === false) return true;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    return v === 'false' || v === '0';
+  }
+  return false;
+}
+
+function snapshotAuthorizationDenial(s: Record<string, unknown>): string | null {
+  if (isFalseFlag(s.authorizationValid)) return 'SNAPSHOT_DECLARED_NOT_VALID';
+  if (isTrueFlag(s.authorizationRevoked)) return 'SNAPSHOT_DECLARED_REVOKED';
+  if (isTrueFlag(s.authorizationExpired)) return 'SNAPSHOT_DECLARED_EXPIRED';
+  return null;
+}
+
+function intOf(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && value.trim() && Number.isInteger(Number(value))) {
+    return Number(value);
+  }
+  return null;
+}
+
+/** Rejects a P7.1 service that does not answer within the budget (fail-closed). */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
+}
+
+type AuthorizationDecision =
+  | { allowed: true; view: WorkflowReadyAuthorizationView; rowId: string; version: number }
+  | { allowed: false; reason: string; rowId?: string | null; version?: number | null };
+
+/** Redacted, durable description of the authorization decision (evidence field). */
+function authorizationEvidence(
+  decision: AuthorizationDecision,
+  context: { tenantId: string; productId: string; provisioningRequestId: string | null },
+): Record<string, unknown> {
+  return {
+    p71AuthorizationDecision: decision.allowed ? 'ALLOW' : 'DENY',
+    p71AuthorizationReason: decision.allowed ? 'REVALIDATED' : decision.reason,
+    p71AuthorizationRowId: decision.rowId ?? null,
+    p71AuthorizationVersion: decision.version ?? null,
+    p71ProvisioningRequestId: context.provisioningRequestId,
+    tenantId: context.tenantId,
+    productId: context.productId,
+    decidedAt: new Date().toISOString(),
   };
 }
 
 /**
  * Bridges P7.4 workflow handlers → P7.7 use cases + REAL Keycloak adapters.
- * Never simulates success: every observed result is written to evidence and the
- * topology state, and fencing tokens are asserted before any mutation.
+ *
+ * Security invariants (P7.7 remediation):
+ *  - P7.1 authorization is REVALIDATED against the canonical service from the
+ *    persisted provisioning identity immediately before every sensitive
+ *    Keycloak operation. Snapshot flags are never proof of authorization.
+ *  - P7.4 fencing is validated against the AUTHORITATIVE lease state (never a
+ *    token compared with itself) before every mutation and before compensation.
+ *  - Every decision — allow or deny — is written to durable, redacted evidence.
  */
 export function createLiveKeycloakExecutor(deps: {
   repo: KeycloakRepositoryPort;
@@ -67,6 +161,10 @@ export function createLiveKeycloakExecutor(deps: {
   secrets: SecretsProviderPort;
   discoverCapabilities: DiscoverKeycloakCapabilitiesUseCase;
   createTopology: CreateKeycloakTopologyUseCase;
+  /** Canonical P7.1 authorization service (fail-closed when absent). */
+  authorization: WorkflowAuthorizationPort;
+  /** Authoritative P7.4 lease/fencing state (fail-closed when absent). */
+  lease: WorkflowLeasePort;
 }): KeycloakLiveExecutor {
   const connectionFor = async (serverId: string): Promise<KeycloakAdminConnection> => {
     const server = await deps.repo.getServerById(serverId);
@@ -131,6 +229,271 @@ export function createLiveKeycloakExecutor(deps: {
     return { topology, realm, org, caps, server };
   };
 
+  // -------------------------------------------------------------------------
+  // P7.4 — authoritative lease/fencing validation.
+  // The supplied token is ALWAYS compared against the persisted lease state;
+  // a token is never used as its own expected value.
+  // -------------------------------------------------------------------------
+  const validateLease = async (input: WorkflowHandlerInput): Promise<LeaseValidationResult> => {
+    if (!deps.lease) {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease port not wired' };
+    }
+    if (!Number.isInteger(input.fencingToken) || input.fencingToken < 1) {
+      return {
+        valid: false,
+        reason: 'MISSING_TOKEN',
+        detail: 'fencingToken must be a positive integer issued by the engine',
+      };
+    }
+    if (!input.workflowId || !input.stepId || !input.workerId) {
+      return { valid: false, reason: 'STEP_NOT_FOUND', detail: 'claim identity incomplete' };
+    }
+    try {
+      return await deps.lease.validateLease({
+        workflowId: input.workflowId,
+        stepId: input.stepId,
+        workerId: input.workerId,
+        fencingToken: input.fencingToken,
+      });
+    } catch {
+      return { valid: false, reason: 'DEPENDENCY_UNAVAILABLE', detail: 'lease validation failed' };
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // P7.1 — independent revalidation from the PERSISTED provisioning identity.
+  // Never reads `authorizationValid`/`Expired`/`Revoked` as proof of anything:
+  // those flags can only DENY, and an absent flag grants nothing.
+  // -------------------------------------------------------------------------
+  const decideAuthorization = async (
+    s: Record<string, unknown>,
+    topology: KeycloakTopologyRecord | null,
+    context: { tenantId: string; productId: string },
+  ): Promise<AuthorizationDecision> => {
+    const ctx = {
+      tenantId: context.tenantId,
+      productId: context.productId,
+      provisioningRequestId: str(s.provisioningRequestId) ?? null,
+    };
+
+    const snapshotDenial = snapshotAuthorizationDenial(s);
+    if (snapshotDenial) return { allowed: false, reason: snapshotDenial };
+
+    if (!topology) {
+      return { allowed: false, reason: 'TOPOLOGY_CONTEXT_MISSING' };
+    }
+    if (!deps.authorization) {
+      return { allowed: false, reason: 'AUTHORIZATION_SERVICE_UNAVAILABLE' };
+    }
+
+    // Canonical identity: workflow execution context and persisted topology must
+    // agree; either alone is acceptable, disagreement is fail-closed.
+    const contextRowId = str(s.authorizationRowId) ?? str(s.authorizationId) ?? null;
+    const contextVersion = intOf(s.authorizationVersion);
+    const topologyRowId = topology.authorizationId ?? null;
+    const topologyVersion = topology.authorizationVersion ?? null;
+
+    if (!contextRowId && !topologyRowId) {
+      return { allowed: false, reason: 'AUTHORIZATION_REFERENCE_MISSING' };
+    }
+    if (contextRowId && topologyRowId && contextRowId !== topologyRowId) {
+      return { allowed: false, reason: 'AUTHORIZATION_REFERENCE_MISMATCH' };
+    }
+    if (contextVersion != null && topologyVersion != null && contextVersion !== topologyVersion) {
+      return { allowed: false, reason: 'AUTHORIZATION_VERSION_MISMATCH' };
+    }
+
+    const rowId = contextRowId ?? topologyRowId;
+    const version = contextVersion ?? topologyVersion;
+    if (!rowId) return { allowed: false, reason: 'AUTHORIZATION_REFERENCE_MISSING' };
+    if (version == null || !Number.isInteger(version) || version < 1) {
+      return { allowed: false, reason: 'AUTHORIZATION_VERSION_MISSING', rowId };
+    }
+
+    let view: WorkflowReadyAuthorizationView | null;
+    try {
+      view = await withTimeout(
+        deps.authorization.revalidateBoundAuthorization({
+          authorizationRowId: rowId,
+          authorizationVersion: version,
+          provisioningRequestId: ctx.provisioningRequestId,
+        }),
+        AUTHORIZATION_TIMEOUT_MS,
+        'P7.1 authorization revalidation',
+      );
+    } catch {
+      // Timeout / unavailable dependency → fail closed (never assume valid).
+      return { allowed: false, reason: 'AUTHORIZATION_SERVICE_UNAVAILABLE', rowId, version };
+    }
+    if (!view) {
+      // Revoked, expired, superseded version, missing record or unbound request.
+      return { allowed: false, reason: 'AUTHORIZATION_NOT_VALID', rowId, version };
+    }
+
+    // Bind the canonical view to THIS tenant / product / provisioning request.
+    if (view.authorizationRowId !== rowId) {
+      return { allowed: false, reason: 'AUTHORIZATION_REFERENCE_MISMATCH', rowId, version };
+    }
+    if (view.authorizationVersion !== version) {
+      return { allowed: false, reason: 'AUTHORIZATION_VERSION_MISMATCH', rowId, version };
+    }
+    if (view.productId && context.productId && view.productId !== context.productId) {
+      return { allowed: false, reason: 'AUTHORIZATION_PRODUCT_MISMATCH', rowId, version };
+    }
+    if (view.productTenantId && view.productTenantId !== context.tenantId) {
+      return { allowed: false, reason: 'AUTHORIZATION_TENANT_MISMATCH', rowId, version };
+    }
+    if (
+      ctx.provisioningRequestId &&
+      view.requestId &&
+      view.requestId !== ctx.provisioningRequestId
+    ) {
+      return { allowed: false, reason: 'AUTHORIZATION_REQUEST_MISMATCH', rowId, version };
+    }
+
+    return { allowed: true, view, rowId, version };
+  };
+
+  /**
+   * Revalidate P7.1 and persist the (redacted) decision BEFORE the operation.
+   * Returns `null` when authorization holds, otherwise a FAILED outcome — the
+   * caller must not touch Keycloak in that case.
+   */
+  const guardAuthorization = async (params: {
+    input: WorkflowHandlerInput;
+    s: Record<string, unknown>;
+    topology: KeycloakTopologyRecord | null;
+    tenantId: string;
+    productId: string;
+    topologyId: string;
+    operation: string;
+    startedAt: number;
+  }): Promise<WorkflowHandlerOutcome | null> => {
+    const decision = await decideAuthorization(params.s, params.topology, {
+      tenantId: params.tenantId,
+      productId: params.productId,
+    });
+    const evidence = authorizationEvidence(decision, {
+      tenantId: params.tenantId,
+      productId: params.productId,
+      provisioningRequestId: str(params.s.provisioningRequestId) ?? null,
+    });
+
+    if (decision.allowed) {
+      if (params.topologyId) {
+        await recordEvidence(
+          params.topologyId,
+          params.tenantId,
+          params.input,
+          `${params.operation}:authorization_check`,
+          'SUCCEEDED',
+          evidence,
+          params.startedAt,
+        );
+      }
+      return null;
+    }
+
+    if (params.topologyId) {
+      await recordEvidence(
+        params.topologyId,
+        params.tenantId,
+        params.input,
+        `${params.operation}:authorization_check`,
+        'FAILED',
+        evidence,
+        params.startedAt,
+        { code: KeycloakErrorCode.AUTHORIZATION_FAILED, message: `P7.1 denied: ${decision.reason}` },
+      );
+    }
+    return fail(
+      KeycloakErrorCode.AUTHORIZATION_FAILED,
+      `P7.1 authorization denied: ${decision.reason}`,
+      false,
+    );
+  };
+
+  /** P7.4 guard: authoritative lease check + durable denial evidence. */
+  const leaseGuard = async (
+    input: WorkflowHandlerInput,
+    topologyId: string,
+    tenantId: string,
+    operation: string,
+    startedAt: number,
+  ): Promise<WorkflowHandlerOutcome | null> => {
+    const leaseCheck = await validateLease(input);
+    if (leaseCheck.valid) return null;
+    if (topologyId) {
+      await deps.repo
+        .createEvidence({
+          topologyId,
+          tenantId,
+          workflowId: input.workflowId ?? null,
+          stepKey: input.stepKey ?? null,
+          operation: `${operation}:fencing_denied`,
+          outcome: 'FAILED',
+          evidence: redactSecrets({
+            fencingDenialReason: leaseCheck.reason,
+            fencingDenialDetail: leaseCheck.detail ?? null,
+            suppliedFencingToken: Number.isInteger(input.fencingToken) ? input.fencingToken : null,
+            // Audit value (non-secret): which sequence the rejected worker presented.
+            presentedFencingSequence: Number.isInteger(input.fencingToken)
+              ? input.fencingToken
+              : null,
+            workerId: input.workerId,
+            decidedAt: new Date().toISOString(),
+          }),
+          errorCode: KeycloakErrorCode.CONFLICT,
+          errorMessage: redactSensitive(
+            `P7.4 lease rejected: ${leaseCheck.reason}${leaseCheck.detail ? ` (${leaseCheck.detail})` : ''}`,
+          ),
+          durationMs: Date.now() - startedAt,
+          performedBy: input.workerId ?? null,
+        })
+        .catch(() => undefined);
+    }
+    return fail(
+      KeycloakErrorCode.CONFLICT,
+      `P7.4 fencing/lease rejected: ${leaseCheck.reason}${leaseCheck.detail ? ` (${leaseCheck.detail})` : ''}`,
+      false,
+    );
+  };
+
+  /**
+   * Executed immediately before EVERY external Keycloak mutation (and before
+   * compensation): fresh lease validation + fresh P7.1 revalidation. Returns
+   * `null` when both hold; otherwise the caller must abort without calling the
+   * provider.
+   */
+  const beforeMutation = async (params: {
+    input: WorkflowHandlerInput;
+    s: Record<string, unknown>;
+    topology: KeycloakTopologyRecord | null;
+    tenantId: string;
+    topologyId: string;
+    operation: string;
+    startedAt: number;
+  }): Promise<WorkflowHandlerOutcome | null> => {
+    const denied = await leaseGuard(
+      params.input,
+      params.topologyId,
+      params.tenantId,
+      params.operation,
+      params.startedAt,
+    );
+    if (denied) return denied;
+    return guardAuthorization({
+      input: params.input,
+      s: params.s,
+      topology: params.topology,
+      tenantId: params.tenantId,
+      productId: params.topology?.productId ?? '',
+      topologyId: params.topologyId,
+      operation: params.operation,
+      startedAt: params.startedAt,
+    });
+  };
+
   return async (input, key: KeycloakHandlerKey): Promise<WorkflowHandlerOutcome> => {
     const s = snap(input);
     const actorId = str(s.actorId) ?? input.workerId;
@@ -138,15 +501,9 @@ export function createLiveKeycloakExecutor(deps: {
     const topologyId = str(s.topologyId) ?? '';
     const startedAt = Date.now();
 
-    // Fencing guard (stale workers must never validate an operation).
-    try {
-      assertFencingToken(input.fencingToken, input.fencingToken); // basic non-negative guard
-    } catch {
-      return fail(KeycloakErrorCode.VALIDATION, 'Invalid fencing token');
-    }
-    if (input.fencingToken < 0) {
-      return fail(KeycloakErrorCode.VALIDATION, 'fencingToken must be >= 0');
-    }
+    // P7.4 — authoritative lease check BEFORE any work (execute AND compensate).
+    const leaseDenied = await leaseGuard(input, topologyId, tenantId, key, startedAt);
+    if (leaseDenied) return leaseDenied;
 
     if (!topologyId && key !== 'keycloak.validate_plan') {
       return fail(KeycloakErrorCode.VALIDATION, 'topologyId required in workflow input');
@@ -161,6 +518,22 @@ export function createLiveKeycloakExecutor(deps: {
           const ctx = await loadTopologyContext(s);
           if (!ctx) return fail(KeycloakErrorCode.VALIDATION, 'Topology not found (fail-closed)');
           const { topology, server, caps } = ctx;
+
+          // P7.1 — independent canonical revalidation (fail-closed). The
+          // snapshot flags below are only ever consulted as DENIALS inside
+          // decideAuthorization(); they can never substitute for this check.
+          const authzDenied = await guardAuthorization({
+            input,
+            s,
+            topology,
+            tenantId,
+            productId: topology.productId,
+            topologyId,
+            operation: 'validate_plan',
+            startedAt,
+          });
+          if (authzDenied) return authzDenied;
+
           const issues: string[] = [];
           if (!server) issues.push('server unregistered');
           if (server && server.operationalStatus !== 'ACTIVE') issues.push('server not ACTIVE');
@@ -171,13 +544,6 @@ export function createLiveKeycloakExecutor(deps: {
             !caps?.organizationsSupported
           ) {
             issues.push('organizations capability not verified on server');
-          }
-          if (
-            str(s.authorizationRevoked) === 'true' ||
-            str(s.authorizationExpired) === 'true' ||
-            str(s.authorizationValid) === 'false'
-          ) {
-            issues.push('P7.1 authorization not valid (revoked/expired/absent)');
           }
           if (issues.length) {
             await recordEvidence(topologyId, tenantId, input, 'validate_plan', 'FAILED', { issues }, startedAt, {
@@ -232,6 +598,18 @@ export function createLiveKeycloakExecutor(deps: {
           const realmName = str((topology.metadata as Record<string, unknown>).resolvedRealmName) ?? '';
           if (!realmName) return fail(KeycloakErrorCode.VALIDATION, 'Resolved realm name missing');
 
+          // P7.1 + P7.4 before touching ANY state (write or provider call).
+          const entryDenied = await beforeMutation({
+            input,
+            s,
+            topology,
+            tenantId,
+            topologyId,
+            operation: `${key}:precheck`,
+            startedAt,
+          });
+          if (entryDenied) return entryDenied;
+
           // Status: PROVISIONING (idempotent transition guard applied by repo version).
           await deps.repo.updateTopology(
             topology.id,
@@ -278,6 +656,17 @@ export function createLiveKeycloakExecutor(deps: {
               realmSettings: settings,
               expectedFingerprint: topology.resourceFingerprint ?? '',
             };
+            // Fresh P7.1 + P7.4 validation IMMEDIATELY before the external call.
+            const realmDenied = await beforeMutation({
+              input,
+              s,
+              topology,
+              tenantId,
+              topologyId,
+              operation: 'provision_realm',
+              startedAt,
+            });
+            if (realmDenied) return realmDenied;
             // REAL Keycloak call — idempotent (reconciles before create).
             const observation = await deps.provider.createRealm(conn, target);
 
@@ -314,6 +703,16 @@ export function createLiveKeycloakExecutor(deps: {
 
             // Apply authorized technical settings (only when realm already existed and settings changed).
             if (observation.exists && observation.fingerprint !== (topology.resourceFingerprint ?? null)) {
+              const settingsDenied = await beforeMutation({
+                input,
+                s,
+                topology,
+                tenantId,
+                topologyId,
+                operation: 'provision_realm:settings',
+                startedAt,
+              });
+              if (settingsDenied) return settingsDenied;
               await deps.provider.updateRealmSettings(conn, realmName, settings);
             }
 
@@ -388,6 +787,17 @@ export function createLiveKeycloakExecutor(deps: {
           const alias =
             str((topology.metadata as Record<string, unknown>).resolvedOrgAlias) ??
             deriveOrgAlias(topology.tenantId);
+          // Fresh P7.1 + P7.4 validation IMMEDIATELY before the external call.
+          const orgDenied = await beforeMutation({
+            input,
+            s,
+            topology,
+            tenantId,
+            topologyId,
+            operation: 'provision_organization',
+            startedAt,
+          });
+          if (orgDenied) return orgDenied;
           const observation = await deps.provider.createOrganization(
             conn,
             realmName,
@@ -445,6 +855,16 @@ export function createLiveKeycloakExecutor(deps: {
         case 'keycloak.configure_oidc': {
           const ctx = await loadTopologyContext(s);
           if (!ctx?.topology || !ctx.realm) return fail(KeycloakErrorCode.VALIDATION, 'Realm not provisioned');
+          const oidcDenied = await beforeMutation({
+            input,
+            s,
+            topology: ctx.topology,
+            tenantId,
+            topologyId,
+            operation: 'configure_oidc',
+            startedAt,
+          });
+          if (oidcDenied) return oidcDenied;
           const conn = await connectionFor(ctx.topology.serverId);
           const doc = await deps.provider.getOpenidConfiguration(conn, ctx.realm.realmName);
           const issuer = str(doc.issuer);
@@ -559,6 +979,17 @@ export function createLiveKeycloakExecutor(deps: {
           }
 
           const conn = await connectionFor(ctx.topology.serverId);
+          // P7.1 + P7.4 before any client work (state writes + provider calls).
+          const clientEntryDenied = await beforeMutation({
+            input,
+            s,
+            topology: ctx.topology,
+            tenantId,
+            topologyId,
+            operation: 'create_technical_client',
+            startedAt,
+          });
+          if (clientEntryDenied) return clientEntryDenied;
           const created: Array<{ clientId: string; externalId: string; secretRef: string | null }> = [];
           for (const spec of declared) {
             const clientId = str(spec.clientId);
@@ -596,6 +1027,17 @@ export function createLiveKeycloakExecutor(deps: {
               return fail(KeycloakErrorCode.VALIDATION, `Client ${clientId} is NON_COMPLIANT`);
             }
 
+            // Fresh P7.1 + P7.4 validation IMMEDIATELY before the external call.
+            const clientDenied = await beforeMutation({
+              input,
+              s,
+              topology: ctx.topology,
+              tenantId,
+              topologyId,
+              operation: 'create_technical_client',
+              startedAt,
+            });
+            if (clientDenied) return clientDenied;
             // REAL Keycloak create (idempotent).
             const res = await deps.provider.createTechnicalClient(conn, ctx.realm.realmName, {
               clientId,
@@ -666,6 +1108,16 @@ export function createLiveKeycloakExecutor(deps: {
         case 'keycloak.verify_topology': {
           const ctx = await loadTopologyContext(s);
           if (!ctx?.topology || !ctx.realm) return fail(KeycloakErrorCode.VALIDATION, 'Realm not provisioned');
+          const verifyDenied = await beforeMutation({
+            input,
+            s,
+            topology: ctx.topology,
+            tenantId,
+            topologyId,
+            operation: 'verify_topology',
+            startedAt,
+          });
+          if (verifyDenied) return verifyDenied;
           const conn = await connectionFor(ctx.topology.serverId);
           const observedRealm = await deps.provider.realmExists(conn, ctx.realm.realmName);
 
@@ -747,6 +1199,19 @@ export function createLiveKeycloakExecutor(deps: {
         case 'keycloak.reconcile_topology': {
           const ctx = await loadTopologyContext(s);
           if (!ctx?.topology || !ctx.realm) return fail(KeycloakErrorCode.VALIDATION, 'Realm not provisioned');
+
+          // Reconciliation is a protected boundary: fresh lease + P7.1 first.
+          const reconcileEntryDenied = await beforeMutation({
+            input,
+            s,
+            topology: ctx.topology,
+            tenantId,
+            topologyId,
+            operation: 'reconcile',
+            startedAt,
+          });
+          if (reconcileEntryDenied) return reconcileEntryDenied;
+
           const conn = await connectionFor(ctx.topology.serverId);
           const observedRealm = await deps.provider.realmExists(conn, ctx.realm.realmName);
           const clients = await deps.repo.listClients(ctx.topology.id);
@@ -762,6 +1227,12 @@ export function createLiveKeycloakExecutor(deps: {
               ? existsOrg(await deps.provider.organizationExists(conn, ctx.realm.realmName, ctx.org.orgAlias))
               : true;
 
+          // ALLOWED-settings drift (external modification of a managed setting).
+          const desiredSettings = desiredRealmSettings(ctx.realm, ctx.topology.metadata);
+          const settingsDrift = observedRealm.exists
+            ? diffRealmSettings(desiredSettings, observedRealm.settings ?? {})
+            : [];
+
           const driftDetails: Array<Record<string, unknown>> = [];
           if (!observedRealm.exists) {
             driftDetails.push({ kind: 'REALM_MISSING', expected: ctx.realm.realmName });
@@ -770,6 +1241,9 @@ export function createLiveKeycloakExecutor(deps: {
             driftDetails.push({ kind: 'CLIENTS_MISSING', missing: observedClients.filter((c) => !c.exists) });
           }
           if (!observedOrg) driftDetails.push({ kind: 'ORGANIZATION_MISSING' });
+          if (settingsDrift.length) {
+            driftDetails.push({ kind: 'REALM_SETTINGS_DRIFT', fields: settingsDrift });
+          }
           const driftDetected = driftDetails.length > 0;
           const classification = !observedRealm.exists
             ? 'CRITICAL'
@@ -787,6 +1261,9 @@ export function createLiveKeycloakExecutor(deps: {
               realmFingerprint: observedRealm.fingerprint,
               clients: observedClients,
               organizationsEnabled: observedOrg,
+              observedSettings: observedRealm.settings ?? null,
+              desiredSettings,
+              settingsDrift,
             },
             driftDetected,
             driftClassification: driftDetected ? classification : null,
@@ -820,6 +1297,85 @@ export function createLiveKeycloakExecutor(deps: {
             );
             return fail(KeycloakErrorCode.DRIFT_DETECTED, 'Realm deleted outside Edge — quarantined', false);
           }
+
+          // Remediation of ALLOWED settings drift only — guarded immediately
+          // before the external write, and NEVER a recreate/delete of the realm.
+          let remediatedSettings: Array<{ field: string; desired: unknown; observed: unknown }> = [];
+          if (settingsDrift.length) {
+            const remediateDenied = await beforeMutation({
+              input,
+              s,
+              topology: ctx.topology,
+              tenantId,
+              topologyId,
+              operation: 'reconcile:remediate_settings',
+              startedAt,
+            });
+            if (remediateDenied) return remediateDenied;
+            try {
+              await deps.provider.updateRealmSettings(conn, ctx.realm.realmName, desiredSettings);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              await deps.repo.completeReconciliationRun(run.id, {
+                outcome: 'FAILED',
+                completedAt: new Date(),
+              });
+              await recordEvidence(
+                topologyId, tenantId, input, 'reconcile', 'FAILED',
+                { driftDetails, remediation: 'settings', error: message },
+                startedAt,
+                { code: KeycloakErrorCode.DRIFT_DETECTED, message: 'settings remediation failed' },
+              );
+              return fail(KeycloakErrorCode.DRIFT_DETECTED, `Settings remediation failed: ${message}`, true);
+            }
+            const reobserved = await deps.provider.realmExists(conn, ctx.realm.realmName);
+            remediatedSettings = diffRealmSettings(desiredSettings, reobserved.settings ?? {});
+          }
+
+          const residualDrift = [
+            ...(observedRealm.exists ? [] : [{ kind: 'REALM_MISSING' }]),
+            ...(allClientsExist ? [] : [{ kind: 'CLIENTS_MISSING' }]),
+            ...(observedOrg ? [] : [{ kind: 'ORGANIZATION_MISSING' }]),
+            ...(remediatedSettings.length
+              ? [{ kind: 'REALM_SETTINGS_DRIFT', fields: remediatedSettings }]
+              : []),
+          ];
+          const cleanAfterRemediation = residualDrift.length === 0;
+
+          if (settingsDrift.length && cleanAfterRemediation) {
+            const after = (await deps.repo.getTopology(ctx.topology.id)) ?? current;
+            await deps.repo.updateTopology(
+              ctx.topology.id,
+              {
+                status:
+                  after.status === KeycloakTopologyStatus.RECONCILIATION_REQUIRED ||
+                  after.status === KeycloakTopologyStatus.DEGRADED
+                    ? KeycloakTopologyStatus.READY
+                    : after.status,
+                statusReason: null,
+                lastReconciliationAt: new Date(),
+              },
+              after.version,
+              actorId,
+            );
+            await deps.repo.completeReconciliationRun(run.id, {
+              outcome: 'REMEDIATED',
+              actionTaken: 'REMEDIATE_SETTINGS',
+              completedAt: new Date(),
+            });
+            await recordEvidence(
+              topologyId, tenantId, input, 'reconcile', 'SUCCEEDED',
+              { driftDetected: true, classification, driftDetails, remediated: true, settingsDrift },
+              startedAt,
+            );
+            return ok({
+              driftDetected: true,
+              remediated: true,
+              settingsDrift: settingsDrift.map((d) => d.field),
+              reconciliationId: run.id,
+            });
+          }
+
           if (driftDetected) {
             const after = (await deps.repo.getTopology(ctx.topology.id)) ?? current;
             await deps.repo.updateTopology(
@@ -829,7 +1385,7 @@ export function createLiveKeycloakExecutor(deps: {
               actorId,
             );
             await deps.repo.completeReconciliationRun(run.id, {
-              outcome: 'REMEDIATED',
+              outcome: 'FAILED',
               completedAt: new Date(),
             });
           } else {
@@ -885,6 +1441,18 @@ export function createLiveKeycloakExecutor(deps: {
           if (ctx.topology.deletionProtection && !authorized) {
             return fail(KeycloakErrorCode.DEPROVISION_FORBIDDEN, 'Deletion protection active');
           }
+          // Compensation boundary: repeat the P7.4 lease + P7.1 checks before
+          // any state transition triggered by a compensation.
+          const depDenied = await beforeMutation({
+            input,
+            s,
+            topology: ctx.topology,
+            tenantId,
+            topologyId,
+            operation: 'deprovision',
+            startedAt,
+          });
+          if (depDenied) return depDenied;
           await recordEvidence(
             topologyId, tenantId, input, 'deprovision', 'SKIPPED',
             { note: 'deprovisioning authorized; realm deletion deferred to retention policy' },
@@ -940,7 +1508,72 @@ export function createLiveKeycloakExecutor(deps: {
 function oracleValid(oidc: { discoveryValidated: boolean; jwksValidated: boolean }): boolean {
   return oidc.discoveryValidated;
 }
-
 function existsOrg(o: { exists: boolean }): boolean {
   return o.exists;
+}
+
+/**
+ * Desired realm settings = persisted realm row (what Edge believes is applied)
+ * overridden by the authorized deployment-contract settings. Used by
+ * reconciliation to detect EXTERNAL drift on ALLOWED settings only.
+ */
+function desiredRealmSettings(
+  realm: {
+    sslRequired: string;
+    ssoSessionIdleSeconds: number;
+    ssoSessionMaxSeconds: number;
+    accessTokenLifespanSeconds: number;
+    passwordPolicy: string | null;
+    revokeRefreshToken: boolean;
+    refreshTokenMaxReuse: number;
+  },
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const meta = (
+    typeof metadata.realmSettings === 'object' && metadata.realmSettings
+      ? metadata.realmSettings
+      : {}
+  ) as Record<string, unknown>;
+  const pick = (...candidates: unknown[]): unknown =>
+    candidates.find((c) => c !== undefined && c !== null);
+  return {
+    sslRequired: String(pick(meta.sslRequired, realm.sslRequired)),
+    ssoSessionIdleTimeout: Number(
+      pick(meta.ssoSessionIdleTimeout, meta.ssoSessionIdle, realm.ssoSessionIdleSeconds),
+    ),
+    ssoSessionMaxLifespan: Number(
+      pick(meta.ssoSessionMaxLifespan, meta.ssoSessionMax, realm.ssoSessionMaxSeconds),
+    ),
+    accessTokenLifespan: Number(pick(meta.accessTokenLifespan, realm.accessTokenLifespanSeconds)),
+    passwordPolicy: pick(meta.passwordPolicy, realm.passwordPolicy) ?? null,
+    revokeRefreshToken: Boolean(pick(meta.revokeRefreshToken, realm.revokeRefreshToken)),
+    refreshTokenMaxReuse: Number(pick(meta.refreshTokenMaxReuse, realm.refreshTokenMaxReuse)),
+  };
+}
+
+function settingsEqual(field: string, want: unknown, got: unknown): boolean {
+  if (field === 'passwordPolicy') {
+    const norm = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+    return norm(want) === norm(got);
+  }
+  if (typeof want === 'number') return Number(want) === Number(got);
+  if (typeof want === 'boolean') return Boolean(got) === want;
+  return String(want) === String(got);
+}
+
+/**
+ * Compare desired vs observed settings. Fields the server does not expose
+ * (`undefined`) are not comparable and never produce false drift.
+ */
+function diffRealmSettings(
+  desired: Record<string, unknown>,
+  observed: Record<string, unknown>,
+): Array<{ field: string; desired: unknown; observed: unknown }> {
+  const drift: Array<{ field: string; desired: unknown; observed: unknown }> = [];
+  for (const [field, want] of Object.entries(desired)) {
+    const got = observed[field];
+    if (want === undefined || got === undefined) continue;
+    if (!settingsEqual(field, want, got)) drift.push({ field, desired: want, observed: got });
+  }
+  return drift;
 }

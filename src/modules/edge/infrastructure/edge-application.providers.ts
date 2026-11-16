@@ -265,6 +265,7 @@ import {
 } from '../application/keycloak-topology/keycloak.use-cases.js';
 import { HttpKeycloakAdminAdapter } from './keycloak/keycloak-admin.adapter.js';
 import { createLiveKeycloakExecutor } from './keycloak/live-keycloak.executor.js';
+import { RepositoryWorkflowLeaseValidator } from '../domain/workflow/workflow-lease.port.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4103,21 +4104,27 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     // Live executor: bridges P7.4 handlers → P7.7 use cases + REAL Keycloak API.
+    // P7.1 authorization + P7.4 lease validation are injected as authoritative
+    // dependencies (fail-closed when either is missing).
     provide: KEYCLOAK_LIVE_EXECUTOR,
-    useFactory: (repo, provider, secrets, discover, createTopology) =>
+    useFactory: (repo, wfRepo, provider, secrets, discover, createTopology, auth) =>
       createLiveKeycloakExecutor({
         repo,
         provider,
         secrets,
         discoverCapabilities: discover,
         createTopology,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
       }),
     inject: [
       KEYCLOAK_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
       KEYCLOAK_PROVIDER_PORT,
       SECRETS_PROVIDER_PORT,
       DiscoverKeycloakCapabilitiesUseCase,
       CreateKeycloakTopologyUseCase,
+      WORKFLOW_AUTHORIZATION_PORT,
     ],
   },
   {

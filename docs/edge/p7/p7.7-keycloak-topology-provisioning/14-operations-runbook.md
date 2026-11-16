@@ -1,6 +1,14 @@
 # P7.7 — Operations Runbook
 
+**Updated:** 2026-11-16 (remediation — Organizations per-realm switch + reconcile routing).
+
 All steps assume an authenticated Edge console/API caller with the listed `platform:keycloak:*` permission.
+
+## Keycloak 26 Organizations notes
+
+- Server must enable the feature (`--features=organization` / ORGANIZATION feature enabled).
+- Each shared realm used for Model B must have `organizationsEnabled=true` (Edge sets this on create/adopt).
+- Organization create requires at least one domain; Edge supplies a technical `*.edge.internal` domain — not a business identity.
 
 ## 1. Register a Keycloak server — `platform:keycloak:manage`
 
@@ -51,11 +59,16 @@ POST edge/keycloak/topologies/:id/reconcile   { idempotencyKey?, provisioningReq
 GET  edge/keycloak/topologies/:id/reconciliations
 ```
 
+- Launches definition **`p77.keycloak.topology.reconcile`** only (`validate_plan` → `reconcile_topology`).
+- Does **not** invoke `createRealm` / `createOrganization` / `createTechnicalClient` (in-place settings remediation on allowed fields).
+- Requires persisted topology + P7.1 provisioning authorization context (fail-closed).
+
 | Run outcome | Topology status | Action |
 |-------------|-----------------|--------|
 | `NO_DRIFT` | unchanged / `DEGRADED→READY` | none |
-| `REMEDIATED` | `RECONCILIATION_REQUIRED` | schedule re-apply workflow |
+| `REMEDIATED` | settings restored in place | verify evidence + history |
 | `QUARANTINED` | `QUARANTINED` (`realm-missing-outside-edge`) | **manual** ownership/safety assessment — Edge never auto-recreates a deleted realm |
+| Server unreachable | step `FAILED` / `RETRY_PENDING` | restore connectivity; retry — no blind recreate |
 
 ## 6. Deprovision — `platform:keycloak:deprovision`
 

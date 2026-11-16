@@ -2,94 +2,105 @@
 
 | Field | Value |
 |-------|-------|
-| **Package** | Keycloak Topology Provisioning |
-| **Date** | 2026-11-12 |
+| **Package** | Keycloak Topology Provisioning — Security & Integration Remediation |
+| **Date** | 2026-11-16 |
 | **Branch** | `feature/console` (both repos) |
 | **Boundary** | P7.8+ (deployment configs, product provisioning, readiness/activation) **NOT implemented** |
+| **Verdict** | **READY FOR RE-AUDIT** |
 
 ## Git state
 
-| Repo | HEAD | P7.7 changes | Push |
-|------|------|--------------|------|
-| `saas-templates-backend` | `b3cf3ac` (`b3cf3ac9d3d572f9c8414f95d0a12c366a3368e8`) | **UNCOMMITTED** as of writing | **FAILED — HTTP 403** (account `kabikaAsyst` lacks permission on `ntrus-saas-plateform/*`; unchanged blocker since P7.6) |
-| `saas-template-frontend` | `0f59c98` (`0f59c98c5fc4b50e5cbaf7e9e439f47de77df5ce`) | **UNCOMMITTED** | same 403 blocker |
+| Repo | HEAD | P7.7 remediation | Push |
+|------|------|------------------|------|
+| `saas-templates-backend` | _(recorded after local commit on `feature/console`)_ | **COMMITTED locally** | Retry reported below — do not claim remote publication on 403 |
+| `saas-template-frontend` | `d7dcb2eb4181070d643ca3300ca5250ff6c097ed` | Clean working tree (no additional P7.7 remediation diff) | Same remote permission constraints as backend |
 
-## Acceptance criteria (mandate §20)
+## Fixed defects (this remediation)
+
+| # | Defect | Fix |
+|---|--------|-----|
+| P0-1 | P7.1 authorization trusted snapshot flags / string-only helper | Canonical `WorkflowAuthorizationPort.revalidateBoundAuthorization` injected into `live-keycloak.executor`; fail-closed on missing/stale/revoked/expired/timeout; durable redacted evidence |
+| P0-2 | Fencing compared token to itself | `WorkflowLeasePort` / `RepositoryWorkflowLeaseValidator` validates authoritative step lease (worker, expiry, fencing token) before every mutation and compensation |
+| P1-1 | Reconciliation launched provision definition | Controller + `LaunchTopologyWorkflowUseCase` route to `p77.keycloak.topology.reconcile` (`validate_plan` → `reconcile_topology`); routing unit tests |
+| P1-2 | Org capability probe mistaken for creation test | Live Testcontainers path creates technical org, read-back, idempotent adoption, partial-failure recovery, asserts no business identities |
+| P1-3 | Live reconciliation not executed | Live path: dedicated realm → external drift → reconcile → remediate → idempotent NO_DRIFT → server-loss fail-closed → recovery |
+| Runtime | `advanceDependents` read steps outside TX | `listSteps(..., client)` so dependents become READY in the same transaction as complete |
+| Runtime | Audit UUID columns rejected worker ids | `requireAudit` binds UUIDs only; free-form worker ids preserved as `actorRef` |
+| Runtime | KC 26 Organizations per-realm switch + domain required | `organizationsEnabled` + technical domain on create; feature detection parses FeatureRepresentation objects |
+| Runtime | Realm settings PUT used thin/legacy projection | Full realm GET + allow-listed KC 26 field overlay |
+| Runtime | Definition version invisible in open TX | `ensureKeycloakDefinition` uses `created.version` from `createDefinition` |
+
+## Acceptance criteria (mandate)
 
 | # | Criterion | Verdict | Evidence |
 |---|-----------|---------|----------|
-| 1 | Edge provisions Keycloak topologies — Model A `DEDICATED_REALM`, Model B `SHARED_REALM_ORGANIZATIONS` (Keycloak Organizations), Model C `EXTERNAL_SPECIFIC` | **PASS** | `keycloak-plan.ts` gating, executor branches; A live-tested (8/8), B/C code paths + probes (see §"Topology test honesty") |
-| 2 | No business IAM in Edge (no tenant end-users, org memberships, business roles/permissions, customer invitations) | **PASS** | No user/membership tables or operations; provider constraints `noBusinessUsers`/`noBusinessRoles` asserted in DB suite; orgs marked `technical_purpose` |
-| 3 | P7.8+ boundary respected (no deployment configs, product provisioning, readiness/activation) | **PASS** | Nothing implemented beyond topology provisioning; stated in migration header + docs |
-| 4 | Lifecycle statuses + fail-closed state machine (`READY` only via `VERIFYING`) | **PASS** | `keycloak-state-machine.ts` + `.spec` (unit suite 855/855) |
-| 5 | Real Keycloak Admin API — no simulated provisioning | **PASS** | `HttpKeycloakAdminAdapter` executed against `quay.io/keycloak/keycloak:26.0.7` (live 8/8); handlers fail without live executor |
-| 6 | Secrets only as opaque `credential_ref` (vault) | **PASS** | Security masking tests + DB schema-guard test; registration fails without vault |
-| 7 | Mutations only through P7.4 workflows (handler keys, saga + compensation) | **PASS** | 9 `KEYCLOAK_HANDLER_KEYS`, 4 workflow definitions, workflow-only controller |
-| 8 | Fencing discipline (stale/invalid token ⇒ no Keycloak call) | **PASS** | `isValidFencingToken` integer `>= 1` (defect #2 fixed); 2 security tests |
-| 9 | P7.1 authorization revalidated fail-closed at every boundary | **PASS** | Plan validation, provisioning request required, launch revalidation, `validate_plan` step; 3 security tests |
-| 10 | SSRF confinement to registered server origin | **PASS** | 5 security tests + live hostile-realm test (404 on registered server) |
-| 11 | RBAC-protected API (7 `platform:keycloak:*` permissions) | **PASS** | Migration 102 seed + per-route `@RequireEdgePermissions`; frontend RBAC gates |
-| 12 | Migration 102 with 14 mandated tables | **PASS** | DB integration suite: migration applied, `KEYCLOAK_TABLES` all present |
-| 13 | Durable evidence + history + audit + outbox atomically | **PASS** | Evidence mandatory in executor; outbox TX pattern; DB suite evidence/history test |
-| 14 | Reconciliation with drift detection, no blind recreate/delete | **PASS** (code + unit/DB) | Reconcile run classification; live reconcile cycle **not executed** |
-| 15 | Capability discovery persisted (serverinfo + org probe) | **PASS** | Live capabilities test; `edge_p7_keycloak_capabilities` upsert |
-| 16 | Frontend console: TanStack Query, RBAC, credential masking | **PASS** | 6 module tests (masking `••••••••`, forbidden state, history gate, explicit reconcile) |
-| 17 | Typecheck + lint clean for P7.7 code | **PASS** | Backend `tsc --noEmit` 0 errors; lint 0 errors; frontend 0 errors in P7.7 files |
-| 18 | Executed test matrix green | **PASS** | 855/855 unit · 58/58 security · 7/7 DB IT · 8/8 live · 120/120 frontend |
-| 19 | Honest reporting of gaps | **PASS** | Gaps listed below and in `12-test-evidence.md` |
-| 20 | Push to remote | **FAILED (403)** | Known permission blocker on `ntrus-saas-plateform/*` — not a P7.7 code issue |
+| 1 | Model A/B/C topology paths | **PASS** (A+B live; C code-path SKIPPED) | Live suite 12/12 |
+| 2 | No business IAM | **PASS** | Live org test: 0 users/groups/members; roles unchanged |
+| 3 | P7.8+ boundary | **PASS** | Unchanged |
+| 4 | Lifecycle / state machine | **PASS** | Unit + `RETRY_PENDING → SUCCEEDED` allowed for recovery |
+| 5 | Real Admin API | **PASS** | KC **26.0.7** Testcontainers |
+| 6 | Vault-only secrets | **PASS** | Security + live redaction |
+| 7 | Mutations via P7.4 only | **PASS** | Executor + routing tests |
+| 8 | Real P7.4 fencing | **PASS** | Security harness stale-worker + lease port |
+| 9 | P7.1 fail-closed revalidation | **PASS** | Security + live revocation between steps (0 provider calls) |
+| 10 | SSRF | **PASS** | Security + live |
+| 11 | RBAC | **PASS** | Unchanged + frontend clean |
+| 12 | Migration 102 | **PASS** | DB suite |
+| 13 | Evidence / history / audit / outbox | **PASS** | Live + DB |
+| 14 | Reconciliation without blind recreate | **PASS** | Live §5 |
+| 15 | Capability discovery | **PASS** | Live asserts `organizationsSupported=true` on KC 26 |
+| 16 | Frontend console | **PASS** | No remediation delta; HEAD clean |
+| 17 | Typecheck | **PASS** | `tsc --noEmit` 0 |
+| 18 | Executed matrix green | **PASS** | See results below |
+| 19 | Honest gaps | **PASS** | Model C still not live; push may remain 403 |
+| 20 | Remote push | **REPORT ONLY** | Exact error if still 403 — not ACCEPTED solely on local green |
 
-## Topology test honesty
-
-| Model | Code | Live evidence |
-|-------|------|---------------|
-| A `DEDICATED_REALM` | full path | **LIVE-TESTED** (realm create/re-adopt, client, OIDC discovery vs KC 26.0.7) |
-| B `SHARED_REALM_ORGANIZATIONS` | full path (capability-gated) | **PROBE-COVERED ONLY** — container runs `--features=organization`; org **creation** not exercised by an executed live test |
-| C `EXTERNAL_SPECIFIC` | plan-requires-certified-adapter; executor `SKIPPED` | **NOT LIVE-TESTED** (no external adapter available) |
-
-## Tests executed / results (2026-11-12)
+## Tests executed / results (2026-11-16)
 
 | Suite | Result |
 |-------|--------|
-| Backend unit (`vitest.config.ts`) | **855/855 passed** |
-| Backend security (`vitest.config.security.ts`) | **58/58 passed** (12 P7.7) |
-| Backend integration DB (`edge-keycloak-topology-db.spec.ts`, TESTCONTAINERS=true) | **7/7 passed** |
-| Backend live Keycloak (`edge-keycloak-live.spec.ts`, TESTCONTAINERS=true, KC **26.0.7**) | **8/8 passed** |
-| Backend typecheck / lint | **0 errors / 0 errors** (2 pre-existing-style warnings in adapter) |
-| Frontend vitest | **120/120 passed** (22 files, incl. 6 P7.7) |
-| Frontend tsc | **0 errors in P7.7 files**; 85 pre-existing errors in untouched files (`app/(edge-console)/edge/subscriptions/page.tsx`, `components/edge/infrastructure/shared.tsx`, `components/identity/user-admin-hub.tsx`) |
+| Backend unit | **861 / 861 passed** |
+| Backend security | **89 / 89 passed** (incl. P7.1/P7.4 harness) |
+| Backend live Keycloak (`TESTCONTAINERS=true`, KC **26.0.7**) | **12 / 12 passed** |
+| Backend typecheck | **0 errors** |
+| Frontend working tree | **clean** at `d7dcb2eb…` |
 
-## Tests NOT executed (pending / out of scope)
+### Live Keycloak results (detail)
 
-- **Model B live org creation end-to-end** — the live container enables organizations, but the org create path is exercised only via the probe (`organizationExists`); `createOrganization` has no executed live test.
-- Live reconciliation cycle against a real server; live Model C; HTTP smoke test of controller endpoints (not part of the matrix).
-- Frontend TS debt cleanup (85 pre-existing errors outside P7.7 files).
+| Area | Result |
+|------|--------|
+| Realm creation (dedicated) | PASS — create + idempotent re-adopt |
+| Organization creation (Model B) | PASS — create, Admin API read-back (id+alias), idempotent adoption, partial-failure recovery, no business users/roles/memberships |
+| Reconciliation | PASS — drift on `ssoSessionIdleTimeout`, in-place remediate, NO_DRIFT repeat, server unavailability fail-closed + recovery |
+| P7.1 fail-closed (live) | PASS — revocation between steps → DENY evidence, **zero** provider mutation calls |
+| Controller reconcile routing | PASS — instance `workflow_type=keycloak.topology.reconcile`, definition handlers exact |
 
-## Security control results
+### Security / fencing
 
-| Control | Result |
-|---------|--------|
-| SSRF origin confinement | **PASS** (5 security + live hostile-realm tests) |
-| Secret redaction / vault-only storage | **PASS** (masking tests, schema guard, live health/redaction) |
-| Fencing fail-closed | **PASS** (defect #2 fixed) |
-| P7.1 authz fail-closed | **PASS** |
-| Redirect/origin policy | **PASS** |
-| Defects fixed during P7.7 | #1 KC 26 field names · #2 fencing tokens · #3 stale-token 403 (live-only) · #4 jsdom `scrollIntoView` |
+| Area | Result |
+|------|--------|
+| P7.1 denied cases → 0 Keycloak mutations | PASS (security harness) |
+| Stale worker A after B reclaim | PASS (authoritative lease validator) |
+| Controller routing (no createRealm/org/client on reconcile) | PASS |
 
-## Remaining limits
+## Remaining limitations
 
-1. Push **FAILED 403** — changes uncommitted/unpushed on both repos (owner permission issue on `ntrus-saas-plateform/*`).
-2. Frontend inherited TS debt: 85 pre-existing errors in files not touched by P7.7.
-3. Model C not live-tested; Model B org creation not live-tested; no live reconcile cycle.
+1. Remote push may still fail with **HTTP 403** on `ntrus-saas-plateform/*` — local commit only until permissions allow.
+2. Model C (`EXTERNAL_SPECIFIC`) remains code-path / SKIPPED — no certified external adapter in the lab.
+3. Frontend inherits pre-existing TS debt outside P7.7 files (unchanged).
+4. Verdict is **READY FOR RE-AUDIT**, not **ACCEPTED** — independent re-audit required after P0/P1 fixes.
 
-## Files
+## Reproducible commands
 
-**Created (backend):** `migrations/control-plane/102_edge_p7_keycloak_topology_provisioning.sql`; `src/modules/edge/domain/keycloak-topology/` (`keycloak.types.ts`, `keycloak-provider.port.ts`, `keycloak-handlers.ts`, `keycloak-state-machine.ts`, `keycloak-plan.ts`, `keycloak-repository.port.ts`, `keycloak.events.ts`, `keycloak-validation-context.ts` + `.spec` files); `src/modules/edge/application/keycloak-topology/keycloak.use-cases.ts`; `src/modules/edge/infrastructure/keycloak/` (`keycloak-admin.adapter.ts`, `live-keycloak.executor.ts`, `pg-keycloak.repository.ts`); `src/modules/edge/presentation/controllers/keycloak.controller.ts` + `dto/keycloak.dto.ts`; tests `test/security/edge-keycloak-security.spec.ts`, `test/integration/edge-keycloak-topology-db.spec.ts`, `test/integration/edge-keycloak-live.spec.ts`.
-
-**Modified (backend):** `domain/infrastructure-provisioning/secrets-provider.port.ts`, `domain/workflow/workflow-handler.port.ts`, `domain/workflow/workflow.types.ts`, `edge.module.ts`, `infrastructure/edge-application.providers.ts`, `infrastructure/persistence/edge-persistence.module.ts`, `infrastructure/workflow/workflow-handler.registry.ts`.
-
-**Frontend:** created `app/(edge-console)/edge/provisioning/keycloak/page.tsx`, `components/edge/keycloak/edge-keycloak-module.tsx`, `components/edge/keycloak/edge-keycloak-module.test.tsx`, `types/edge-keycloak.ts`; modified `lib/api/edge.ts` (+144 lines, 14 new Keycloak API functions).
+```powershell
+cd saas-templates-backend
+npx tsc --noEmit
+npm test
+npm run test:security
+$env:TESTCONTAINERS='true'
+npx vitest run --config ./vitest.config.integration.ts test/integration/edge-keycloak-live.spec.ts
+```
 
 ## Verdict
 
-**READY FOR AUDIT** — code, migration, and executed test matrix are green; remaining items are external (push 403) or explicitly disclosed live-test gaps (Models B/C, live reconcile).
+**READY FOR RE-AUDIT** — P0 P7.1 revalidation and P0 P7.4 fencing corrected in runtime code; live organization creation and live reconciliation executed against Keycloak 26.0.7; local tests green. Do not treat as ACCEPTED until independent audit confirms and remote publication (if required) succeeds.

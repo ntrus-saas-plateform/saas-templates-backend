@@ -632,10 +632,11 @@ export class PgWorkflowRepository implements WorkflowRepositoryPort {
     const rows = await this.q(`SELECT * FROM edge_p7_workflow_steps WHERE id = $1`, [id]);
     return rows[0] ? this.mapStep(rows[0]) : null;
   }
-  async listSteps(workflowId: string) {
+  async listSteps(workflowId: string, client?: unknown) {
     const rows = await this.q(
       `SELECT * FROM edge_p7_workflow_steps WHERE workflow_id = $1 ORDER BY execution_order ASC`,
       [workflowId],
+      client,
     );
     return rows.map((r) => this.mapStep(r));
   }
@@ -687,6 +688,8 @@ export class PgWorkflowRepository implements WorkflowRepositoryPort {
     workerId: string;
     leaseMs: number;
     handlerKeys?: string[];
+    /** Optional: restrict the claim to a single workflow instance (tests / targeted workers). */
+    workflowId?: string;
     client?: unknown;
   }): Promise<ClaimStepResult | null> {
     const run = async (client: PoolClient, ownTx: boolean) => {
@@ -700,10 +703,11 @@ export class PgWorkflowRepository implements WorkflowRepositoryPort {
              AND (s.next_retry_at IS NULL OR s.next_retry_at <= NOW())
              AND w.state IN ('READY','RUNNING','RETRY_PENDING','WAITING')
              AND ($1::text[] IS NULL OR s.handler_key = ANY($1::text[]))
+             AND ($2::uuid IS NULL OR s.workflow_id = $2::uuid)
            ORDER BY s.created_at ASC
            FOR UPDATE OF s SKIP LOCKED
            LIMIT 1`,
-          [params.handlerKeys ?? null],
+          [params.handlerKeys ?? null, params.workflowId ?? null],
         );
         if (!eligible.rows[0]) {
           if (ownTx) await client.query('COMMIT');

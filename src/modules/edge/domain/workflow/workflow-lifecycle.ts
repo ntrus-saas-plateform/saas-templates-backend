@@ -60,6 +60,7 @@ const INSTANCE_TRANSITIONS: Record<WorkflowInstanceState, readonly WorkflowInsta
   ],
   [WorkflowInstanceState.RETRY_PENDING]: [
     WorkflowInstanceState.RUNNING,
+    WorkflowInstanceState.SUCCEEDED,
     WorkflowInstanceState.PAUSED,
     WorkflowInstanceState.CANCEL_REQUESTED,
     WorkflowInstanceState.FAILED,

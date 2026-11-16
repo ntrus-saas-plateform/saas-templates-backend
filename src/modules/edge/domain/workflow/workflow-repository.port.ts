@@ -101,7 +101,7 @@ export interface WorkflowRepositoryPort {
     client?: unknown,
   ): Promise<WorkflowStepRecord[]>;
   getStep(id: string): Promise<WorkflowStepRecord | null>;
-  listSteps(workflowId: string): Promise<WorkflowStepRecord[]>;
+  listSteps(workflowId: string, client?: unknown): Promise<WorkflowStepRecord[]>;
   updateStep(
     id: string,
     patch: Partial<WorkflowStepRecord>,
@@ -116,6 +116,7 @@ export interface WorkflowRepositoryPort {
     workerId: string;
     leaseMs: number;
     handlerKeys?: string[];
+    workflowId?: string;
     client?: unknown;
   }): Promise<ClaimStepResult | null>;
   renewLease(params: {
