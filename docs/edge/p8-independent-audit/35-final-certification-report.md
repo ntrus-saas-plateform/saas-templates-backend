@@ -1,9 +1,9 @@
-# 35 â€” Certification finale
+# 35 — Certification finale
 
-**Campagne :** audit indÃ©pendant adversarial P8  
+**Campagne :** audit indépendant adversarial P8  
 **Date :** 2026-11-16  
-**Git (dÃ©but audit) :** backend `feature/console` @ `cd064ee` (ahead, non poussÃ©) Â· frontend @ `5b83a1b` (P8 console `8bce479` / `225c4a1`)  
-**Preuve max observÃ©e :** **E2** (Vitest policy/use-cases/auth) â€” **pas E3/E4/E5**  
+**Git (début audit) :** backend `feature/console` @ `799e255b5bbb52afe2a2214ee1c4e717caf45a17` (ahead, non poussé) · frontend @ `5b83a1b` (P8 console `8bce479` / `225c4a1`)  
+**Preuve max observée :** **E2** (Vitest policy/use-cases/auth) — **pas E3/E4/E5**  
 **Module pivot :** `src/modules/edge/**/tenant-management/`  
 **Migrations :** `108_edge_p8_advanced_tenant_management.sql`, `112_edge_p8_audit_remediation.sql`
 
@@ -13,41 +13,41 @@
 
 ## SHAs
 
-| | Audit start | Post-remÃ©diation |
+| | Audit start | Post-remédiation |
 |--|-------------|------------------|
-| Backend | `cd064ee` | `BACKEND_SHA_POST_REMEDIATION=<Ã  renseigner>` |
-| Frontend | `5b83a1b` | `FRONTEND_SHA_POST_REMEDIATION=<Ã  renseigner>` |
+| Backend | `799e255b5bbb52afe2a2214ee1c4e717caf45a17` | `799e255b5bbb52afe2a2214ee1c4e717caf45a17=<à renseigner>` |
+| Frontend | `5b83a1b` | `FRONTEND_SHA_POST_REMEDIATION=<à renseigner>` |
 
 ## Push
 
-**Non effectuÃ©** â€” branches `feature/console` **ahead** de `origin` (backend `cd064ee`, frontend `5b83a1b`).
+**Non effectué** — branches `feature/console` **ahead** de `origin` (backend `799e255b5bbb52afe2a2214ee1c4e717caf45a17`, frontend `5b83a1b`).
 
-## CritÃ¨res certification
+## Critères certification
 
-| CritÃ¨re | RÃ©sultat |
+| Critère | Résultat |
 |---------|----------|
 | P0 | 2/2 **REMEDIATED** (E2) |
-| P1 code (001â€“007, F01â€“F02, 003â€“004) | **REMEDIATED** |
+| P1 code (001–007, F01–F02, 003–004) | **REMEDIATED** |
 | P1 ouverts | `008`, `F03` partiel, `F04`, `F05`, `F10` |
 | E3 / E4 / E5 | **Absent** |
-| Dual approval legal hold | **Non implÃ©mentÃ©** (`F08`) |
-| Performance mesurÃ©e | **Non** (`F06`) |
-| RÃ©silience testÃ©e | **Non** (`F07`) |
+| Dual approval legal hold | **Non implémenté** (`F08`) |
+| Performance mesurée | **Non** (`F06`) |
+| Résilience testée | **Non** (`F07`) |
 
 ## Rationale verdict
 
-**READY FOR FINAL RE-AUDIT** â€” remÃ©diations P0/P1 critiques corroborÃ©es par E2 ; lacunes de preuve et dâ€™exÃ©cution P7 empÃªchent **ACCEPTED**.
+**READY FOR FINAL RE-AUDIT** — remédiations P0/P1 critiques corroborées par E2 ; lacunes de preuve et d’exécution P7 empêchent **ACCEPTED**.
 
-| Gate | IntitulÃ© | Statut |
+| Gate | Intitulé | Statut |
 |------|----------|--------|
 | A | Architecture | **PASS** |
 | B | Domaine & PG | **PARTIAL** |
-| C | API & sÃ©curitÃ© | **PARTIAL** |
+| C | API & sécurité | **PARTIAL** |
 | D | Ops / P7 exec | **FAIL** |
 | E | Console admin | **PASS** |
-| F | IntÃ©gration | **PARTIAL** |
-| G | RÃ©silience/perf | **OPEN** |
+| F | Intégration | **PARTIAL** |
+| G | Résilience/perf | **OPEN** |
 | H | E3/E4 | **FAIL** |
-| I | ConformitÃ© | **PARTIAL** |
+| I | Conformité | **PARTIAL** |
 | J | Certification | **OPEN** |
 
