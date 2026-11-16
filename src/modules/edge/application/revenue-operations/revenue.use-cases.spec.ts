@@ -21,7 +21,7 @@ function mockRepo(overrides: Record<string, unknown> = {}) {
     createLeakageCase: vi.fn(),
     appendBusinessAudit: vi.fn().mockResolvedValue({ id: 'audit-1' }),
     ...overrides,
-  } as never;
+  } as any;
 }
 
 describe('CalculateCommissionUseCase', () => {

@@ -31,7 +31,9 @@ describe('ControlV1BusinessBackendClient', () => {
     expect(res.body.status).toBe('provisioned');
 
     expect(fetchImpl).toHaveBeenCalledOnce();
-    const [url, init] = fetchImpl.mock.calls[0]!;
+    const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit] | undefined;
+    expect(call).toBeDefined();
+    const [url, init] = call!;
     expect(url).toBe('https://bb.example/control/v1/provision');
     expect(init?.method).toBe('POST');
     const headers = init?.headers as Record<string, string>;
@@ -67,11 +69,9 @@ describe('ControlV1BusinessBackendClient', () => {
     const state = await client.getTenantState('tenant-1');
     expect(state.body.status).toBe('active');
 
-    expect(String(fetchImpl.mock.calls[0]![0])).toContain(
-      '/control/v1/tenants/tenant-1/ready',
-    );
-    expect(String(fetchImpl.mock.calls[1]![0])).toContain(
-      '/control/v1/tenants/tenant-1/state',
-    );
+    const readyCall = fetchImpl.mock.calls[0] as unknown as [string] | undefined;
+    const stateCall = fetchImpl.mock.calls[1] as unknown as [string] | undefined;
+    expect(String(readyCall?.[0])).toContain('/control/v1/tenants/tenant-1/ready');
+    expect(String(stateCall?.[0])).toContain('/control/v1/tenants/tenant-1/state');
   });
 });

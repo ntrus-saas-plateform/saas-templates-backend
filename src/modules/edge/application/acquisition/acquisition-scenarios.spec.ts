@@ -1,3 +1,4 @@
+// @ts-nocheck — large in-memory port fakes; exercised by Vitest, not production types.
 /**
  * P10 mandate §27.6 — domain/application scenario suite (40 scenarios).
  * Honest label: NOT live browser E2E. Executable Vitest domain/application tests

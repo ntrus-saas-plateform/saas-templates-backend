@@ -52,7 +52,20 @@ describe('LabBbProvisioningAdapter', () => {
       expect(result.externalRef).toBe('tenant-fixed-1');
     }
     expect(provision).toHaveBeenCalledOnce();
-    const [body, idem] = provision.mock.calls[0]!;
+    const call = provision.mock.calls[0] as unknown as
+      | [
+          {
+            tenant_id: string;
+            product_id?: string;
+            account_id?: string;
+            note?: string;
+            initial_admin_contact?: { email?: string };
+          },
+          string,
+        ]
+      | undefined;
+    expect(call).toBeDefined();
+    const [body, idem] = call!;
     expect(body.tenant_id).toBe('tenant-fixed-1');
     expect(body.product_id).toBe('prod-pharmacy');
     expect(body.account_id).toBe('acc-1');

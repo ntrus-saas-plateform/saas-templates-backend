@@ -211,7 +211,7 @@ function createFakeRepo(store: Store): AcquisitionRepositoryPort {
         commercialPlanId: input.commercialPlanId ?? null,
         currentPublishedVersionId: null,
         metadata: input.metadata ?? {},
-        createdBy: input.createdBy ?? null,
+        createdBy: input.createdBy ?? 'system',
         updatedBy: null,
         createdAt: now(),
         updatedAt: now(),

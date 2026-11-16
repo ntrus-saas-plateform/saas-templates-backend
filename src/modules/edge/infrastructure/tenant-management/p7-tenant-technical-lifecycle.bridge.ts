@@ -14,9 +14,9 @@ import type {
 @Injectable()
 export class P7TenantTechnicalLifecycleBridge implements TenantTechnicalLifecycleBridgePort {
   constructor(
-    private readonly requestSuspend: RequestLifecycleSuspendUseCase,
-    private readonly requestResume: RequestLifecycleResumeUseCase,
-    private readonly requestDeprovision: RequestLifecycleDeprovisionUseCase,
+    private readonly suspendUseCase: RequestLifecycleSuspendUseCase,
+    private readonly resumeUseCase: RequestLifecycleResumeUseCase,
+    private readonly deprovisionUseCase: RequestLifecycleDeprovisionUseCase,
   ) {}
 
   private wrap(
@@ -40,7 +40,7 @@ export class P7TenantTechnicalLifecycleBridge implements TenantTechnicalLifecycl
     input: TenantTechnicalLifecycleBridgeInput,
   ): Promise<TenantTechnicalLifecycleBridgeOutcome> {
     return this.wrap(() =>
-      this.requestSuspend.execute({
+      this.suspendUseCase.execute({
         actorId: input.actorId,
         correlationId: input.correlationId,
         idempotencyKey: input.idempotencyKey,
@@ -54,7 +54,7 @@ export class P7TenantTechnicalLifecycleBridge implements TenantTechnicalLifecycl
     input: TenantTechnicalLifecycleBridgeInput,
   ): Promise<TenantTechnicalLifecycleBridgeOutcome> {
     return this.wrap(() =>
-      this.requestResume.execute({
+      this.resumeUseCase.execute({
         actorId: input.actorId,
         correlationId: input.correlationId,
         idempotencyKey: input.idempotencyKey,
@@ -72,7 +72,7 @@ export class P7TenantTechnicalLifecycleBridge implements TenantTechnicalLifecycl
   ): Promise<TenantTechnicalLifecycleBridgeOutcome> {
     const reason = (input.reason ?? '').trim() || 'P8 lifecycle approval delegation';
     return this.wrap(() =>
-      this.requestDeprovision.execute({
+      this.deprovisionUseCase.execute({
         actorId: input.actorId,
         correlationId: input.correlationId,
         idempotencyKey: input.idempotencyKey,

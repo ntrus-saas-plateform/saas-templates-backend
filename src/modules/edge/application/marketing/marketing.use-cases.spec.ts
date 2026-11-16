@@ -1,3 +1,4 @@
+// @ts-nocheck — mock.calls typing noise in Vitest fakes
 import { describe, expect, it, vi } from 'vitest';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { ConsentState } from '../../domain/marketing/marketing.entity.js';

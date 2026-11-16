@@ -223,7 +223,7 @@ export class AcknowledgeAlertUseCase {
           aggregateId: updated.id,
           correlationId,
           actorId: input.actorId,
-          payload: { from: alert.status, to: 'ACKNOWLEDGED' },
+          payload: { from: alert?.status, to: 'ACKNOWLEDGED' },
         }),
       );
       await requireAudit(
@@ -277,7 +277,7 @@ export class ResolveAlertUseCase {
           aggregateId: updated.id,
           correlationId,
           actorId: input.actorId,
-          payload: { from: alert.status, to: 'RESOLVED' },
+          payload: { from: alert?.status, to: 'RESOLVED' },
         }),
       );
       await requireAudit(
@@ -2368,7 +2368,7 @@ export class TransitionReleaseUseCase {
         {
           artifactDigest: input.artifactDigest?.trim() ?? null,
           externalEvidenceRef: input.externalEvidenceRef?.trim() ?? null,
-          healthGateStatus: input.healthGateStatus?.trim() ?? null,
+          healthGateStatus: input.healthGateStatus?.trim() || undefined,
           deployedAt: input.toStatus === 'DEPLOYED' ? new Date() : null,
         },
         client,
