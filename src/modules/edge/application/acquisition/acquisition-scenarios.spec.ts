@@ -1842,7 +1842,7 @@ describe('P10 §27.6 domain/application scenario suite (40)', () => {
   });
 
   it('P10-S33: Provisioning progress from authoritative refs only (portal never invents complete)', async () => {
-    // Preconditions: completed handoff with subscription ref; no provisioning API
+    // Preconditions: completed handoff with subscription ref; no tenantRef / no ready port
     const store = emptyStore();
     const prospect = seedProspect(store);
     const repo = createFakeRepo(store);
@@ -1857,13 +1857,25 @@ describe('P10 §27.6 domain/application scenario suite (40)', () => {
     const portal = await new GetCustomerPortalSnapshotUseCase(repo).execute({
       prospectId: prospect.id,
     });
+    // With tenantRef + mock ready=true → provisioningComplete true (authoritative only)
+    const handoffRow = store.handoffs.get(handoff.id);
+    if (handoffRow) {
+      handoffRow.metadata = { ...(handoffRow.metadata ?? {}), tenantRef: 'tenant-auth-1' };
+    }
+    const readyPort = {
+      isTenantReady: async () => ({ ready: true as const, source: 'CONTROL_V1' }),
+    };
+    const portalReady = await new GetCustomerPortalSnapshotUseCase(repo, readyPort).execute({
+      prospectId: prospect.id,
+    });
     recordEvidence(
       'P10-S33',
       portal.provisioningComplete === false &&
         portal.subscriptionHandoffCompleted === true &&
-        portal.subscriptionHandoffs.some((h) => h.subscriptionRef === 'sub-auth-1'),
-      'provisioningComplete always false; refs authoritative',
-      `provisioningComplete=${portal.provisioningComplete} handoffCompleted=${portal.subscriptionHandoffCompleted}`,
+        portal.subscriptionHandoffs.some((h) => h.subscriptionRef === 'sub-auth-1') &&
+        portalReady.provisioningComplete === true,
+      'false without ready port; true only when TenantRuntimeStatusPort reports ready',
+      `without=${portal.provisioningComplete} withReady=${portalReady.provisioningComplete}`,
     );
   });
 

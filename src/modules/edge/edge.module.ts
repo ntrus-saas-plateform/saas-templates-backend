@@ -64,6 +64,7 @@ import { EdgePlatformOperationsController } from './presentation/controllers/pla
 import { AcquisitionController } from './presentation/controllers/acquisition.controller.js';
 import { AcquisitionPublicController } from './presentation/controllers/acquisition-public.controller.js';
 import { EdgeRevenueOperationsController } from './presentation/controllers/revenue-operations.controller.js';
+import { EdgeLiveCompleteController } from './presentation/controllers/live-complete.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -121,6 +122,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     AcquisitionController,
     AcquisitionPublicController,
     EdgeRevenueOperationsController,
+    EdgeLiveCompleteController,
   ],
   providers: [
     ...edgeApplicationProviders,

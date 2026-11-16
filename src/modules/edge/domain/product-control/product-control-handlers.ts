@@ -50,11 +50,68 @@ function foundationFailure(
   };
 }
 
+/** Mutative BB control keys handled by the live executor when wired. */
+export const PRODUCT_CONTROL_LIVE_MUTATIVE_HANDLER_KEYS = [
+  'product_control.provision',
+  'p7.5.product_control.provision',
+  'product_control.activate',
+  'p7.5.product_control.activate',
+] as const;
+
+export type ProductControlLiveMutativeHandlerKey =
+  (typeof PRODUCT_CONTROL_LIVE_MUTATIVE_HANDLER_KEYS)[number];
+
+export type ProductControlLiveHandlerKey =
+  | ProductControlFoundationHandlerKey
+  | ProductControlLiveMutativeHandlerKey;
+
 /** Optional live wiring — use cases / client called when no discovery snapshot is supplied. */
 export type ProductControlLiveExecutor = (
   input: WorkflowHandlerInput,
-  key: ProductControlFoundationHandlerKey,
+  key: ProductControlLiveHandlerKey,
 ) => Promise<WorkflowHandlerOutcome>;
+
+/**
+ * Thin handler for mutative provision/activate — always delegates to live executor.
+ * When no executor is wired, fails DEPENDENCY_UNAVAILABLE (never invents success).
+ */
+export class ProductControlMutativeLiveHandler implements WorkflowStepHandler {
+  readonly version = '1.0.0-live-mutative';
+
+  constructor(
+    readonly key: ProductControlLiveMutativeHandlerKey,
+    private readonly liveExecutor?: ProductControlLiveExecutor,
+  ) {}
+
+  async execute(input: WorkflowHandlerInput): Promise<WorkflowHandlerOutcome> {
+    if (!this.liveExecutor) {
+      return foundationFailure(
+        ProductControlErrorCode.DEPENDENCY_UNAVAILABLE,
+        `Live executor not wired for ${this.key}`,
+        { handlerKey: this.key },
+      );
+    }
+    return this.liveExecutor(input, this.key);
+  }
+
+  async compensate(_input: WorkflowHandlerInput): Promise<WorkflowHandlerOutcome> {
+    return foundationFailure(
+      ProductControlErrorCode.OPERATION_NOT_IMPLEMENTED,
+      `Compensation for "${this.key}" is not implemented`,
+      { handlerKey: this.key },
+    );
+  }
+}
+
+export function registerProductControlMutativeLiveHandlers(
+  registry: WorkflowHandlerRegistryPort,
+  liveExecutor: ProductControlLiveExecutor,
+  keys: readonly ProductControlLiveMutativeHandlerKey[] = PRODUCT_CONTROL_LIVE_MUTATIVE_HANDLER_KEYS,
+): void {
+  for (const key of keys) {
+    registry.register(new ProductControlMutativeLiveHandler(key, liveExecutor));
+  }
+}
 
 /**
  * Real P7.5 foundation handler for non-mutative Product Control operations.

@@ -388,6 +388,8 @@ export const KNOWN_HANDLER_KEYS = [
   'product_control.verify_connectivity',
   'product_control.verify_health',
   'product_control.verify_conformance',
+  'product_control.provision',
+  'product_control.activate',
   ...P76_HANDLER_KEYS,
   ...FUTURE_PROVISIONING_HANDLER_KEYS,
   // P7.7 — real Keycloak topology provisioning handlers (registry-backed live

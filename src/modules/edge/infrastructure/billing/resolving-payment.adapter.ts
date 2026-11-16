@@ -18,10 +18,14 @@ import { APP_CONFIG } from '../../../../shared/configuration/configuration.modul
 import type { EnvironmentConfig } from '../../../../shared/configuration/environment.schema.js';
 import { UnavailablePaymentProviderAdapter } from './unavailable-payment.adapter.js';
 import { HttpWebhookPaymentProviderAdapter } from './http-webhook-payment.adapter.js';
+import { SandboxPaymentProviderAdapter } from './sandbox-payment.adapter.js';
+
+type PaymentAdapterMode = 'unavailable' | 'http_webhook' | 'sandbox';
 
 /**
  * Routes payment calls by BILLING_PAYMENT_ADAPTER (or auto from webhook URL).
  * Default UNAVAILABLE — never invents success without provider.
+ * Sandbox is never auto-selected; set BILLING_PAYMENT_ADAPTER=sandbox explicitly.
  */
 @Injectable()
 export class ResolvingPaymentProviderAdapter implements PaymentProviderPort {
@@ -29,19 +33,26 @@ export class ResolvingPaymentProviderAdapter implements PaymentProviderPort {
     @Inject(APP_CONFIG) private readonly config: EnvironmentConfig,
     private readonly unavailable: UnavailablePaymentProviderAdapter,
     private readonly httpWebhook: HttpWebhookPaymentProviderAdapter,
+    private readonly sandbox: SandboxPaymentProviderAdapter,
   ) {}
 
-  private resolveMode(): 'unavailable' | 'http_webhook' {
-    if (this.config.BILLING_PAYMENT_ADAPTER === 'auto') {
+  private resolveMode(): PaymentAdapterMode {
+    const configured = this.config.BILLING_PAYMENT_ADAPTER;
+    if (configured === 'sandbox') return 'sandbox';
+    if (configured === 'http_webhook') return 'http_webhook';
+    if (configured === 'auto') {
+      // auto: http_webhook only when URL is set — never auto-select sandbox
       if (this.config.BILLING_PAYMENT_WEBHOOK_URL) return 'http_webhook';
       return 'unavailable';
     }
-    if (this.config.BILLING_PAYMENT_ADAPTER === 'http_webhook') return 'http_webhook';
     return 'unavailable';
   }
 
   private adapter(): PaymentProviderPort {
-    return this.resolveMode() === 'http_webhook' ? this.httpWebhook : this.unavailable;
+    const mode = this.resolveMode();
+    if (mode === 'sandbox') return this.sandbox;
+    if (mode === 'http_webhook') return this.httpWebhook;
+    return this.unavailable;
   }
 
   createCustomer(input: CreateCustomerInput): Promise<CreateCustomerResult> {

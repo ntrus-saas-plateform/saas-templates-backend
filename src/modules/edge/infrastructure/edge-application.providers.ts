@@ -230,6 +230,10 @@ import {
 import { EnvCredentialProvider } from './product-control/credential-provider.adapter.js';
 import { SignatureService } from './product-control/signature.service.js';
 import { HttpProductControlClient } from './product-control/http-product-control.client.js';
+import {
+  CONTROL_V1_BB_CLIENT_PORT,
+  ControlV1BusinessBackendClient,
+} from './product-control/control-v1-business-backend.client.js';
 import { createLiveProductControlExecutor } from './product-control/live-product-control.executor.js';
 import { INFRASTRUCTURE_REPOSITORY_PORT } from '../domain/infrastructure-provisioning/infrastructure-repository.port.js';
 import { SECRETS_PROVIDER_PORT } from '../domain/infrastructure-provisioning/secrets-provider.port.js';
@@ -388,8 +392,10 @@ import {
 import { ACQUISITION_REPOSITORY_PORT } from '../domain/acquisition/acquisition-repository.port.js';
 import { ACQUISITION_DOCUMENT_STORAGE_PORT } from '../domain/acquisition/document-storage.port.js';
 import { ACQUISITION_NOTIFICATION_PORT } from '../domain/acquisition/acquisition-notification.port.js';
+import { TENANT_RUNTIME_STATUS_PORT } from '../domain/acquisition/tenant-runtime-status.port.js';
 import { AcquisitionNotificationAdapter } from './acquisition/acquisition-notification.adapter.js';
 import { AcquisitionPublicRateLimiter } from './acquisition/acquisition-rate-limiter.js';
+import { ResolvingTenantRuntimeStatusAdapter } from './acquisition/resolving-tenant-runtime-status.adapter.js';
 import {
   AcceptQuoteUseCase,
   AdvanceJourneyUseCase,
@@ -725,6 +731,7 @@ import { BILLING_REPOSITORY_PORT } from '../domain/ports/billing-repository.port
 import { PAYMENT_PROVIDER_PORT } from '../domain/billing/payment-provider.port.js';
 import { UnavailablePaymentProviderAdapter } from './billing/unavailable-payment.adapter.js';
 import { HttpWebhookPaymentProviderAdapter } from './billing/http-webhook-payment.adapter.js';
+import { SandboxPaymentProviderAdapter } from './billing/sandbox-payment.adapter.js';
 import { ResolvingPaymentProviderAdapter } from './billing/resolving-payment.adapter.js';
 import {
   AppendJournalEntryUseCase,
@@ -3518,6 +3525,7 @@ export const edgeApplicationProviders: Provider[] = [
   },
   UnavailablePaymentProviderAdapter,
   HttpWebhookPaymentProviderAdapter,
+  SandboxPaymentProviderAdapter,
   ResolvingPaymentProviderAdapter,
   {
     provide: PAYMENT_PROVIDER_PORT,
@@ -3994,8 +4002,27 @@ export const edgeApplicationProviders: Provider[] = [
     ],
   },
   {
+    provide: CONTROL_V1_BB_CLIENT_PORT,
+    useFactory: (config: EnvironmentConfig) =>
+      new ControlV1BusinessBackendClient({
+        baseUrl: config.EDGE_BB_CONTROL_BASE_URL,
+        token: config.EDGE_BB_CONTROL_TOKEN,
+        timeoutMs: config.EDGE_BB_CONTROL_TIMEOUT_MS,
+        allowInsecureHttp: config.EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP,
+      }),
+    inject: [APP_CONFIG],
+  },
+  {
     provide: PRODUCT_CONTROL_LIVE_EXECUTOR,
-    useFactory: (handshake, discoverContract, discoverCapabilities, health, auth, wfRepo) =>
+    useFactory: (
+      handshake,
+      discoverContract,
+      discoverCapabilities,
+      health,
+      auth,
+      wfRepo,
+      bbControl,
+    ) =>
       createLiveProductControlExecutor({
         handshake,
         discoverContract,
@@ -4003,6 +4030,7 @@ export const edgeApplicationProviders: Provider[] = [
         health,
         authorization: auth,
         lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+        bbControl,
       }),
     inject: [
       HandshakeProductControlEndpointUseCase,
@@ -4011,6 +4039,7 @@ export const edgeApplicationProviders: Provider[] = [
       HealthCheckProductControlEndpointUseCase,
       WORKFLOW_AUTHORIZATION_PORT,
       WORKFLOW_REPOSITORY_PORT,
+      CONTROL_V1_BB_CLIENT_PORT,
     ],
   },
   { provide: SECRETS_PROVIDER_PORT, useFactory: () => new EncryptedSecretsProvider() },
@@ -6727,9 +6756,16 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
   {
+    provide: TENANT_RUNTIME_STATUS_PORT,
+    useFactory: (config: EnvironmentConfig, bbClient: ControlV1BusinessBackendClient) =>
+      new ResolvingTenantRuntimeStatusAdapter(config, bbClient),
+    inject: [APP_CONFIG, CONTROL_V1_BB_CLIENT_PORT],
+  },
+  {
     provide: GetCustomerPortalSnapshotUseCase,
-    useFactory: (repo) => new GetCustomerPortalSnapshotUseCase(repo),
-    inject: [ACQUISITION_REPOSITORY_PORT],
+    useFactory: (repo, tenantRuntime) =>
+      new GetCustomerPortalSnapshotUseCase(repo, tenantRuntime),
+    inject: [ACQUISITION_REPOSITORY_PORT, TENANT_RUNTIME_STATUS_PORT],
   },
   {
     provide: ACQUISITION_NOTIFICATION_PORT,

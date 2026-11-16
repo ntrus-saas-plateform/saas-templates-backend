@@ -38,6 +38,7 @@ import {
 import {
   getProductAcquisitionContract,
 } from '../../domain/acquisition/product-acquisition-contracts.js';
+import type { TenantRuntimeStatusPort } from '../../domain/acquisition/tenant-runtime-status.port.js';
 import {
   parseRequiredConsents,
   validateSubmittedConsents,
@@ -3368,7 +3369,10 @@ export class AdvanceJourneyUseCase {
 }
 
 export class GetCustomerPortalSnapshotUseCase {
-  constructor(private readonly repo: AcquisitionRepositoryPort) {}
+  constructor(
+    private readonly repo: AcquisitionRepositoryPort,
+    private readonly tenantRuntimeStatus?: TenantRuntimeStatusPort | null,
+  ) {}
 
   async execute(input: { prospectId: string }) {
     if (!input.prospectId?.trim()) {
@@ -3382,17 +3386,52 @@ export class GetCustomerPortalSnapshotUseCase {
       this.repo.listSubscriptionHandoffs({ prospectId: input.prospectId, limit: 100 }),
     ]);
     const completedHandoffs = handoffs.items.filter((h) => h.status === 'COMPLETED');
+    const tenantRef = extractTenantRefFromCompletedHandoffs(completedHandoffs);
+
+    let provisioningComplete = false;
+    let provisioningNote =
+      'Portal snapshot aggregates acquisition state only — no fake provisioning complete.';
+
+    if (tenantRef && this.tenantRuntimeStatus) {
+      const status = await this.tenantRuntimeStatus.isTenantReady(tenantRef);
+      provisioningComplete = status.ready === true;
+      provisioningNote = provisioningComplete
+        ? `Provisioning complete per authoritative ready (${status.source}) for tenantRef=${tenantRef}.`
+        : `Provisioning incomplete — ready check source=${status.source}${
+            status.detail ? ` detail=${status.detail}` : ''
+          } for tenantRef=${tenantRef}.`;
+    } else if (tenantRef && !this.tenantRuntimeStatus) {
+      provisioningNote =
+        'tenantRef present on handoff but TenantRuntimeStatusPort unavailable — provisioningComplete stays false.';
+    } else {
+      provisioningNote =
+        'No tenantRef on completed handoffs — provisioningComplete stays false (acquisition refs only).';
+    }
+
     return {
       prospect,
       applications: applications.items,
       checkoutSessions: checkouts.items,
       subscriptionHandoffs: handoffs.items,
-      // Honest: provisioning is never implied complete from acquisition alone
-      provisioningComplete: false,
+      provisioningComplete,
       subscriptionHandoffCompleted: completedHandoffs.length > 0,
-      note: 'Portal snapshot aggregates acquisition state only — no fake provisioning complete.',
+      note: provisioningNote,
     };
   }
+}
+
+/** Prefer metadata tenant refs on COMPLETED handoffs; never invent from subscriptionRef alone. */
+function extractTenantRefFromCompletedHandoffs(
+  completed: Array<{ metadata: Record<string, unknown>; subscriptionRef: string | null }>,
+): string | null {
+  for (const handoff of completed) {
+    const meta = handoff.metadata ?? {};
+    for (const key of ['tenantRef', 'tenant_ref', 'tenantId', 'tenant_id']) {
+      const v = meta[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

@@ -276,10 +276,26 @@ export const environmentSchema = z.object({
 
   // Edge billing payment adapters (P6) — default UNAVAILABLE; never invent payment success
   BILLING_PAYMENT_ADAPTER: z
-    .enum(['unavailable', 'http_webhook', 'auto'])
+    .enum(['unavailable', 'http_webhook', 'sandbox', 'auto'])
     .default('unavailable'),
   BILLING_PAYMENT_WEBHOOK_URL: z.string().url().optional(),
   BILLING_PAYMENT_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+
+  // Edge → Business Backend control/v1 (P7.5 live provision/activate + portal ready)
+  EDGE_BB_CONTROL_BASE_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined))
+    .pipe(z.string().url().optional()),
+  EDGE_BB_CONTROL_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? v.trim() : undefined)),
+  EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  EDGE_BB_CONTROL_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   BILLING_JOBS_ENABLED: z
     .string()
     .transform((v) => v === 'true')

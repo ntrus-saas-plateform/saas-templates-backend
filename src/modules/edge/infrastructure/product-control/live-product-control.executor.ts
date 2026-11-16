@@ -7,20 +7,31 @@ import type {
 } from '../../application/product-control/product-control.use-cases.js';
 import type {
   ProductControlLiveExecutor,
+  ProductControlLiveHandlerKey,
 } from '../../domain/product-control/product-control-handlers.js';
 import {
   classifyProductControlError,
   isRetryableProductControlError,
 } from '../../domain/product-control/error-classification.js';
-import type { ProductControlFoundationHandlerKey } from '../../domain/product-control/product-control.types.js';
+import { ProductControlErrorCode } from '../../domain/product-control/product-control.types.js';
 import type { WorkflowAuthorizationPort } from '../../domain/workflow/workflow-authorization.port.js';
 import type { WorkflowLeasePort } from '../../domain/workflow/workflow-lease.port.js';
 import type {
   WorkflowHandlerInput,
   WorkflowHandlerOutcome,
 } from '../../domain/workflow/workflow-handler.port.js';
+import type { ControlV1BusinessBackendClient } from './control-v1-business-backend.client.js';
 
 const AUTHORIZATION_TIMEOUT_MS = 5_000;
+
+const PROVISION_KEYS = new Set<string>([
+  'product_control.provision',
+  'p7.5.product_control.provision',
+]);
+const ACTIVATE_KEYS = new Set<string>([
+  'product_control.activate',
+  'p7.5.product_control.activate',
+]);
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v : undefined;
@@ -50,8 +61,19 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
+function bbUnavailable(key: string): WorkflowHandlerOutcome {
+  return {
+    status: 'FAILED',
+    errorClass: ProductControlErrorCode.DEPENDENCY_UNAVAILABLE,
+    message:
+      'EDGE_BB_CONTROL_BASE_URL is not configured; cannot live-call Business Backend control/v1',
+    retryable: true,
+    diagnostics: { handlerKey: key, bbControlConfigured: false },
+  };
+}
+
 /**
- * Bridges P7.4 workflow handlers → P7.5 application use cases / HTTP client.
+ * Bridges P7.4 workflow handlers → P7.5 application use cases / HTTP client / BB control.
  *
  * AUD-P0-02: lease/fencing is mandatory before any live Product Control call.
  * When a provisioning authorization is bound on the workflow, it is revalidated
@@ -64,6 +86,7 @@ export function createLiveProductControlExecutor(deps: {
   health: HealthCheckProductControlEndpointUseCase;
   authorization: WorkflowAuthorizationPort;
   lease: WorkflowLeasePort;
+  bbControl?: ControlV1BusinessBackendClient | null;
 }): ProductControlLiveExecutor {
   const validateLease = async (input: WorkflowHandlerInput) => {
     if (!deps.lease) {
@@ -126,9 +149,148 @@ export function createLiveProductControlExecutor(deps: {
     }
   };
 
+  const runProvision = async (
+    input: WorkflowHandlerInput,
+    key: string,
+  ): Promise<WorkflowHandlerOutcome> => {
+    if (!deps.bbControl?.isConfigured()) return bbUnavailable(key);
+    const s = snap(input);
+    const tenantId = str(s.tenantId) ?? str(s.tenant_id);
+    if (!tenantId) {
+      return {
+        status: 'FAILED',
+        errorClass: ProductControlErrorCode.VALIDATION,
+        message: `Live ${key} requires tenantId (or tenant_id) in input`,
+        retryable: false,
+        diagnostics: { handlerKey: key },
+      };
+    }
+    const productId = str(s.productId) ?? str(s.product_id);
+    const idempotencyKey =
+      input.idempotencyKey ||
+      `${key}:${input.workflowId}:${input.stepId}:${input.attemptNumber}`;
+
+    const body: Record<string, unknown> = {
+      ...s,
+      tenant_id: tenantId,
+      tenantId,
+    };
+    if (productId) {
+      body.product_id = productId;
+      body.productId = productId;
+    }
+
+    try {
+      const res = await deps.bbControl.provision(body, idempotencyKey);
+      if (res.ok && res.status >= 200 && res.status < 300) {
+        return {
+          status: 'SUCCEEDED',
+          outputSnapshot: {
+            handlerKey: key,
+            live: true,
+            bbControl: true,
+            httpStatus: res.status,
+            tenantId,
+            productId: productId ?? null,
+            response: res.body,
+          },
+        };
+      }
+      const code = classifyProductControlError(
+        res.status === 401 || res.status === 403
+          ? `HTTP_${res.status}`
+          : res.text || `HTTP_${res.status}`,
+      );
+      return {
+        status: 'FAILED',
+        errorClass: code,
+        message: `BB provision failed with HTTP ${res.status}`,
+        retryable: isRetryableProductControlError(code),
+        diagnostics: {
+          handlerKey: key,
+          httpStatus: res.status,
+          body: res.body,
+        },
+      };
+    } catch (err) {
+      const code = classifyProductControlError(err);
+      return {
+        status: 'FAILED',
+        errorClass: code,
+        message: err instanceof Error ? err.message : `Live ${key} failed`,
+        retryable: isRetryableProductControlError(code),
+        diagnostics: { handlerKey: key },
+      };
+    }
+  };
+
+  const runActivate = async (
+    input: WorkflowHandlerInput,
+    key: string,
+  ): Promise<WorkflowHandlerOutcome> => {
+    if (!deps.bbControl?.isConfigured()) return bbUnavailable(key);
+    const s = snap(input);
+    const tenantId = str(s.tenantId) ?? str(s.tenant_id);
+    if (!tenantId) {
+      return {
+        status: 'FAILED',
+        errorClass: ProductControlErrorCode.VALIDATION,
+        message: `Live ${key} requires tenantId (or tenant_id) in input`,
+        retryable: false,
+        diagnostics: { handlerKey: key },
+      };
+    }
+
+    try {
+      const res = await deps.bbControl.getTenantReady(tenantId);
+      const ready =
+        res.ok &&
+        (res.body.ready === true ||
+          res.body.status === 'ready' ||
+          String(res.body.status ?? '').toLowerCase() === 'ready');
+
+      if (ready) {
+        return {
+          status: 'SUCCEEDED',
+          outputSnapshot: {
+            handlerKey: key,
+            live: true,
+            bbControl: true,
+            httpStatus: res.status,
+            tenantId,
+            ready: true,
+            response: res.body,
+          },
+        };
+      }
+
+      return {
+        status: 'FAILED',
+        errorClass: ProductControlErrorCode.DEPENDENCY_UNAVAILABLE,
+        message: `Tenant ${tenantId} is not ready on Business Backend (HTTP ${res.status})`,
+        retryable: true,
+        diagnostics: {
+          handlerKey: key,
+          httpStatus: res.status,
+          ready: false,
+          body: res.body,
+        },
+      };
+    } catch (err) {
+      const code = classifyProductControlError(err);
+      return {
+        status: 'FAILED',
+        errorClass: code,
+        message: err instanceof Error ? err.message : `Live ${key} failed`,
+        retryable: isRetryableProductControlError(code),
+        diagnostics: { handlerKey: key },
+      };
+    }
+  };
+
   return async (
     input: WorkflowHandlerInput,
-    key: ProductControlFoundationHandlerKey,
+    key: ProductControlLiveHandlerKey,
   ): Promise<WorkflowHandlerOutcome> => {
     const leaseCheck = await validateLease(input);
     if (!leaseCheck.valid) {
@@ -152,6 +314,13 @@ export function createLiveProductControlExecutor(deps: {
         retryable: false,
         diagnostics: { handlerKey: key, authReason: auth.reason },
       };
+    }
+
+    if (PROVISION_KEYS.has(key)) {
+      return runProvision(input, key);
+    }
+    if (ACTIVATE_KEYS.has(key)) {
+      return runActivate(input, key);
     }
 
     const endpointId =

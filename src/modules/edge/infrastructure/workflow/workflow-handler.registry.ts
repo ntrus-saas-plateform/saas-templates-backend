@@ -6,6 +6,7 @@ import {
 } from '../../domain/workflow/workflow-handler.port.js';
 import {
   registerProductControlFoundationHandlers,
+  registerProductControlMutativeLiveHandlers,
   type ProductControlLiveExecutor,
 } from '../../domain/product-control/product-control-handlers.js';
 import { PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS } from '../../domain/product-control/product-control.types.js';
@@ -122,6 +123,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
         PRODUCT_CONTROL_FOUNDATION_HANDLER_KEYS,
         liveProductControl,
       );
+      // Overwrite UnavailableProvisioningHandler / NOT_IMPLEMENTED for provision/activate
+      // when the live executor is active (BB control client may still fail closed if unset).
+      registerProductControlMutativeLiveHandlers(this.inner, liveProductControl);
     }
     if (liveInfrastructure) {
       registerInfrastructureHandlers(
