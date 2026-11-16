@@ -4,8 +4,8 @@ Frozen SHAs for the Edge live-complete pilot lab. Branch: `feature/console`.
 
 | Repo | Local HEAD (lab) |
 |------|------------------|
-| Backend `saas-templates-backend` | `21339780a51c54e61885117aea064c05e0868799` |
-| Frontend `saas-template-frontend` | `e1225cce69052b8e7b298afaca8e24731f27108b` |
+| Backend `saas-templates-backend` | `e5a23955a112af001f4af30f1bc0c92730946d83` (+ pending orch/docs commit) |
+| Frontend `saas-template-frontend` | `c256f16a72107e492ecf0f73524cef26164e3a34` |
 
 ## Push / remote note
 
@@ -34,7 +34,7 @@ See copy-paste block: [`01-env-lab.example.md`](./01-env-lab.example.md).
 Critical switches:
 
 - `BILLING_PAYMENT_ADAPTER=sandbox`
-- `EDGE_P7_PROVISIONING_ADAPTER=durable`
+- `EDGE_P7_PROVISIONING_ADAPTER=lab_bb` (lab complete BB path; use `durable` only with canonical P5 auth)
 - `EDGE_BB_CONTROL_BASE_URL` / `EDGE_BB_CONTROL_TOKEN` / `EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP=true` (lab HTTP)
 - `EDGE_PCI_*` (product-control credentials / insecure HTTP / timeout as needed for BB endpoints)
 - Keycloak: `KEYCLOAK_*` + admin clients (compose defaults or `.env.example`)

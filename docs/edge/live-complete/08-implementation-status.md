@@ -35,5 +35,8 @@
 
 ## Vitest (auditor machine)
 
-- BE live-complete related: golden-path + smoke (smoke skipped unless `LIVE_COMPLETE_E2E=1`)
-- FE adapter badge: `vitest run components/edge/live-complete` — **4 passed**
+- BE live-complete related (provisioning/sandbox/acquisition/orchestration): **60+** passed
+- Orchestration `paid-to-lab-bb-orchestration.spec.ts`: PAID → lab_bb → portal ready (E2/E3)
+- FE adapter badge: `vitest run components/edge/live-complete` — **5 passed**
+- `tsc --noEmit`: **PASS** (`e5a2395`)
+- Push GitHub: still **403** (`kabikaAsyst`)
