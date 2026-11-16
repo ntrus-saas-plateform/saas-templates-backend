@@ -1,8 +1,9 @@
 # 36 — Fermeture résiduels P8
 
 **Date :** 2026-11-16  
-**Branche :** `feature/console`  
-**Migration :** `114_edge_p8_residual_enterprise_closure`
+**Branche :** `feature/console` (non poussée)  
+**Migration :** `114_edge_p8_residual_enterprise_closure`  
+**Git :** backend `622d21c` · frontend `0c86ac7`
 
 ## Verdict
 
