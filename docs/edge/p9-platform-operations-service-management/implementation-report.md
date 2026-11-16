@@ -3,6 +3,15 @@
 **Date :** 2026-11-16  
 **Verdict :** `P9 PARTIALLY IMPLEMENTED` (P9.0–P9.11 core + P9.12 partiel)
 
+## Commit SHAs (feature/console, local — not pushed)
+
+| Repo | SHA | Message |
+|------|-----|---------|
+| Backend | `23366ad` | P9.2–P9.11 operations core |
+| Frontend | `6a278b8` | Operations Center + API align |
+| Backend (P9.1) | `59eab9a` | service catalog foundation |
+| Frontend (P9.1) | `d6becd6` | catalog console + nav |
+
 ## Delivered
 
 ### P9.0
