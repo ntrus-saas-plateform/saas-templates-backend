@@ -10,6 +10,12 @@ import {
   assertSeparationOfDuties,
   canRequestLifecycle,
   isApprovableStatus,
+  BULK_SENSITIVE_TYPES,
+  coerceHealthOverallStatus,
+  evaluateTenantRiskLevel,
+  governanceStatusAfterExceptionApproval,
+  governanceStatusAfterExceptionRevoke,
+  HEALTH_FRESHNESS_MS,
   isDedicatedGovernanceApprovable,
   nextStatusAfterApproval,
   slugifyTenantCode,
@@ -152,16 +158,36 @@ export class GetTenant360UseCase {
     if (!registry) {
       throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
     }
-    const [tags, notes, exceptions, lifecycleRequests, findings] = await Promise.all([
+    const [
+      tags,
+      notes,
+      openExceptions,
+      lifecycleRequests,
+      findings,
+      timeline,
+      latestHealthSnapshot,
+      latestRiskAssessment,
+      resources,
+      applications,
+      configuration,
+      commercialDetail,
+    ] = await Promise.all([
       this.repo.listTags(id),
       this.repo.listNotes(id, 50),
-      this.repo.listExceptions({ tenantRegistryId: id, status: ExceptionStatus.ACTIVE, limit: 1 }),
+      this.repo.countOpenExceptions(id),
       this.repo.listLifecycleRequests({
         tenantRegistryId: id,
         status: GovernanceRequestStatus.WAITING_APPROVAL,
         limit: 1,
       }),
       this.repo.listFindings({ tenantRegistryId: id, status: 'OPEN', limit: 1 }),
+      this.repo.listActivity({ tenantRegistryId: id, limit: 30 }),
+      this.repo.getLatestHealthSnapshot(id),
+      this.repo.getLatestRiskAssessment(id),
+      this.repo.getTechnicalResources(registry.productTenantId),
+      this.repo.getApplicationRefs(registry.productTenantId),
+      this.repo.getConfigurationRefs(registry.productTenantId),
+      this.repo.getCommercialProjection(registry.subscriptionId),
     ]);
 
     const technicalFreshness = computeFreshness(registry.technicalObservedAt);
@@ -172,11 +198,11 @@ export class GetTenant360UseCase {
       healthFreshness === 'STALE' ? HealthStatus.STALE : String(registry.healthStatus);
 
     const commercialAvailability =
-      registry.accountId && registry.subscriptionId
+      commercialDetail.availability === 'AVAILABLE'
         ? ('AVAILABLE' as const)
         : registry.accountId || registry.subscriptionId
           ? ('PARTIAL' as const)
-          : ('UNAVAILABLE' as const);
+          : commercialDetail.availability;
 
     return {
       registry,
@@ -190,6 +216,7 @@ export class GetTenant360UseCase {
         syncedAt: registry.lastSyncedAt?.toISOString() ?? null,
         availability: commercialAvailability,
       },
+      commercialDetail,
       technical: {
         technicalStatus,
         lifecycleRecordId: registry.lifecycleRecordId,
@@ -204,7 +231,13 @@ export class GetTenant360UseCase {
         observedAt: registry.healthObservedAt?.toISOString() ?? null,
         freshness: healthFreshness,
       },
-      openExceptions: exceptions.total,
+      latestHealthSnapshot,
+      latestRiskAssessment,
+      resources,
+      applications,
+      configuration,
+      timeline: timeline.items,
+      openExceptions,
       pendingLifecycleRequests: lifecycleRequests.total,
       openFindings: findings.total,
     };
@@ -269,7 +302,7 @@ export class RegisterTenantUseCase {
         region: input.region ?? null,
         administrativeStatus: AdministrativeStatus.PENDING_REVIEW,
         technicalStatus: TechnicalStatus.UNKNOWN,
-        governanceStatus: GovernanceStatus.COMPLIANT,
+        governanceStatus: GovernanceStatus.REVIEW_REQUIRED,
         healthStatus: HealthStatus.UNKNOWN,
         riskLevel: RiskLevel.UNKNOWN,
         platformTenantRef: null,
@@ -394,7 +427,7 @@ export class SyncTenantsFromP7UseCase {
         region: existing?.region ?? null,
         administrativeStatus: existing?.administrativeStatus ?? AdministrativeStatus.PENDING_REVIEW,
         technicalStatus,
-        governanceStatus: existing?.governanceStatus ?? GovernanceStatus.COMPLIANT,
+        governanceStatus: existing?.governanceStatus ?? GovernanceStatus.REVIEW_REQUIRED,
         healthStatus: existing?.healthStatus ?? HealthStatus.UNKNOWN,
         riskLevel: existing?.riskLevel ?? RiskLevel.UNKNOWN,
         platformTenantRef: existing?.platformTenantRef ?? null,
@@ -1075,6 +1108,11 @@ export class ApproveExceptionUseCase {
     assertSeparationOfDuties(record.requesterId, input.actorId);
     const correlationId = input.correlationId?.trim() || randomUUID();
 
+    const tenant = await this.repo.getById(record.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateException(
         record.id,
@@ -1087,12 +1125,29 @@ export class ApproveExceptionUseCase {
         client,
       );
 
+      await this.repo.updateTenant(
+        tenant.id,
+        { governanceStatus: governanceStatusAfterExceptionApproval() },
+        tenant.version,
+        input.actorId,
+        client,
+      );
+
       await enqueue(
         buildTenantManagementOutboxEvent({
           eventType: TenantManagementEventTypes.EXCEPTION_APPROVED,
           aggregateId: updated.id,
           correlationId,
-          payload: { approverId: input.actorId },
+          payload: { approverId: input.actorId, governanceStatus: GovernanceStatus.EXCEPTION_PENDING },
+        }),
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.GOVERNANCE_STATUS_CHANGED,
+          aggregateId: tenant.id,
+          correlationId,
+          payload: { governanceStatus: GovernanceStatus.EXCEPTION_PENDING, reason: 'EXCEPTION_ACTIVE' },
         }),
       );
 
@@ -1136,6 +1191,11 @@ export class RevokeExceptionUseCase {
     }
     const correlationId = input.correlationId?.trim() || randomUUID();
 
+    const tenant = await this.repo.getById(record.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateException(
         record.id,
@@ -1148,12 +1208,34 @@ export class RevokeExceptionUseCase {
         client,
       );
 
+      const activeCount = await this.repo.countActiveExceptions(tenant.id);
+      const nextGovernance = governanceStatusAfterExceptionRevoke(
+        activeCount,
+        String(tenant.administrativeStatus) === AdministrativeStatus.PENDING_REVIEW,
+      );
+      await this.repo.updateTenant(
+        tenant.id,
+        { governanceStatus: nextGovernance },
+        tenant.version,
+        input.actorId,
+        client,
+      );
+
       await enqueue(
         buildTenantManagementOutboxEvent({
           eventType: TenantManagementEventTypes.EXCEPTION_REVOKED,
           aggregateId: updated.id,
           correlationId,
           payload: { revokeReason: reason, actorId: input.actorId },
+        }),
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.GOVERNANCE_STATUS_CHANGED,
+          aggregateId: tenant.id,
+          correlationId,
+          payload: { governanceStatus: nextGovernance, reason: 'EXCEPTION_REVOKED' },
         }),
       );
 
@@ -1259,6 +1341,26 @@ export class RunReconciliationUseCase {
           description: `Multiple product associations for tenant ${productTenantId}`,
         });
       }
+    }
+
+    const duplicateCodes = await this.repo.detectDuplicateRegistryRows();
+    for (const dup of duplicateCodes) {
+      findings.push({
+        findingType: ReconciliationFindingType.DUPLICATE_REFERENCE,
+        productTenantId: dup.productTenantIds[0] ?? null,
+        tenantRegistryId: null,
+        description: `Duplicate tenant_code "${dup.tenantCode}" across ${dup.count} registry rows`,
+      });
+    }
+
+    const duplicateAccountProduct = await this.repo.detectDuplicateAccountProductRefs();
+    for (const dup of duplicateAccountProduct) {
+      findings.push({
+        findingType: ReconciliationFindingType.DUPLICATE_REFERENCE,
+        productTenantId: dup.productTenantIds[0] ?? null,
+        tenantRegistryId: null,
+        description: `Account ${dup.accountId} + product ${dup.productId} maps to multiple product tenants: ${dup.productTenantIds.join(', ')}`,
+      });
     }
 
     if (!input.dryRun) {
@@ -1503,8 +1605,9 @@ export class ApproveMigrationUseCase {
       throw new DomainError(ErrorCode.CONFLICT, 'Migration request is not awaiting approval');
     }
     assertSeparationOfDuties(record.requestedBy, input.actorId);
+    const correlationId = input.correlationId?.trim() || randomUUID();
 
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateMigrationRequest(
         record.id,
         {
@@ -1517,10 +1620,19 @@ export class ApproveMigrationUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.MIGRATION_APPROVED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { approverId: input.actorId, delegation: 'P7_PENDING' },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.MIGRATION_REQUESTED,
+          eventType: TenantManagementEventTypes.MIGRATION_APPROVED,
           actorId: input.actorId,
           subjectType: 'MIGRATION_REQUEST',
           subjectId: updated.id,
@@ -1559,7 +1671,9 @@ export class RejectMigrationUseCase {
     if (reason.length < 4) {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'rejectedReason is required');
     }
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateMigrationRequest(
         record.id,
         {
@@ -1571,10 +1685,19 @@ export class RejectMigrationUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.MIGRATION_REJECTED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { rejectedReason: reason, actorId: input.actorId },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.MIGRATION_REQUESTED,
+          eventType: TenantManagementEventTypes.MIGRATION_REJECTED,
           actorId: input.actorId,
           subjectType: 'MIGRATION_REQUEST',
           subjectId: updated.id,
@@ -1727,8 +1850,9 @@ export class ApproveRecoveryUseCase {
       throw new DomainError(ErrorCode.CONFLICT, 'Recovery request is not awaiting approval');
     }
     assertSeparationOfDuties(record.requestedBy, input.actorId);
+    const correlationId = input.correlationId?.trim() || randomUUID();
 
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateRecoveryRequest(
         record.id,
         {
@@ -1741,10 +1865,19 @@ export class ApproveRecoveryUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.RECOVERY_APPROVED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { approverId: input.actorId, delegation: 'P7_PENDING' },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.RECOVERY_REQUESTED,
+          eventType: TenantManagementEventTypes.RECOVERY_APPROVED,
           actorId: input.actorId,
           subjectType: 'RECOVERY_REQUEST',
           subjectId: updated.id,
@@ -1784,7 +1917,9 @@ export class RejectRecoveryUseCase {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'rejectedReason is required');
     }
 
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateRecoveryRequest(
         record.id,
         {
@@ -1796,10 +1931,19 @@ export class RejectRecoveryUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.RECOVERY_REJECTED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { rejectedReason: reason, actorId: input.actorId },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.RECOVERY_REQUESTED,
+          eventType: TenantManagementEventTypes.RECOVERY_REJECTED,
           actorId: input.actorId,
           subjectType: 'RECOVERY_REQUEST',
           subjectId: updated.id,
@@ -1963,8 +2107,9 @@ export class ApproveTerminationUseCase {
       throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
     }
     assertNotLegalHold(tenant.legalHold, 'TERMINATION_APPROVE');
+    const correlationId = input.correlationId?.trim() || randomUUID();
 
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateTerminationRequest(
         record.id,
         {
@@ -1977,10 +2122,19 @@ export class ApproveTerminationUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.TERMINATION_APPROVED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { approverId: input.actorId, delegation: 'P7_PENDING' },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.TERMINATION_REQUESTED,
+          eventType: TenantManagementEventTypes.TERMINATION_APPROVED,
           actorId: input.actorId,
           subjectType: 'TERMINATION_REQUEST',
           subjectId: updated.id,
@@ -2020,7 +2174,9 @@ export class RejectTerminationUseCase {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'rejectedReason is required');
     }
 
-    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client) => {
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const updated = await this.repo.updateTerminationRequest(
         record.id,
         {
@@ -2032,10 +2188,19 @@ export class RejectTerminationUseCase {
         client,
       );
 
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.TERMINATION_REJECTED,
+          aggregateId: updated.id,
+          correlationId,
+          payload: { rejectedReason: reason, actorId: input.actorId },
+        }),
+      );
+
       await requireAudit(
         this.audit,
         {
-          eventType: TenantManagementEventTypes.TERMINATION_REQUESTED,
+          eventType: TenantManagementEventTypes.TERMINATION_REJECTED,
           actorId: input.actorId,
           subjectType: 'TERMINATION_REQUEST',
           subjectId: updated.id,
@@ -2066,7 +2231,549 @@ export class GetPortfolioAnalyticsUseCase {
   constructor(private readonly repo: TenantManagementRepositoryPort) {}
 
   async execute() {
-    return this.repo.portfolioMetrics();
+    const metrics = await this.repo.portfolioMetrics();
+    await this.repo.createAnalyticsSnapshot('portfolio', metrics as unknown as Record<string, unknown>);
+    return metrics;
+  }
+}
+
+export class ExportTenantsUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: { actorId: string; filter: TenantSearchFilter; correlationId?: string | null }) {
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    const csv = await this.repo.exportTenantsCsv(input.filter);
+
+    await this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.EXPORT_REQUESTED,
+          aggregateId: correlationId,
+          correlationId,
+          payload: { actorId: input.actorId, rowEstimate: csv.split('\n').length - 1 },
+        }),
+      );
+      await this.repo.appendActivity(
+        {
+          tenantRegistryId: null,
+          productTenantId: null,
+          eventType: 'TENANT_EXPORT',
+          action: 'EXPORT',
+          actorId: input.actorId,
+          actorType: 'ADMIN',
+          source: 'p8.tenant_management',
+          outcome: 'SUCCESS',
+          reason: null,
+          correlationId,
+          causationId: null,
+          beforeRef: null,
+          afterRef: { format: 'CSV' },
+          evidenceRef: null,
+          details: { filter: input.filter },
+        },
+        client,
+      );
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.EXPORT_REQUESTED,
+          actorId: input.actorId,
+          subjectType: 'TENANT_REGISTRY',
+          subjectId: correlationId,
+          details: { format: 'CSV' },
+        },
+        client,
+      );
+    });
+
+    return { csv, correlationId };
+  }
+}
+
+export class PreviewBulkOperationUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(input: {
+    actorId: string;
+    operationType: string;
+    filter: TenantSearchFilter;
+    payload?: Record<string, unknown>;
+    idempotencyKey: string;
+    correlationId?: string | null;
+  }) {
+    const allowed = ['TAG', 'ASSIGN', 'CLASSIFY', 'EXPORT', 'REVIEW', 'RECONCILE'];
+    if (!allowed.includes(input.operationType)) {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Unsupported bulk operation type');
+    }
+    const existing = await this.repo.getBulkOperationByIdempotency(input.idempotencyKey);
+    if (existing) return existing;
+
+    const preview = await this.repo.search({ ...input.filter, limit: 1, offset: 0 });
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.repo.createBulkOperation({
+      operationType: input.operationType,
+      status: 'PREVIEW',
+      previewCount: preview.total,
+      filter: input.filter as Record<string, unknown>,
+      payload: input.payload ?? {},
+      results: [],
+      requestedBy: input.actorId,
+      approverId: null,
+      correlationId,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+}
+
+export class ExecuteBulkOperationUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    bulkOperationId: string;
+    expectedPreviewCount?: number;
+    approverId?: string | null;
+  }) {
+    const op = await this.repo.getBulkOperation(input.bulkOperationId);
+    if (!op) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Bulk operation not found');
+    }
+    if (op.status !== 'PREVIEW' && op.status !== 'APPROVED') {
+      throw new DomainError(ErrorCode.CONFLICT, 'Bulk operation is not executable');
+    }
+
+    const type = op.operationType;
+    const filter = op.filter as TenantSearchFilter;
+    const search = await this.repo.search({ ...filter, limit: 5000, offset: 0 });
+    if (
+      input.expectedPreviewCount != null &&
+      input.expectedPreviewCount !== search.total &&
+      input.expectedPreviewCount !== op.previewCount
+    ) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Preview count mismatch — re-run preview');
+    }
+
+    if (BULK_SENSITIVE_TYPES.has(type) && op.status === 'PREVIEW') {
+      const approverId = input.approverId?.trim();
+      if (!approverId) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'approverId required for sensitive bulk');
+      }
+      assertSeparationOfDuties(op.requestedBy, approverId);
+      await this.repo.updateBulkOperation(op.id, { status: 'APPROVED', approverId });
+    }
+
+    const results: unknown[] = [];
+
+    if (type === 'TAG') {
+      const tagKey = String((op.payload as { tagKey?: string }).tagKey ?? '');
+      const tagValue = String((op.payload as { tagValue?: string }).tagValue ?? '');
+      if (!tagKey) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'payload.tagKey is required for TAG bulk');
+      }
+      for (const tenant of search.items) {
+        await this.repo.addTag({
+          tenantRegistryId: tenant.id,
+          tagKey,
+          tagValue,
+          createdBy: input.actorId,
+        });
+        results.push({ tenantRegistryId: tenant.id, tagKey, tagValue });
+      }
+    } else if (type === 'ASSIGN') {
+      const internalOwnerId = (op.payload as { internalOwnerId?: string | null }).internalOwnerId;
+      const operationalTeam = (op.payload as { operationalTeam?: string | null }).operationalTeam;
+      for (const tenant of search.items) {
+        const updated = await this.repo.updateTenant(
+          tenant.id,
+          {
+            internalOwnerId: internalOwnerId ?? tenant.internalOwnerId,
+            operationalTeam: operationalTeam ?? tenant.operationalTeam,
+          },
+          tenant.version,
+          input.actorId,
+        );
+        results.push({ tenantRegistryId: updated.id, version: updated.version });
+      }
+    } else if (type === 'CLASSIFY') {
+      const classification = String((op.payload as { classification?: string }).classification ?? '');
+      if (!classification) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'payload.classification is required');
+      }
+      for (const tenant of search.items) {
+        const updated = await this.repo.updateTenant(
+          tenant.id,
+          { classification },
+          tenant.version,
+          input.actorId,
+        );
+        results.push({ tenantRegistryId: updated.id, classification });
+      }
+    } else if (type === 'EXPORT') {
+      const csv = await this.repo.exportTenantsCsv(filter);
+      results.push({ format: 'CSV', bytes: csv.length });
+    } else if (type === 'REVIEW') {
+      for (const tenant of search.items) {
+        if (String(tenant.governanceStatus) === GovernanceStatus.COMPLIANT) {
+          const updated = await this.repo.updateTenant(
+            tenant.id,
+            { governanceStatus: GovernanceStatus.REVIEW_REQUIRED },
+            tenant.version,
+            input.actorId,
+          );
+          results.push({ tenantRegistryId: updated.id, governanceStatus: updated.governanceStatus });
+        }
+      }
+    } else if (type === 'RECONCILE') {
+      results.push({ note: 'Use RunReconciliationUseCase for full reconcile; bulk marks scope only', count: search.total });
+    } else {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Destructive bulk operations are not supported');
+    }
+
+    const correlationId = op.correlationId ?? randomUUID();
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const completed = await this.repo.updateBulkOperation(
+        op.id,
+        { status: 'COMPLETED', results },
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.BULK_COMPLETED,
+          aggregateId: completed.id,
+          correlationId,
+          payload: { operationType: type, affected: results.length },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.BULK_COMPLETED,
+          actorId: input.actorId,
+          subjectType: 'BULK_OPERATION',
+          subjectId: completed.id,
+          details: { operationType: type, affected: results.length },
+        },
+        client,
+      );
+
+      return { operation: completed, results };
+    });
+  }
+}
+
+export class ListBulkOperationsUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(filter: { status?: string; limit?: number; offset?: number }) {
+    return this.repo.listBulkOperations(filter);
+  }
+}
+
+export class RecordHealthSnapshotUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    tenantRegistryId: string;
+    overallStatus: string;
+    indicators: Record<string, unknown>;
+    sourceSystem: string;
+    observedAt: Date;
+    staleAfter?: Date;
+    correlationId?: string | null;
+  }) {
+    const tenant = await this.repo.getById(input.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+    const observedAt = input.observedAt;
+    const coerced = coerceHealthOverallStatus(input.overallStatus, observedAt);
+    const staleAfter =
+      input.staleAfter ?? new Date(observedAt.getTime() + HEALTH_FRESHNESS_MS);
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const snapshot = await this.repo.createHealthSnapshot(
+        {
+          tenantRegistryId: tenant.id,
+          productTenantId: tenant.productTenantId,
+          overallStatus: coerced,
+          indicators: input.indicators,
+          sourceSystem: input.sourceSystem,
+          observedAt,
+          staleAfter,
+        },
+        client,
+      );
+
+      await this.repo.updateTenantHealthFromSnapshot(
+        tenant.id,
+        String(coerced),
+        observedAt,
+        input.actorId,
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.HEALTH_RECORDED,
+          aggregateId: snapshot.id,
+          correlationId,
+          payload: { overallStatus: coerced, observedAt: observedAt.toISOString() },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.HEALTH_RECORDED,
+          actorId: input.actorId,
+          subjectType: 'HEALTH_SNAPSHOT',
+          subjectId: snapshot.id,
+          details: { overallStatus: coerced },
+        },
+        client,
+      );
+
+      return snapshot;
+    });
+  }
+}
+
+export class ListHealthSnapshotsUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(tenantRegistryId: string, limit?: number) {
+    return this.repo.listHealthSnapshots(tenantRegistryId, limit);
+  }
+}
+
+export class EvaluateTenantRiskUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: { actorId: string; tenantRegistryId: string; correlationId?: string | null }) {
+    const tenant = await this.repo.getById(input.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+    const activeExceptions = await this.repo.countActiveExceptions(tenant.id);
+    const criticalFindings = await this.repo.listFindings({
+      tenantRegistryId: tenant.id,
+      status: 'OPEN',
+      limit: 200,
+    });
+    const openCritical = criticalFindings.items.filter((f) => f.severity === 'CRITICAL').length;
+
+    const evaluated = evaluateTenantRiskLevel({
+      legalHold: tenant.legalHold,
+      activeExceptionCount: activeExceptions,
+      governanceStatus: String(tenant.governanceStatus),
+      openCriticalFindings: openCritical,
+    });
+
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    const ruleVersion = 'p8-risk-v1';
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const assessment = await this.repo.createRiskAssessment(
+        {
+          tenantRegistryId: tenant.id,
+          productTenantId: tenant.productTenantId,
+          riskLevel: evaluated.riskLevel,
+          score: null,
+          ruleVersion,
+          inputs: {
+            legalHold: tenant.legalHold,
+            activeExceptions,
+            governanceStatus: tenant.governanceStatus,
+            openCriticalFindings: openCritical,
+          },
+          result: { reasons: evaluated.reasons },
+          evidenceRefs: [],
+          reviewerId: input.actorId,
+        },
+        client,
+      );
+
+      await this.repo.updateTenantRiskLevel(tenant.id, evaluated.riskLevel, input.actorId, client);
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.RISK_EVALUATED,
+          aggregateId: assessment.id,
+          correlationId,
+          payload: { riskLevel: evaluated.riskLevel, ruleVersion },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.RISK_EVALUATED,
+          actorId: input.actorId,
+          subjectType: 'RISK_ASSESSMENT',
+          subjectId: assessment.id,
+          details: { riskLevel: evaluated.riskLevel, reasons: evaluated.reasons },
+        },
+        client,
+      );
+
+      return assessment;
+    });
+  }
+}
+
+export class ListRiskAssessmentsUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(tenantRegistryId: string, limit?: number) {
+    return this.repo.listRiskAssessments(tenantRegistryId, limit);
+  }
+}
+
+export class UpdateTenantPoliciesUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    tenantRegistryId: string;
+    expectedVersion: number;
+    legalHold?: boolean;
+    retentionPolicyRef?: string | null;
+    securityPolicyRef?: string | null;
+    dataResidencyRef?: string | null;
+    deletionProtection?: boolean;
+    correlationId?: string | null;
+  }) {
+    const tenant = await this.repo.getById(input.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+    const correlationId = input.correlationId?.trim() || randomUUID();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      let record = tenant;
+      if (input.legalHold !== undefined && input.legalHold !== tenant.legalHold) {
+        record = await this.repo.updateLegalHold(
+          tenant.id,
+          input.legalHold,
+          input.expectedVersion,
+          input.actorId,
+          client,
+        );
+        await enqueue(
+          buildTenantManagementOutboxEvent({
+            eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGED,
+            aggregateId: record.id,
+            correlationId,
+            payload: { legalHold: input.legalHold, actorId: input.actorId },
+          }),
+        );
+      }
+
+      const policyPatch: {
+        retentionPolicyRef?: string | null;
+        securityPolicyRef?: string | null;
+        dataResidencyRef?: string | null;
+        deletionProtection?: boolean;
+      } = {};
+      if (input.retentionPolicyRef !== undefined) policyPatch.retentionPolicyRef = input.retentionPolicyRef;
+      if (input.securityPolicyRef !== undefined) policyPatch.securityPolicyRef = input.securityPolicyRef;
+      if (input.dataResidencyRef !== undefined) policyPatch.dataResidencyRef = input.dataResidencyRef;
+      if (input.deletionProtection !== undefined) policyPatch.deletionProtection = input.deletionProtection;
+
+      if (Object.keys(policyPatch).length > 0) {
+        record = await this.repo.updateGovernancePolicies(
+          record.id,
+          policyPatch,
+          record.version,
+          input.actorId,
+          client,
+        );
+      }
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.GOVERNANCE_STATUS_CHANGED,
+          actorId: input.actorId,
+          subjectType: 'TENANT_REGISTRY',
+          subjectId: record.id,
+          details: {
+            legalHold: record.legalHold,
+            retentionPolicyRef: record.retentionPolicyRef,
+            securityPolicyRef: record.securityPolicyRef,
+            dataResidencyRef: record.dataResidencyRef,
+            deletionProtection: record.deletionProtection,
+          },
+        },
+        client,
+      );
+
+      return record;
+    });
+  }
+}
+
+export class ListTenantReconciliationRunsUseCase {
+  constructor(private readonly repo: TenantManagementRepositoryPort) {}
+
+  async execute(filter: { limit?: number; offset?: number }) {
+    return this.repo.listReconciliationRuns(filter);
+  }
+}
+
+export class AcknowledgeFindingUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    findingId: string;
+    status: 'ACKNOWLEDGED' | 'DISMISSED';
+    reason?: string | null;
+  }) {
+    if (input.status !== 'ACKNOWLEDGED' && input.status !== 'DISMISSED') {
+      throw new DomainError(ErrorCode.VALIDATION_ERROR, 'status must be ACKNOWLEDGED or DISMISSED');
+    }
+    const updated = await this.repo.updateFindingStatus(input.findingId, input.status);
+    await requireAudit(
+      this.audit,
+      {
+        eventType: TenantManagementEventTypes.RECONCILIATION_COMPLETED,
+        actorId: input.actorId,
+        subjectType: 'RECONCILIATION_FINDING',
+        subjectId: updated.id,
+        details: { status: input.status, reason: input.reason ?? null },
+      },
+      undefined,
+    );
+    return updated;
   }
 }
 

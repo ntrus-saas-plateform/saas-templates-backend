@@ -627,3 +627,116 @@ export class ReconciliationFindingsQueryDto extends GovernanceListQueryDto {
   @IsUUID()
   runId?: string;
 }
+
+export class PreviewBulkOperationDto {
+  @ApiProperty({ enum: ['TAG', 'ASSIGN', 'CLASSIFY', 'EXPORT', 'REVIEW', 'RECONCILE'] })
+  @IsString()
+  operationType!: string;
+
+  @ApiProperty()
+  @IsObject()
+  filter!: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  idempotencyKey!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class ExecuteBulkOperationDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  expectedPreviewCount?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  approverId?: string;
+}
+
+export class RecordHealthSnapshotDto {
+  @ApiProperty()
+  @IsString()
+  overallStatus!: string;
+
+  @ApiProperty()
+  @IsObject()
+  indicators!: Record<string, unknown>;
+
+  @ApiProperty()
+  @IsString()
+  sourceSystem!: string;
+
+  @ApiProperty()
+  @IsDateString()
+  observedAt!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  staleAfter?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class UpdateTenantPoliciesDto {
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  legalHold?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  retentionPolicyRef?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  securityPolicyRef?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dataResidencyRef?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  deletionProtection?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class AcknowledgeFindingDto {
+  @ApiProperty({ enum: ['ACKNOWLEDGED', 'DISMISSED'] })
+  @IsString()
+  status!: 'ACKNOWLEDGED' | 'DISMISSED';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}

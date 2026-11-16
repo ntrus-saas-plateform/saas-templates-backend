@@ -1,11 +1,11 @@
 # 28 — Acceptance Report — P8 Advanced Tenant Management & Governance
 
 **Date :** 2026-11-16  
-**Verdict :** `IMPLEMENTATION IN PROGRESS`
+**Verdict :** `READY FOR AUDIT`
 
 ## 1. Executive summary
 
-Le préaudit P8.0 est complet. Une fondation production-oriented a été livrée : registre product-tenant, API gouvernance, réconciliation de base, console `/edge/tenants`, migration 108, RBAC dédié. L’exécution technique P7 pour migrate/recover et les gates E2E/perf/security formelles restent ouvertes — **ACCEPTED n’est pas attribué**.
+Préaudit P8.0 + vague de complétion post-audit livrés : registre, 360 enrichi (resources/apps/config/timeline/health/risk), export, bulk non destructif, gouvernance lifecycle/exceptions/migration/recovery/termination, réconciliation, analytics, console 9+16 onglets, RBAC, outbox. Exécution technique P7 post-approval reste `P7_PENDING`. Gates E2E/PG/perf/security IDOR ouvertes — **ACCEPTED non attribué**. Voir `29-completeness-audit.md`.
 
 ## 2. P8 scope
 
@@ -20,16 +20,17 @@ Hexagonal Edge `tenant-management` ; ownership P8 pour admin/governance ; projec
 | Module | État |
 |---|---|
 | Domain policy + types | Livré |
-| Repository PG | Livré |
-| Registry + sync P7 | Livré |
-| 360 overview | Livré (projections partielles) |
-| Lifecycle / exception / migration / recovery / termination requests | Livré (délégation P7_PENDING) |
-| Reconciliation missing/orphan | Livré |
+| Repository PG (tables 108 utilisées) | Livré |
+| Registry + sync P7 + export | Livré |
+| 360 enrichi (resources/apps/config/timeline) | Livré |
+| Lifecycle / exception / migration / recovery / termination | Livré (`P7_PENDING`) |
+| Health snapshots + risk `p8-risk-v1` | Livré |
+| Bulk TAG/ASSIGN/CLASSIFY | Livré |
+| Reconciliation + acknowledge | Livré |
 | Analytics portfolio | Livré |
-| Admin Console center + detail | Livré |
-| Bulk ops avancées | Partiel / schéma prêt |
-| Risk engine avancé | Partiel (champ + table) |
-| Live health probes | Non certifié |
+| Admin Console center + détail | Livré |
+| Exécution workflows P7 post-approval | Différé (honnête) |
+| E2E / PG integration / load | Non certifié |
 
 ## 5. Database migrations
 
@@ -72,9 +73,9 @@ Indexes migration 108 + pagination serveur. Mesures de charge représentatives *
 
 ## 11. Test execution results
 
-- Backend policy + auth : **46 passed**
-- Frontend module : **3 passed**
-- Integration PostgreSQL / E2E mandat §28 : **non exécutés dans cette vague**
+- Backend policy + use-cases + auth : **63 passed**
+- Frontend tenant-management : **6 passed**
+- Integration PostgreSQL / E2E mandat §28 : **non exécutés**
 
 ## 12. Known limitations
 
@@ -105,13 +106,13 @@ Migration 108 + docs préaudit `00`–`09` présents dans l’historique de bran
 
 | Gate | Résultat |
 |---|---|
-| A Architecture | PASS (préaudit + boundaries) |
-| B Domain & Persistence | PARTIAL (schema + registry OK ; intégration PG E2E pending) |
-| C API & Security | PARTIAL (API+RBAC unit OK ; security suite incomplete) |
-| D Operations | PARTIAL (requests OK ; P7 execution pending) |
-| E Admin Console | PARTIAL (center+360 OK ; workspaces secondaires partiels) |
-| F Integration | PARTIAL |
-| G Reliability | PARTIAL (idempotency/outbox présents ; load pending) |
-| H Final Certification | **FAIL / OPEN** |
+| A Architecture | **PASS** |
+| B Domain & Persistence | **PASS** (writers tables 108 ; PG E2E suite pending) |
+| C API & Security | **PARTIAL** (API+RBAC unit OK ; IDOR E2E pending) |
+| D Operations | **PARTIAL** (gouvernance OK ; exécution P7 = P7_PENDING) |
+| E Admin Console | **PASS** (centre + détail mandatés) |
+| F Integration | **PARTIAL** (projections P7/P5 ; P6 refs UNAVAILABLE) |
+| G Reliability | **PARTIAL** (idempotency/outbox ; load pending) |
+| H Final Certification | **OPEN** |
 
-**Verdict autorisé retenu : `IMPLEMENTATION IN PROGRESS`**
+**Verdict autorisé retenu : `READY FOR AUDIT`**

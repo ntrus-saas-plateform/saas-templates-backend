@@ -3,14 +3,22 @@ import type { Pool, PoolClient } from 'pg';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { ControlPlaneDatabaseService } from '../../../../shared/database/control-plane-database.service.js';
 import type { TenantManagementRepositoryPort } from '../../domain/tenant-management/tenant-management-repository.port.js';
+import { coerceHealthOverallStatus } from '../../domain/tenant-management/tenant-management-policy.js';
 import type {
   ActivityEventRecord,
+  ApplicationRef,
+  BulkOperationRecord,
+  CommercialProjection,
+  ConfigurationRef,
   ExceptionRecord,
+  HealthSnapshotRecord,
   LifecycleRequestRecord,
   MigrationRequestRecord,
   RecoveryRequestRecord,
   ReconciliationFindingRecord,
   ReconciliationRunRecord,
+  RiskAssessmentRecord,
+  TechnicalResourceRef,
   TenantNoteRecord,
   TenantPortfolioMetrics,
   TenantRegistryRecord,
@@ -18,6 +26,7 @@ import type {
   TenantTagRecord,
   TerminationRequestRecord,
 } from '../../domain/tenant-management/tenant-management.types.js';
+import { HealthStatus } from '../../domain/tenant-management/tenant-management.types.js';
 
 type Row = Record<string, unknown>;
 
@@ -1883,5 +1892,724 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
       `SELECT product_tenant_id::text FROM edge_p8_tenants ORDER BY created_at`,
     );
     return rows.map((r) => str(r.product_tenant_id));
+  }
+
+  private buildSearchWhere(filter: TenantSearchFilter): { clause: string; params: unknown[] } {
+    const params: unknown[] = [];
+    const where: string[] = [];
+
+    if (filter.q?.trim()) {
+      params.push(`%${filter.q.trim()}%`);
+      where.push(
+        `(display_name ILIKE $${params.length}
+          OR tenant_code ILIKE $${params.length}
+          OR tenant_slug ILIKE $${params.length}
+          OR product_tenant_id::text ILIKE $${params.length})`,
+      );
+    }
+    if (filter.productId) {
+      params.push(filter.productId);
+      where.push(`product_id = $${params.length}`);
+    }
+    if (filter.accountId) {
+      params.push(filter.accountId);
+      where.push(`account_id = $${params.length}`);
+    }
+    if (filter.subscriptionId) {
+      params.push(filter.subscriptionId);
+      where.push(`subscription_id = $${params.length}`);
+    }
+    if (filter.region) {
+      params.push(filter.region);
+      where.push(`region = $${params.length}`);
+    }
+    if (filter.classification) {
+      params.push(filter.classification);
+      where.push(`classification = $${params.length}`);
+    }
+    if (filter.administrativeStatus) {
+      params.push(filter.administrativeStatus);
+      where.push(`administrative_status = $${params.length}`);
+    }
+    if (filter.technicalStatus) {
+      params.push(filter.technicalStatus);
+      where.push(`technical_status = $${params.length}`);
+    }
+    if (filter.governanceStatus) {
+      params.push(filter.governanceStatus);
+      where.push(`governance_status = $${params.length}`);
+    }
+    if (filter.healthStatus) {
+      params.push(filter.healthStatus);
+      where.push(`health_status = $${params.length}`);
+    }
+    if (filter.riskLevel) {
+      params.push(filter.riskLevel);
+      where.push(`risk_level = $${params.length}`);
+    }
+    if (filter.tagKey) {
+      params.push(filter.tagKey);
+      const tagKeyParam = params.length;
+      if (filter.tagValue) {
+        params.push(filter.tagValue);
+        where.push(
+          `EXISTS (
+             SELECT 1 FROM edge_p8_tenant_tags tt
+             WHERE tt.tenant_registry_id = edge_p8_tenants.id
+               AND tt.tag_key = $${tagKeyParam}
+               AND tt.tag_value = $${params.length}
+           )`,
+        );
+      } else {
+        where.push(
+          `EXISTS (
+             SELECT 1 FROM edge_p8_tenant_tags tt
+             WHERE tt.tenant_registry_id = edge_p8_tenants.id
+               AND tt.tag_key = $${tagKeyParam}
+           )`,
+        );
+      }
+    }
+
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    return { clause, params };
+  }
+
+  private mapHealth(row: Row): HealthSnapshotRecord {
+    return {
+      id: str(row.id),
+      tenantRegistryId: str(row.tenant_registry_id),
+      productTenantId: str(row.product_tenant_id),
+      overallStatus: str(row.overall_status),
+      indicators: asJson(row.indicators, {}),
+      sourceSystem: str(row.source_system),
+      observedAt: asDate(row.observed_at),
+      staleAfter: asDate(row.stale_after),
+      createdAt: asDate(row.created_at),
+    };
+  }
+
+  private mapRisk(row: Row): RiskAssessmentRecord {
+    return {
+      id: str(row.id),
+      tenantRegistryId: str(row.tenant_registry_id),
+      productTenantId: str(row.product_tenant_id),
+      riskLevel: str(row.risk_level),
+      score: row.score == null ? null : num(row.score),
+      ruleVersion: str(row.rule_version),
+      inputs: asJson(row.inputs, {}),
+      result: asJson(row.result, {}),
+      evidenceRefs: asJson(row.evidence_refs, []),
+      reviewerId: strOrNull(row.reviewer_id),
+      evaluatedAt: asDate(row.evaluated_at),
+      createdAt: asDate(row.created_at),
+    };
+  }
+
+  private mapBulk(row: Row): BulkOperationRecord {
+    return {
+      id: str(row.id),
+      operationType: str(row.operation_type),
+      status: str(row.status),
+      previewCount: num(row.preview_count),
+      filter: asJson(row.filter, {}),
+      payload: asJson(row.payload, {}),
+      results: asJson(row.results, []),
+      requestedBy: str(row.requested_by),
+      approverId: strOrNull(row.approver_id),
+      correlationId: strOrNull(row.correlation_id),
+      idempotencyKey: str(row.idempotency_key),
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
+    };
+  }
+
+  async listReconciliationRuns(filter: {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: ReconciliationRunRecord[]; total: number }> {
+    const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200);
+    const offset = Math.max(filter.offset ?? 0, 0);
+    const countRows = await this.q<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM edge_p8_reconciliation_runs`,
+    );
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_reconciliation_runs
+       ORDER BY started_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset],
+    );
+    return { items: rows.map((r) => this.mapReconciliationRun(r)), total: num(countRows[0]?.c) };
+  }
+
+  async updateFindingStatus(
+    id: string,
+    status: string,
+    client?: unknown,
+  ): Promise<ReconciliationFindingRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_reconciliation_findings
+       SET status = $2, updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, status],
+      client,
+    );
+    if (!rows[0]) this.notFound('Reconciliation finding');
+    return this.mapFinding(rows[0]!);
+  }
+
+  async countOpenExceptions(tenantRegistryId: string): Promise<number> {
+    const rows = await this.q<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM edge_p8_exceptions
+       WHERE tenant_registry_id = $1 AND status IN ('ACTIVE','REQUESTED')`,
+      [tenantRegistryId],
+    );
+    return num(rows[0]?.c);
+  }
+
+  async countActiveExceptions(tenantRegistryId: string): Promise<number> {
+    const rows = await this.q<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM edge_p8_exceptions
+       WHERE tenant_registry_id = $1 AND status IN ('ACTIVE','APPROVED')`,
+      [tenantRegistryId],
+    );
+    return num(rows[0]?.c);
+  }
+
+  async createHealthSnapshot(
+    input: Omit<HealthSnapshotRecord, 'id' | 'createdAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<HealthSnapshotRecord> {
+    const rows = await this.q(
+      `INSERT INTO edge_p8_health_snapshots (
+         id, tenant_registry_id, product_tenant_id, overall_status, indicators,
+         source_system, observed_at, stale_after
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5::jsonb, $6, $7, $8
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        input.tenantRegistryId,
+        input.productTenantId,
+        input.overallStatus,
+        JSON.stringify(input.indicators ?? {}),
+        input.sourceSystem,
+        input.observedAt,
+        input.staleAfter,
+      ],
+      client,
+    );
+    return this.mapHealth(rows[0]!);
+  }
+
+  async listHealthSnapshots(tenantRegistryId: string, limit = 50): Promise<HealthSnapshotRecord[]> {
+    const capped = Math.min(Math.max(limit, 1), 200);
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_health_snapshots
+       WHERE tenant_registry_id = $1
+       ORDER BY observed_at DESC
+       LIMIT $2`,
+      [tenantRegistryId, capped],
+    );
+    return rows.map((r) => this.mapHealth(r));
+  }
+
+  async getLatestHealthSnapshot(tenantRegistryId: string): Promise<HealthSnapshotRecord | null> {
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_health_snapshots
+       WHERE tenant_registry_id = $1
+       ORDER BY observed_at DESC
+       LIMIT 1`,
+      [tenantRegistryId],
+    );
+    return rows[0] ? this.mapHealth(rows[0]) : null;
+  }
+
+  async updateTenantHealthFromSnapshot(
+    tenantRegistryId: string,
+    overallStatus: string,
+    observedAt: Date,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord> {
+    const coerced = coerceHealthOverallStatus(overallStatus, observedAt);
+    const effective =
+      coerced === HealthStatus.HEALTHY &&
+      Date.now() - observedAt.getTime() > 15 * 60 * 1000
+        ? HealthStatus.STALE
+        : coerced;
+    const rows = await this.q(
+      `UPDATE edge_p8_tenants
+       SET health_status = $2,
+           health_observed_at = $3,
+           last_admin_activity_at = NOW(),
+           version = version + 1,
+           updated_by = $4,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [tenantRegistryId, effective, observedAt, actorId],
+      client,
+    );
+    if (!rows[0]) this.notFound('Tenant registry record');
+    return this.mapTenant(rows[0]!);
+  }
+
+  async createRiskAssessment(
+    input: Omit<RiskAssessmentRecord, 'id' | 'createdAt' | 'evaluatedAt'> & {
+      id?: string;
+      evaluatedAt?: Date;
+    },
+    client?: unknown,
+  ): Promise<RiskAssessmentRecord> {
+    const evaluatedAt = input.evaluatedAt ?? new Date();
+    const rows = await this.q(
+      `INSERT INTO edge_p8_risk_assessments (
+         id, tenant_registry_id, product_tenant_id, risk_level, score, rule_version,
+         inputs, result, evidence_refs, reviewer_id, evaluated_at
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6,
+         $7::jsonb, $8::jsonb, $9::jsonb, $10, $11
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        input.tenantRegistryId,
+        input.productTenantId,
+        input.riskLevel,
+        input.score ?? null,
+        input.ruleVersion,
+        JSON.stringify(input.inputs ?? {}),
+        JSON.stringify(input.result ?? {}),
+        JSON.stringify(input.evidenceRefs ?? []),
+        input.reviewerId ?? null,
+        evaluatedAt,
+      ],
+      client,
+    );
+    return this.mapRisk(rows[0]!);
+  }
+
+  async listRiskAssessments(tenantRegistryId: string, limit = 50): Promise<RiskAssessmentRecord[]> {
+    const capped = Math.min(Math.max(limit, 1), 200);
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_risk_assessments
+       WHERE tenant_registry_id = $1
+       ORDER BY evaluated_at DESC
+       LIMIT $2`,
+      [tenantRegistryId, capped],
+    );
+    return rows.map((r) => this.mapRisk(r));
+  }
+
+  async getLatestRiskAssessment(tenantRegistryId: string): Promise<RiskAssessmentRecord | null> {
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_risk_assessments
+       WHERE tenant_registry_id = $1
+       ORDER BY evaluated_at DESC
+       LIMIT 1`,
+      [tenantRegistryId],
+    );
+    return rows[0] ? this.mapRisk(rows[0]) : null;
+  }
+
+  async updateTenantRiskLevel(
+    tenantRegistryId: string,
+    riskLevel: string,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_tenants
+       SET risk_level = $2,
+           last_admin_activity_at = NOW(),
+           version = version + 1,
+           updated_by = $3,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [tenantRegistryId, riskLevel, actorId],
+      client,
+    );
+    if (!rows[0]) this.notFound('Tenant registry record');
+    return this.mapTenant(rows[0]!);
+  }
+
+  async createBulkOperation(
+    input: Omit<BulkOperationRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<BulkOperationRecord> {
+    const rows = await this.q(
+      `INSERT INTO edge_p8_bulk_operations (
+         id, operation_type, status, preview_count, filter, payload, results,
+         requested_by, approver_id, correlation_id, idempotency_key
+       ) VALUES (
+         COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb,
+         $8, $9, $10, $11
+       ) RETURNING *`,
+      [
+        input.id ?? null,
+        input.operationType,
+        input.status,
+        input.previewCount,
+        JSON.stringify(input.filter ?? {}),
+        JSON.stringify(input.payload ?? {}),
+        JSON.stringify(input.results ?? []),
+        input.requestedBy,
+        input.approverId ?? null,
+        input.correlationId ?? null,
+        input.idempotencyKey,
+      ],
+      client,
+    );
+    return this.mapBulk(rows[0]!);
+  }
+
+  async getBulkOperation(id: string): Promise<BulkOperationRecord | null> {
+    const rows = await this.q(`SELECT * FROM edge_p8_bulk_operations WHERE id = $1`, [id]);
+    return rows[0] ? this.mapBulk(rows[0]) : null;
+  }
+
+  async getBulkOperationByIdempotency(key: string): Promise<BulkOperationRecord | null> {
+    const rows = await this.q(`SELECT * FROM edge_p8_bulk_operations WHERE idempotency_key = $1`, [
+      key,
+    ]);
+    return rows[0] ? this.mapBulk(rows[0]) : null;
+  }
+
+  async updateBulkOperation(
+    id: string,
+    patch: Partial<BulkOperationRecord>,
+    client?: unknown,
+  ): Promise<BulkOperationRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_bulk_operations SET
+         status = COALESCE($2, status),
+         preview_count = COALESCE($3, preview_count),
+         payload = COALESCE($4::jsonb, payload),
+         results = COALESCE($5::jsonb, results),
+         approver_id = COALESCE($6, approver_id),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        patch.status ?? null,
+        patch.previewCount ?? null,
+        patch.payload ? JSON.stringify(patch.payload) : null,
+        patch.results ? JSON.stringify(patch.results) : null,
+        patch.approverId === undefined ? null : patch.approverId,
+      ],
+      client,
+    );
+    if (!rows[0]) this.notFound('Bulk operation');
+    return this.mapBulk(rows[0]!);
+  }
+
+  async listBulkOperations(filter: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: BulkOperationRecord[]; total: number }> {
+    const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200);
+    const offset = Math.max(filter.offset ?? 0, 0);
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (filter.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const countRows = await this.q<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM edge_p8_bulk_operations ${clause}`,
+      params,
+    );
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_bulk_operations ${clause}
+       ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    return { items: rows.map((r) => this.mapBulk(r)), total: num(countRows[0]?.c) };
+  }
+
+  async createAnalyticsSnapshot(snapshotKey: string, metrics: Record<string, unknown>): Promise<void> {
+    await this.q(
+      `INSERT INTO edge_p8_analytics_snapshots (snapshot_key, metrics, computed_at)
+       VALUES ($1, $2::jsonb, NOW())`,
+      [snapshotKey, JSON.stringify(metrics ?? {})],
+    );
+  }
+
+  async exportTenantsCsv(filter: TenantSearchFilter, maxRows = 5000): Promise<string> {
+    const limit = Math.min(Math.max(maxRows, 1), 5000);
+    const { clause, params } = this.buildSearchWhere(filter);
+    const sortBy = SEARCH_SORT_COLUMNS[filter.sortBy ?? 'created_at'] ?? 'created_at';
+    const sortDir = filter.sortDir === 'asc' ? 'ASC' : 'DESC';
+    params.push(limit);
+    const rows = await this.q(
+      `SELECT id, product_tenant_id, tenant_code, display_name, product_id, account_id,
+              subscription_id, classification, region, administrative_status, technical_status,
+              governance_status, health_status, risk_level, created_at
+       FROM edge_p8_tenants ${clause}
+       ORDER BY ${sortBy} ${sortDir}
+       LIMIT $${params.length}`,
+      params,
+    );
+    const header =
+      'id,product_tenant_id,tenant_code,display_name,product_id,account_id,subscription_id,classification,region,administrative_status,technical_status,governance_status,health_status,risk_level,created_at';
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = rows.map((r) =>
+      [
+        r.id,
+        r.product_tenant_id,
+        r.tenant_code,
+        r.display_name,
+        r.product_id,
+        r.account_id,
+        r.subscription_id,
+        r.classification,
+        r.region,
+        r.administrative_status,
+        r.technical_status,
+        r.governance_status,
+        r.health_status,
+        r.risk_level,
+        r.created_at,
+      ]
+        .map(esc)
+        .join(','),
+    );
+    return [header, ...lines].join('\n');
+  }
+
+  private async tableExists(tableName: string): Promise<boolean> {
+    const rows = await this.q<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = $1
+       ) AS exists`,
+      [tableName],
+    );
+    return Boolean(rows[0]?.exists);
+  }
+
+  async getCommercialProjection(subscriptionId: string | null): Promise<CommercialProjection> {
+    if (!subscriptionId) {
+      return {
+        availability: 'UNAVAILABLE',
+        subscriptionStatus: null,
+        planId: null,
+        subscriptionNumber: null,
+        billingFrequency: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      };
+    }
+    if (!(await this.tableExists('edge_subscriptions'))) {
+      return {
+        availability: 'UNAVAILABLE',
+        subscriptionStatus: null,
+        planId: null,
+        subscriptionNumber: null,
+        billingFrequency: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      };
+    }
+    const rows = await this.q(
+      `SELECT status, plan_id, subscription_number, billing_frequency,
+              current_period_start, current_period_end
+       FROM edge_subscriptions WHERE id = $1`,
+      [subscriptionId],
+    );
+    if (!rows[0]) {
+      return {
+        availability: 'PARTIAL',
+        subscriptionStatus: null,
+        planId: null,
+        subscriptionNumber: null,
+        billingFrequency: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      };
+    }
+    const row = rows[0];
+    return {
+      availability: 'AVAILABLE',
+      subscriptionStatus: strOrNull(row.status),
+      planId: row.plan_id == null ? null : str(row.plan_id),
+      subscriptionNumber: strOrNull(row.subscription_number),
+      billingFrequency: strOrNull(row.billing_frequency),
+      currentPeriodStart: row.current_period_start
+        ? asDate(row.current_period_start).toISOString()
+        : null,
+      currentPeriodEnd: row.current_period_end
+        ? asDate(row.current_period_end).toISOString()
+        : null,
+    };
+  }
+
+  async getTechnicalResources(productTenantId: string): Promise<TechnicalResourceRef[]> {
+    if (!(await this.tableExists('edge_p7_infrastructure_resources'))) {
+      return [];
+    }
+    const rows = await this.q(
+      `SELECT r.id, r.resource_type, r.status, r.region, p.code AS provider_code
+       FROM edge_p7_infrastructure_resources r
+       LEFT JOIN edge_p7_infrastructure_providers p ON p.id = r.provider_id
+       WHERE r.tenant_id = $1
+       ORDER BY r.updated_at DESC
+       LIMIT 100`,
+      [productTenantId],
+    );
+    return rows.map((r) => ({
+      id: str(r.id),
+      type: str(r.resource_type),
+      status: str(r.status),
+      region: strOrNull(r.region),
+      provider: strOrNull(r.provider_code),
+    }));
+  }
+
+  async getApplicationRefs(productTenantId: string): Promise<ApplicationRef[]> {
+    if (!(await this.tableExists('edge_p7_tenant_experience_assignments'))) {
+      return [];
+    }
+    const rows = await this.q(
+      `SELECT tea.id AS assignment_id, tea.assignment_status,
+              tab.id AS binding_id, tab.application_id, tab.application_version
+       FROM edge_p7_tenant_experience_assignments tea
+       LEFT JOIN edge_p7_tenant_application_bindings tab
+         ON tab.assignment_id = tea.id
+       WHERE tea.tenant_id = $1
+       ORDER BY tea.updated_at DESC
+       LIMIT 100`,
+      [productTenantId],
+    );
+    return rows.map((r) => ({
+      id: r.binding_id ? str(r.binding_id) : str(r.assignment_id),
+      assignmentId: strOrNull(r.assignment_id),
+      applicationId: strOrNull(r.application_id),
+      status: str(r.assignment_status),
+      version: r.application_version == null ? null : num(r.application_version),
+    }));
+  }
+
+  async getConfigurationRefs(productTenantId: string): Promise<ConfigurationRef[]> {
+    if (!(await this.tableExists('edge_p7_tenant_configuration_assignments'))) {
+      return [];
+    }
+    const rows = await this.q(
+      `SELECT id, bundle_id, assignment_status, bundle_version, drift_status
+       FROM edge_p7_tenant_configuration_assignments
+       WHERE tenant_id = $1
+       ORDER BY updated_at DESC
+       LIMIT 100`,
+      [productTenantId],
+    );
+    return rows.map((r) => ({
+      id: str(r.id),
+      bundleId: str(r.bundle_id),
+      status: str(r.assignment_status),
+      bundleVersion: num(r.bundle_version),
+      driftStatus: str(r.drift_status),
+    }));
+  }
+
+  async updateLegalHold(
+    id: string,
+    legalHold: boolean,
+    expectedVersion: number,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_tenants
+       SET legal_hold = $3,
+           version = version + 1,
+           updated_by = $4,
+           last_admin_activity_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1 AND version = $2
+       RETURNING *`,
+      [id, expectedVersion, legalHold, actorId],
+      client,
+    );
+    if (!rows[0]) this.conflict();
+    return this.mapTenant(rows[0]!);
+  }
+
+  async updateGovernancePolicies(
+    id: string,
+    patch: {
+      retentionPolicyRef?: string | null;
+      securityPolicyRef?: string | null;
+      dataResidencyRef?: string | null;
+      deletionProtection?: boolean;
+    },
+    expectedVersion: number,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord> {
+    const rows = await this.q(
+      `UPDATE edge_p8_tenants SET
+         retention_policy_ref = COALESCE($3, retention_policy_ref),
+         security_policy_ref = COALESCE($4, security_policy_ref),
+         data_residency_ref = COALESCE($5, data_residency_ref),
+         deletion_protection = COALESCE($6, deletion_protection),
+         version = version + 1,
+         updated_by = $7,
+         last_admin_activity_at = NOW(),
+         updated_at = NOW()
+       WHERE id = $1 AND version = $2
+       RETURNING *`,
+      [
+        id,
+        expectedVersion,
+        patch.retentionPolicyRef === undefined ? null : patch.retentionPolicyRef,
+        patch.securityPolicyRef === undefined ? null : patch.securityPolicyRef,
+        patch.dataResidencyRef === undefined ? null : patch.dataResidencyRef,
+        patch.deletionProtection === undefined ? null : patch.deletionProtection,
+        actorId,
+      ],
+      client,
+    );
+    if (!rows[0]) this.conflict();
+    return this.mapTenant(rows[0]!);
+  }
+
+  async detectDuplicateRegistryRows(): Promise<
+    Array<{ tenantCode: string; count: number; productTenantIds: string[] }>
+  > {
+    const rows = await this.q<{ tenant_code: string; c: number; ids: string[] }>(
+      `SELECT tenant_code, COUNT(*)::int AS c,
+              array_agg(product_tenant_id::text ORDER BY created_at) AS ids
+       FROM edge_p8_tenants
+       GROUP BY tenant_code
+       HAVING COUNT(*) > 1`,
+    );
+    return rows.map((r) => ({
+      tenantCode: str(r.tenant_code),
+      count: num(r.c),
+      productTenantIds: (r.ids ?? []).map((id) => str(id)),
+    }));
+  }
+
+  async detectDuplicateAccountProductRefs(): Promise<
+    Array<{ accountId: string; productId: string; productTenantIds: string[] }>
+  > {
+    const rows = await this.q<{ account_id: string; product_id: string; ids: string[] }>(
+      `SELECT account_id::text, product_id::text,
+              array_agg(DISTINCT product_tenant_id::text) AS ids
+       FROM edge_p8_tenants
+       WHERE account_id IS NOT NULL
+       GROUP BY account_id, product_id
+       HAVING COUNT(DISTINCT product_tenant_id) > 1`,
+    );
+    return rows.map((r) => ({
+      accountId: str(r.account_id),
+      productId: str(r.product_id),
+      productTenantIds: (r.ids ?? []).map((id) => str(id)),
+    }));
   }
 }

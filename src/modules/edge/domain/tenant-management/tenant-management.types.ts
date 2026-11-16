@@ -485,6 +485,83 @@ export type TenantPortfolioMetrics = {
   computedAt: string;
 };
 
+export type HealthSnapshotRecord = {
+  id: string;
+  tenantRegistryId: string;
+  productTenantId: string;
+  overallStatus: HealthStatus | string;
+  indicators: Record<string, unknown>;
+  sourceSystem: string;
+  observedAt: Date;
+  staleAfter: Date;
+  createdAt: Date;
+};
+
+export type RiskAssessmentRecord = {
+  id: string;
+  tenantRegistryId: string;
+  productTenantId: string;
+  riskLevel: RiskLevel | string;
+  score: number | null;
+  ruleVersion: string;
+  inputs: Record<string, unknown>;
+  result: Record<string, unknown>;
+  evidenceRefs: unknown[];
+  reviewerId: string | null;
+  evaluatedAt: Date;
+  createdAt: Date;
+};
+
+export type BulkOperationRecord = {
+  id: string;
+  operationType: string;
+  status: string;
+  previewCount: number;
+  filter: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  results: unknown[];
+  requestedBy: string;
+  approverId: string | null;
+  correlationId: string | null;
+  idempotencyKey: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type TechnicalResourceRef = {
+  id: string;
+  type: string;
+  status: string;
+  region: string | null;
+  provider: string | null;
+};
+
+export type ApplicationRef = {
+  id: string;
+  assignmentId: string | null;
+  applicationId: string | null;
+  status: string;
+  version: number | null;
+};
+
+export type ConfigurationRef = {
+  id: string;
+  bundleId: string;
+  status: string;
+  bundleVersion: number;
+  driftStatus: string;
+};
+
+export type CommercialProjection = {
+  availability: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+  subscriptionStatus: string | null;
+  planId: string | null;
+  subscriptionNumber: string | null;
+  billingFrequency: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+};
+
 export type Tenant360Overview = {
   registry: TenantRegistryRecord;
   tags: TenantTagRecord[];
@@ -497,6 +574,7 @@ export type Tenant360Overview = {
     syncedAt: string | null;
     availability: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
   };
+  commercialDetail: CommercialProjection;
   technical: {
     technicalStatus: string;
     lifecycleRecordId: string | null;
@@ -511,6 +589,12 @@ export type Tenant360Overview = {
     observedAt: string | null;
     freshness: 'FRESH' | 'STALE' | 'UNKNOWN';
   };
+  latestHealthSnapshot: HealthSnapshotRecord | null;
+  latestRiskAssessment: RiskAssessmentRecord | null;
+  resources: TechnicalResourceRef[];
+  applications: ApplicationRef[];
+  configuration: ConfigurationRef[];
+  timeline: ActivityEventRecord[];
   openExceptions: number;
   pendingLifecycleRequests: number;
   openFindings: number;

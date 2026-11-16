@@ -5,12 +5,15 @@ import {
   assertNotLegalHold,
   assertSeparationOfDuties,
   canRequestLifecycle,
+  coerceHealthOverallStatus,
+  evaluateTenantRiskLevel,
+  governanceStatusAfterExceptionRevoke,
   isDedicatedGovernanceApprovable,
   nextStatusAfterApproval,
   slugifyTenantCode,
   unavailableGovernanceCheck,
 } from './tenant-management-policy.js';
-import { LifecycleRequestType } from './tenant-management.types.js';
+import { GovernanceStatus, HealthStatus, LifecycleRequestType, RiskLevel } from './tenant-management.types.js';
 
 describe('P8 tenant-management-policy', () => {
   it('allows ACTIVE → SUSPENDED', () => {
@@ -64,5 +67,36 @@ describe('P8 tenant-management-policy', () => {
     const check = unavailableGovernanceCheck('P6_BILLING');
     expect(check.availability).toBe('UNAVAILABLE');
     expect(check.integration).toBe('P6_BILLING');
+  });
+
+  it('coerces stale HEALTHY observations to STALE', () => {
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    expect(coerceHealthOverallStatus(HealthStatus.HEALTHY, old)).toBe(HealthStatus.STALE);
+    expect(coerceHealthOverallStatus(HealthStatus.DEGRADED, old)).toBe(HealthStatus.DEGRADED);
+  });
+
+  it('elevates risk under legal hold and critical findings', () => {
+    expect(
+      evaluateTenantRiskLevel({
+        legalHold: true,
+        activeExceptionCount: 0,
+        governanceStatus: GovernanceStatus.COMPLIANT,
+        openCriticalFindings: 0,
+      }).riskLevel,
+    ).toBe(RiskLevel.HIGH);
+    expect(
+      evaluateTenantRiskLevel({
+        legalHold: false,
+        activeExceptionCount: 0,
+        governanceStatus: GovernanceStatus.COMPLIANT,
+        openCriticalFindings: 2,
+      }).riskLevel,
+    ).toBe(RiskLevel.CRITICAL);
+  });
+
+  it('restores governance after exception revoke', () => {
+    expect(governanceStatusAfterExceptionRevoke(1, false)).toBe(GovernanceStatus.EXCEPTION_PENDING);
+    expect(governanceStatusAfterExceptionRevoke(0, true)).toBe(GovernanceStatus.REVIEW_REQUIRED);
+    expect(governanceStatusAfterExceptionRevoke(0, false)).toBe(GovernanceStatus.COMPLIANT);
   });
 });

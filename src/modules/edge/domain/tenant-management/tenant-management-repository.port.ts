@@ -1,11 +1,18 @@
 import type {
   ActivityEventRecord,
+  ApplicationRef,
+  BulkOperationRecord,
+  CommercialProjection,
+  ConfigurationRef,
   ExceptionRecord,
+  HealthSnapshotRecord,
   LifecycleRequestRecord,
   MigrationRequestRecord,
   RecoveryRequestRecord,
   ReconciliationFindingRecord,
   ReconciliationRunRecord,
+  RiskAssessmentRecord,
+  TechnicalResourceRef,
   TenantNoteRecord,
   TenantPortfolioMetrics,
   TenantRegistryRecord,
@@ -193,6 +200,96 @@ export interface TenantManagementRepositoryPort {
     limit?: number;
     offset?: number;
   }): Promise<{ items: ReconciliationFindingRecord[]; total: number }>;
+  listReconciliationRuns(filter: {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: ReconciliationRunRecord[]; total: number }>;
+  updateFindingStatus(
+    id: string,
+    status: string,
+    client?: unknown,
+  ): Promise<ReconciliationFindingRecord>;
+
+  countOpenExceptions(tenantRegistryId: string): Promise<number>;
+  countActiveExceptions(tenantRegistryId: string): Promise<number>;
+
+  createHealthSnapshot(
+    input: Omit<HealthSnapshotRecord, 'id' | 'createdAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<HealthSnapshotRecord>;
+  listHealthSnapshots(
+    tenantRegistryId: string,
+    limit?: number,
+  ): Promise<HealthSnapshotRecord[]>;
+  getLatestHealthSnapshot(tenantRegistryId: string): Promise<HealthSnapshotRecord | null>;
+  updateTenantHealthFromSnapshot(
+    tenantRegistryId: string,
+    overallStatus: string,
+    observedAt: Date,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord>;
+
+  createRiskAssessment(
+    input: Omit<RiskAssessmentRecord, 'id' | 'createdAt' | 'evaluatedAt'> & {
+      id?: string;
+      evaluatedAt?: Date;
+    },
+    client?: unknown,
+  ): Promise<RiskAssessmentRecord>;
+  listRiskAssessments(tenantRegistryId: string, limit?: number): Promise<RiskAssessmentRecord[]>;
+  getLatestRiskAssessment(tenantRegistryId: string): Promise<RiskAssessmentRecord | null>;
+  updateTenantRiskLevel(
+    tenantRegistryId: string,
+    riskLevel: string,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord>;
+
+  createBulkOperation(
+    input: Omit<BulkOperationRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
+    client?: unknown,
+  ): Promise<BulkOperationRecord>;
+  getBulkOperation(id: string): Promise<BulkOperationRecord | null>;
+  getBulkOperationByIdempotency(key: string): Promise<BulkOperationRecord | null>;
+  updateBulkOperation(
+    id: string,
+    patch: Partial<BulkOperationRecord>,
+    client?: unknown,
+  ): Promise<BulkOperationRecord>;
+  listBulkOperations(filter: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: BulkOperationRecord[]; total: number }>;
+
+  createAnalyticsSnapshot(snapshotKey: string, metrics: Record<string, unknown>): Promise<void>;
+  exportTenantsCsv(filter: TenantSearchFilter, maxRows?: number): Promise<string>;
+
+  getCommercialProjection(subscriptionId: string | null): Promise<CommercialProjection>;
+  getTechnicalResources(productTenantId: string): Promise<TechnicalResourceRef[]>;
+  getApplicationRefs(productTenantId: string): Promise<ApplicationRef[]>;
+  getConfigurationRefs(productTenantId: string): Promise<ConfigurationRef[]>;
+
+  updateLegalHold(
+    id: string,
+    legalHold: boolean,
+    expectedVersion: number,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord>;
+  updateGovernancePolicies(
+    id: string,
+    patch: {
+      retentionPolicyRef?: string | null;
+      securityPolicyRef?: string | null;
+      dataResidencyRef?: string | null;
+      deletionProtection?: boolean;
+    },
+    expectedVersion: number,
+    actorId: string,
+    client?: unknown,
+  ): Promise<TenantRegistryRecord>;
 
   appendActivity(
     input: Omit<ActivityEventRecord, 'id' | 'createdAt'> & { id?: string },
@@ -221,4 +318,10 @@ export interface TenantManagementRepositoryPort {
     }>
   >;
   listRegistryProductTenantIds(): Promise<string[]>;
+  detectDuplicateRegistryRows(): Promise<
+    Array<{ tenantCode: string; count: number; productTenantIds: string[] }>
+  >;
+  detectDuplicateAccountProductRefs(): Promise<
+    Array<{ accountId: string; productId: string; productTenantIds: string[] }>
+  >;
 }

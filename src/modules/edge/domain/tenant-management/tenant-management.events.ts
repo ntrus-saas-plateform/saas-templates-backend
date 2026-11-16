@@ -20,6 +20,19 @@ export const TenantManagementEventTypes = {
   TERMINATION_REQUESTED: 'edge.p8.tenant.termination.requested',
   RECONCILIATION_COMPLETED: 'edge.p8.tenant.reconciliation.completed',
   GOVERNANCE_REVIEW_REQUIRED: 'edge.p8.tenant.governance.review.required',
+  MIGRATION_APPROVED: 'edge.p8.tenant.migration.approved',
+  MIGRATION_REJECTED: 'edge.p8.tenant.migration.rejected',
+  RECOVERY_APPROVED: 'edge.p8.tenant.recovery.approved',
+  RECOVERY_REJECTED: 'edge.p8.tenant.recovery.rejected',
+  TERMINATION_APPROVED: 'edge.p8.tenant.termination.approved',
+  TERMINATION_REJECTED: 'edge.p8.tenant.termination.rejected',
+  EXCEPTION_EXPIRED: 'edge.p8.tenant.exception.expired',
+  BULK_COMPLETED: 'edge.p8.tenant.bulk.completed',
+  HEALTH_RECORDED: 'edge.p8.tenant.health.recorded',
+  RISK_EVALUATED: 'edge.p8.tenant.risk.evaluated',
+  EXPORT_REQUESTED: 'edge.p8.tenant.export.requested',
+  LEGAL_HOLD_CHANGED: 'edge.p8.tenant.legal_hold.changed',
+  GOVERNANCE_STATUS_CHANGED: 'edge.p8.tenant.governance.status.changed',
 } as const;
 
 export function buildTenantManagementOutboxEvent(input: {

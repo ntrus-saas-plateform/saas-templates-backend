@@ -410,7 +410,7 @@ import {
   ExportTenantsUseCase,
   ListBulkOperationsUseCase,
   ListHealthSnapshotsUseCase,
-  ListReconciliationRunsUseCase,
+  ListTenantReconciliationRunsUseCase,
   ListRiskAssessmentsUseCase,
   PreviewBulkOperationUseCase,
   RecordHealthSnapshotUseCase,
@@ -5616,8 +5616,8 @@ export const edgeApplicationProviders: Provider[] = [
     ],
   },
   {
-    provide: ListReconciliationRunsUseCase,
-    useFactory: (repo) => new ListReconciliationRunsUseCase(repo),
+    provide: ListTenantReconciliationRunsUseCase,
+    useFactory: (repo) => new ListTenantReconciliationRunsUseCase(repo),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
   },
   {

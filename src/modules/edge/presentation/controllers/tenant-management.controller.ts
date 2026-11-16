@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   Patch,
   Post,
@@ -17,6 +18,7 @@ import { EdgeAuthGuard } from '../../../../shared/auth/edge-auth.guard.js';
 import { EdgeOptionalWorkspaceGuard } from '../../../../shared/auth/edge-optional-workspace.guard.js';
 import { EdgePermissionGuard } from '../../../../shared/auth/edge-permission.guard.js';
 import {
+  AcknowledgeFindingUseCase,
   AddTenantNoteUseCase,
   ApproveExceptionUseCase,
   ApproveLifecycleActionUseCase,
@@ -24,19 +26,28 @@ import {
   ApproveRecoveryUseCase,
   ApproveTerminationUseCase,
   AssignTenantOwnerUseCase,
+  EvaluateTenantRiskUseCase,
+  ExecuteBulkOperationUseCase,
   ExpireExceptionsUseCase,
+  ExportTenantsUseCase,
   GetPortfolioAnalyticsUseCase,
   GetTenant360UseCase,
   GetTenantUseCase,
   ListActivityUseCase,
+  ListBulkOperationsUseCase,
   ListExceptionsUseCase,
   ListFindingsUseCase,
+  ListHealthSnapshotsUseCase,
   ListLifecycleRequestsUseCase,
   ListMigrationRequestsUseCase,
+  ListTenantReconciliationRunsUseCase,
   ListRecoveryRequestsUseCase,
+  ListRiskAssessmentsUseCase,
   ListTerminationRequestsUseCase,
   ListTenantsUseCase,
   ManageTenantTagsUseCase,
+  PreviewBulkOperationUseCase,
+  RecordHealthSnapshotUseCase,
   RegisterTenantUseCase,
   RejectLifecycleActionUseCase,
   RejectMigrationUseCase,
@@ -51,13 +62,18 @@ import {
   RunReconciliationUseCase,
   SyncTenantsFromP7UseCase,
   UpdateTenantMetadataUseCase,
+  UpdateTenantPoliciesUseCase,
 } from '../../application/tenant-management/tenant-management.use-cases.js';
 import {
+  AcknowledgeFindingDto,
   AddTenantNoteDto,
   ApproveLifecycleActionDto,
   AssignTenantOwnerDto,
+  ExecuteBulkOperationDto,
   GovernanceListQueryDto,
   ManageTenantTagDto,
+  PreviewBulkOperationDto,
+  RecordHealthSnapshotDto,
   RegisterTenantDto,
   ReconciliationFindingsQueryDto,
   RejectGovernanceRequestDto,
@@ -73,6 +89,7 @@ import {
   TenantActivityQueryDto,
   TenantSearchQueryDto,
   UpdateTenantMetadataDto,
+  UpdateTenantPoliciesDto,
 } from '../dto/tenant-management.dto.js';
 
 type EdgeRequest = { user?: { sub?: string; id?: string } };
@@ -125,6 +142,17 @@ export class EdgeTenantManagementController {
     private readonly rejectTermination: RejectTerminationUseCase,
     private readonly runReconciliation: RunReconciliationUseCase,
     private readonly listFindings: ListFindingsUseCase,
+    private readonly exportTenants: ExportTenantsUseCase,
+    private readonly previewBulk: PreviewBulkOperationUseCase,
+    private readonly executeBulk: ExecuteBulkOperationUseCase,
+    private readonly listBulk: ListBulkOperationsUseCase,
+    private readonly recordHealth: RecordHealthSnapshotUseCase,
+    private readonly listHealth: ListHealthSnapshotsUseCase,
+    private readonly evaluateRisk: EvaluateTenantRiskUseCase,
+    private readonly listRisk: ListRiskAssessmentsUseCase,
+    private readonly updatePolicies: UpdateTenantPoliciesUseCase,
+    private readonly listReconciliationRuns: ListTenantReconciliationRunsUseCase,
+    private readonly acknowledgeFinding: AcknowledgeFindingUseCase,
   ) {}
 
   @Get('edge/tenants')
@@ -132,6 +160,18 @@ export class EdgeTenantManagementController {
   @ApiOperation({ summary: 'Search tenant registry' })
   async searchTenants(@Query() query: TenantSearchQueryDto) {
     return this.listTenants.execute(query);
+  }
+
+  @Get('edge/tenants/export')
+  @RequireEdgePermissions('platform:tenant_management:export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportTenantRegistry(@Query() query: TenantSearchQueryDto, @Req() req: EdgeRequest) {
+    const result = await this.exportTenants.execute({
+      actorId: actorId(req),
+      filter: query,
+      correlationId: randomUUID(),
+    });
+    return result.csv;
   }
 
   @Get('edge/tenants/analytics/portfolio')
@@ -412,6 +452,61 @@ export class EdgeTenantManagementController {
     return this.listFindings.execute(query);
   }
 
+  @Get('edge/tenant-management/reconciliation/runs')
+  @RequireEdgePermissions('platform:tenant_management:reconciliation:execute')
+  async reconciliationRuns(@Query() query: GovernanceListQueryDto) {
+    return this.listReconciliationRuns.execute({ limit: query.limit, offset: query.offset });
+  }
+
+  @Post('edge/tenant-management/reconciliation/findings/:id/acknowledge')
+  @RequireEdgePermissions('platform:tenant_management:reconciliation:remediate')
+  async acknowledgeReconciliationFinding(
+    @Param('id') id: string,
+    @Body() body: AcknowledgeFindingDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.acknowledgeFinding.execute({
+      actorId: actorId(req),
+      findingId: id,
+      status: body.status,
+      reason: body.reason ?? null,
+    });
+  }
+
+  @Post('edge/tenant-management/bulk/preview')
+  @RequireEdgePermissions('platform:tenant_management:bulk:execute')
+  async bulkPreview(@Body() body: PreviewBulkOperationDto, @Req() req: EdgeRequest) {
+    return this.previewBulk.execute({
+      actorId: actorId(req),
+      operationType: body.operationType,
+      filter: body.filter as TenantSearchQueryDto,
+      payload: body.payload,
+      idempotencyKey: body.idempotencyKey,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Post('edge/tenant-management/bulk/:id/execute')
+  @RequireEdgePermissions('platform:tenant_management:bulk:execute')
+  async bulkExecute(
+    @Param('id') id: string,
+    @Body() body: ExecuteBulkOperationDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.executeBulk.execute({
+      actorId: actorId(req),
+      bulkOperationId: id,
+      expectedPreviewCount: body.expectedPreviewCount,
+      approverId: body.approverId ?? null,
+    });
+  }
+
+  @Get('edge/tenant-management/bulk')
+  @RequireEdgePermissions('platform:tenant_management:bulk:execute')
+  async listBulkOps(@Query() query: GovernanceListQueryDto) {
+    return this.listBulk.execute({ status: query.status, limit: query.limit, offset: query.offset });
+  }
+
   @Get('edge/tenants/:id')
   @RequireEdgePermissions('platform:tenant_management:read')
   async getTenantById(@Param('id') id: string) {
@@ -521,6 +616,67 @@ export class EdgeTenantManagementController {
       tenantRegistryId: id,
       limit: query.limit,
       offset: query.offset,
+    });
+  }
+
+  @Post('edge/tenants/:id/health-snapshots')
+  @RequireEdgePermissions('platform:tenant_management:update_metadata')
+  async postHealthSnapshot(
+    @Param('id') id: string,
+    @Body() body: RecordHealthSnapshotDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.recordHealth.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      overallStatus: body.overallStatus,
+      indicators: body.indicators,
+      sourceSystem: body.sourceSystem,
+      observedAt: new Date(body.observedAt),
+      staleAfter: body.staleAfter ? new Date(body.staleAfter) : undefined,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Get('edge/tenants/:id/health-snapshots')
+  @RequireEdgePermissions('platform:tenant_management:read')
+  async getHealthSnapshots(@Param('id') id: string, @Query() query: TenantActivityQueryDto) {
+    return this.listHealth.execute(id, query.limit);
+  }
+
+  @Post('edge/tenants/:id/risk-assessments')
+  @RequireEdgePermissions('platform:tenant_management:update_metadata')
+  async postRiskAssessment(@Param('id') id: string, @Req() req: EdgeRequest) {
+    return this.evaluateRisk.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      correlationId: randomUUID(),
+    });
+  }
+
+  @Get('edge/tenants/:id/risk-assessments')
+  @RequireEdgePermissions('platform:tenant_management:read')
+  async getRiskAssessments(@Param('id') id: string, @Query() query: TenantActivityQueryDto) {
+    return this.listRisk.execute(id, query.limit);
+  }
+
+  @Patch('edge/tenants/:id/policies')
+  @RequireEdgePermissions('platform:tenant_management:update_metadata')
+  async patchTenantPolicies(
+    @Param('id') id: string,
+    @Body() body: UpdateTenantPoliciesDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.updatePolicies.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      expectedVersion: body.expectedVersion,
+      legalHold: body.legalHold,
+      retentionPolicyRef: body.retentionPolicyRef,
+      securityPolicyRef: body.securityPolicyRef,
+      dataResidencyRef: body.dataResidencyRef,
+      deletionProtection: body.deletionProtection,
+      correlationId: body.correlationId?.trim() || randomUUID(),
     });
   }
 
