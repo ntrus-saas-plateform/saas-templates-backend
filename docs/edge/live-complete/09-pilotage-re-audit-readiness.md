@@ -11,7 +11,7 @@
 
 | Repo | Branch | HEAD |
 |------|--------|------|
-| Backend | `feature/console` | see git after commit of this doc |
+| Backend | `feature/console` | `5cf4b71259d879106e30a697f0aa10f28ecd3b45` |
 | Frontend | `feature/console` | `c256f16a72107e492ecf0f73524cef26164e3a34` |
 
 Push to GitHub: still **DENIED 403** for `kabikaAsyst` (criterion 1 remains NEED_LAB_RUN until fixed).
