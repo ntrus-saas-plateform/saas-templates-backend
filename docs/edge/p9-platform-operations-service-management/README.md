@@ -3,15 +3,25 @@
 **Programme :** Okapi Edge Control Plane  
 **Phase :** P9  
 **Branche :** `feature/console`  
-**Repos :** Ops Control Plane enterprise — catalogue de services, santé, incidents, changements, fiabilité — **sans** dupliquer P5/P6/P7/P8.
+**Objectif :** Ops Control Plane enterprise — catalogue de services, santé, incidents, changements, fiabilité — **sans** dupliquer P5/P6/P7/P8.
 
 ## État
 
 | Sous-phase | Statut |
 |------------|--------|
 | P9.0 Baseline | **DONE** |
-| P9.1 Service Catalog | **DONE (fondation)** — mig 115, API, console, tests unit/auth |
-| P9.2 … P9.12 | PENDING |
+| P9.1 Service Catalog | **DONE** — mig 115, API, console, tests unit/auth |
+| P9.2 Health / alerts | **DONE (core)** — mig 116, snapshots, alerts ack/resolve |
+| P9.3 Incidents | **DONE (core)** — create / transition / major |
+| P9.4 Problems | **DONE (core)** — RCA + link incident + list |
+| P9.5 Change / maintenance | **DONE (core)** — SoD approve/reject + schedule |
+| P9.6 Tasks / on-call | **DONE (core)** — rotations stockées, pas de paging |
+| P9.7 SLO / capacity | **DONE (core)** — mesures durable |
+| P9.8 Recovery | **DONE (core)** — evidence obligatoire pour VERIFIED |
+| P9.9 Runbooks / status | **DONE (core)** — SoD publication, pas de CDN public |
+| P9.10 Risk / automation | **DONE (core)** — exceptions + execute après approve |
+| P9.11 Analytics | **DONE (core)** — comptages DB ; intégrations `UNAVAILABLE` si non configurées |
+| P9.12 Hardening / E2E full | **PARTIAL** — auth matrix + smoke FE ; pas gates A–J complets |
 
 **Verdict courant :** `P9 PARTIALLY IMPLEMENTED`
 

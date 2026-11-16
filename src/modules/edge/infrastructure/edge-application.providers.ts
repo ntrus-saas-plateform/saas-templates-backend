@@ -375,6 +375,7 @@ import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../domain/tenant-management/t
 import { TENANT_TECHNICAL_LIFECYCLE_BRIDGE_PORT } from '../domain/tenant-management/tenant-technical-lifecycle-bridge.port.js';
 import { P7TenantTechnicalLifecycleBridge } from './tenant-management/p7-tenant-technical-lifecycle.bridge.js';
 import { SERVICE_CATALOG_REPOSITORY_PORT } from '../domain/platform-operations/service-catalog-repository.port.js';
+import { SERVICE_OPERATIONS_REPOSITORY_PORT } from '../domain/platform-operations/operations-repository.port.js';
 import {
   AddServiceDependencyUseCase,
   GetPlatformServiceUseCase,
@@ -383,6 +384,58 @@ import {
   RemoveServiceDependencyUseCase,
   UpdatePlatformServiceUseCase,
 } from '../application/platform-operations/service-catalog.use-cases.js';
+import {
+  AcknowledgeAlertUseCase,
+  ApproveAutomationExecutionUseCase,
+  ApproveChangeUseCase,
+  ApproveStatusPublicationUseCase,
+  ConfirmProblemRootCauseUseCase,
+  CreateAutomationUseCase,
+  CreateChangeUseCase,
+  CreateIncidentUseCase,
+  CreateOnCallRotationUseCase,
+  CreateOperationalExceptionUseCase,
+  CreateOperationalRiskUseCase,
+  CreateOperationalTaskUseCase,
+  CreateProblemUseCase,
+  CreateRunbookUseCase,
+  CreateServiceRequestUseCase,
+  CreateSloUseCase,
+  DeclareMajorIncidentUseCase,
+  ExecuteAutomationUseCase,
+  FlagExpiredExceptionsUseCase,
+  GetIncidentUseCase,
+  GetOperationsOverviewUseCase,
+  IngestOperationalAlertUseCase,
+  LinkProblemIncidentUseCase,
+  ListAlertsUseCase,
+  ListCapacityUseCase,
+  ListChangesUseCase,
+  ListIncidentsUseCase,
+  ListMaintenanceUseCase,
+  ListOnCallRotationsUseCase,
+  ListOperationalExceptionsUseCase,
+  ListProblemsUseCase,
+  ListRecoveryUseCase,
+  ListRisksUseCase,
+  ListRunbooksUseCase,
+  ListServiceRequestsUseCase,
+  ListSlosUseCase,
+  ListStatusComponentsUseCase,
+  ListTasksUseCase,
+  PublishStatusUpdateUseCase,
+  RecordCapacityMeasurementUseCase,
+  RecordServiceHealthSnapshotUseCase,
+  RecordSloMeasurementUseCase,
+  RejectChangeUseCase,
+  RequestAutomationExecutionUseCase,
+  RequestRecoveryUseCase,
+  ResolveAlertUseCase,
+  ScheduleMaintenanceUseCase,
+  SubmitChangeUseCase,
+  TransitionIncidentUseCase,
+  VerifyRecoveryUseCase,
+} from '../application/platform-operations/operations.use-cases.js';
 import {
   AddTenantNoteUseCase,
   ApproveExceptionUseCase,
@@ -5764,6 +5817,413 @@ export const edgeApplicationProviders: Provider[] = [
       new RemoveServiceDependencyUseCase(repo, outbox, audit),
     inject: [
       SERVICE_CATALOG_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  // --- P9.2–P9.11 Platform operations core -------------------------------------
+  {
+    provide: GetOperationsOverviewUseCase,
+    useFactory: (repo) => new GetOperationsOverviewUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListAlertsUseCase,
+    useFactory: (repo) => new ListAlertsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListIncidentsUseCase,
+    useFactory: (repo) => new ListIncidentsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: GetIncidentUseCase,
+    useFactory: (repo) => new GetIncidentUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListChangesUseCase,
+    useFactory: (repo) => new ListChangesUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListMaintenanceUseCase,
+    useFactory: (repo) => new ListMaintenanceUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListServiceRequestsUseCase,
+    useFactory: (repo) => new ListServiceRequestsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListTasksUseCase,
+    useFactory: (repo) => new ListTasksUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListOnCallRotationsUseCase,
+    useFactory: (repo) => new ListOnCallRotationsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSlosUseCase,
+    useFactory: (repo) => new ListSlosUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListCapacityUseCase,
+    useFactory: (repo) => new ListCapacityUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListRunbooksUseCase,
+    useFactory: (repo) => new ListRunbooksUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListProblemsUseCase,
+    useFactory: (repo) => new ListProblemsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListRecoveryUseCase,
+    useFactory: (repo) => new ListRecoveryUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListStatusComponentsUseCase,
+    useFactory: (repo) => new ListStatusComponentsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListRisksUseCase,
+    useFactory: (repo) => new ListRisksUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListOperationalExceptionsUseCase,
+    useFactory: (repo) => new ListOperationalExceptionsUseCase(repo),
+    inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: RecordServiceHealthSnapshotUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RecordServiceHealthSnapshotUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: IngestOperationalAlertUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new IngestOperationalAlertUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AcknowledgeAlertUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new AcknowledgeAlertUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ResolveAlertUseCase,
+    useFactory: (repo, outbox, audit) => new ResolveAlertUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateIncidentUseCase,
+    useFactory: (repo, outbox, audit) => new CreateIncidentUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: TransitionIncidentUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new TransitionIncidentUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: DeclareMajorIncidentUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new DeclareMajorIncidentUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateProblemUseCase,
+    useFactory: (repo, outbox, audit) => new CreateProblemUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ConfirmProblemRootCauseUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ConfirmProblemRootCauseUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: LinkProblemIncidentUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new LinkProblemIncidentUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateChangeUseCase,
+    useFactory: (repo, outbox, audit) => new CreateChangeUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: SubmitChangeUseCase,
+    useFactory: (repo, outbox, audit) => new SubmitChangeUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveChangeUseCase,
+    useFactory: (repo, outbox, audit) => new ApproveChangeUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RejectChangeUseCase,
+    useFactory: (repo, outbox, audit) => new RejectChangeUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ScheduleMaintenanceUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ScheduleMaintenanceUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateServiceRequestUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateServiceRequestUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateOperationalTaskUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateOperationalTaskUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateOnCallRotationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateOnCallRotationUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateSloUseCase,
+    useFactory: (repo, outbox, audit) => new CreateSloUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RecordSloMeasurementUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RecordSloMeasurementUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RecordCapacityMeasurementUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RecordCapacityMeasurementUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestRecoveryUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RequestRecoveryUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: VerifyRecoveryUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new VerifyRecoveryUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateRunbookUseCase,
+    useFactory: (repo, outbox, audit) => new CreateRunbookUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishStatusUpdateUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishStatusUpdateUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveStatusPublicationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ApproveStatusPublicationUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateOperationalRiskUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateOperationalRiskUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateOperationalExceptionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateOperationalExceptionUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: FlagExpiredExceptionsUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new FlagExpiredExceptionsUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateAutomationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateAutomationUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestAutomationExecutionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new RequestAutomationExecutionUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ApproveAutomationExecutionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ApproveAutomationExecutionUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: ExecuteAutomationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new ExecuteAutomationUseCase(repo, outbox, audit),
+    inject: [
+      SERVICE_OPERATIONS_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
       AUDIT_EVENT_REPOSITORY_PORT,
     ],

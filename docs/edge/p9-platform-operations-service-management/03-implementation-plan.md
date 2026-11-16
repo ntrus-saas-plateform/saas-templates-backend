@@ -6,17 +6,17 @@
 |-------|---------|-----------------|
 | P9.0 | Baseline + docs | — |
 | P9.1 | Service catalog, ownership, deps, API, console | **115** |
-| P9.2 | Health overview, monitoring ports, alerts | 116+ |
-| P9.3 | Incidents + major incident | 117+ |
-| P9.4 | Problems / RCA | … |
-| P9.5 | Change / release / maintenance | … |
-| P9.6 | Support / tasks / on-call | … |
-| P9.7 | SLO / capacity | … |
-| P9.8 | Backup / DR coordination | … |
-| P9.9 | Runbooks / status pages | … |
-| P9.10 | Risk / exceptions / automation | … |
-| P9.11 | Analytics / governance | … |
-| P9.12 | Cross P5–P8 + hardening + E2E | … |
+| P9.2 | Health overview, monitoring ports, alerts | **116** (packagée) |
+| P9.3 | Incidents + major incident | **116** |
+| P9.4 | Problems / RCA | **116** |
+| P9.5 | Change / release / maintenance | **116** |
+| P9.6 | Support / tasks / on-call | **116** |
+| P9.7 | SLO / capacity | **116** |
+| P9.8 | Backup / DR coordination | **116** |
+| P9.9 | Runbooks / status pages | **116** |
+| P9.10 | Risk / exceptions / automation | **116** |
+| P9.11 | Analytics / governance | **116** |
+| P9.12 | Cross P5–P8 + hardening + E2E | partiel (auth/smoke) |
 
 ## Permissions (préfixe)
 
