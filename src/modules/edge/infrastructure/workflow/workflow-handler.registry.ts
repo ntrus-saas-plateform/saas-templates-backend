@@ -24,11 +24,17 @@ import {
   type ConfigurationLiveExecutor,
 } from '../../domain/configuration-entitlement/configuration-handlers.js';
 import { CONFIGURATION_HANDLER_KEYS } from '../../domain/configuration-entitlement/configuration.types.js';
+import {
+  registerExperienceHandlers,
+  type ExperienceLiveExecutor,
+} from '../../domain/product-experience/experience-handlers.js';
+import { EXPERIENCE_HANDLER_KEYS } from '../../domain/product-experience/experience.types.js';
 
 export const PRODUCT_CONTROL_LIVE_EXECUTOR = Symbol('PRODUCT_CONTROL_LIVE_EXECUTOR');
 export const INFRASTRUCTURE_LIVE_EXECUTOR = Symbol('INFRASTRUCTURE_LIVE_EXECUTOR');
 export const KEYCLOAK_LIVE_EXECUTOR = Symbol('KEYCLOAK_LIVE_EXECUTOR');
 export const CONFIGURATION_LIVE_EXECUTOR = Symbol('CONFIGURATION_LIVE_EXECUTOR');
+export const EXPERIENCE_LIVE_EXECUTOR = Symbol('EXPERIENCE_LIVE_EXECUTOR');
 
 /**
  * Nest-injectable façade over the domain default registry.
@@ -51,6 +57,9 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
     @Optional()
     @Inject(CONFIGURATION_LIVE_EXECUTOR)
     liveConfiguration?: ConfigurationLiveExecutor | null,
+    @Optional()
+    @Inject(EXPERIENCE_LIVE_EXECUTOR)
+    liveExperience?: ExperienceLiveExecutor | null,
   ) {
     if (liveProductControl) {
       registerProductControlFoundationHandlers(
@@ -73,6 +82,12 @@ export class WorkflowHandlerRegistry implements WorkflowHandlerRegistryPort {
       this.inner,
       CONFIGURATION_HANDLER_KEYS,
       liveConfiguration ?? undefined,
+    );
+    // P7.9 — Product experience provisioning handlers.
+    registerExperienceHandlers(
+      this.inner,
+      EXPERIENCE_HANDLER_KEYS,
+      liveExperience ?? undefined,
     );
   }
 

@@ -198,6 +198,7 @@ import { WORKFLOW_PLACEMENT_PORT } from '../domain/workflow/workflow-placement.p
 import { WORKFLOW_HANDLER_REGISTRY } from '../domain/workflow/workflow-handler.port.js';
 import {
   CONFIGURATION_LIVE_EXECUTOR,
+  EXPERIENCE_LIVE_EXECUTOR,
   INFRASTRUCTURE_LIVE_EXECUTOR,
   KEYCLOAK_LIVE_EXECUTOR,
   PRODUCT_CONTROL_LIVE_EXECUTOR,
@@ -282,6 +283,20 @@ import {
   RequestConfigurationRollbackUseCase,
 } from '../application/configuration-entitlement/configuration.use-cases.js';
 import { createLiveConfigurationExecutor } from './configuration-entitlement/live-configuration.executor.js';
+// --- P7.9 Product experience provisioning -----------------------------------
+import { EXPERIENCE_REPOSITORY_PORT } from '../domain/product-experience/experience-repository.port.js';
+import {
+  AssignTenantExperienceUseCase,
+  BindExperienceDomainUseCase,
+  CreateExperienceApplicationUseCase,
+  CreateExperienceProfileUseCase,
+  ListExperienceUseCase,
+  PublishExperienceApplicationUseCase,
+  PublishExperienceProfileUseCase,
+  RequestExperienceDeactivateUseCase,
+  RequestExperienceProvisionUseCase,
+} from '../application/product-experience/experience.use-cases.js';
+import { createLiveExperienceExecutor } from './product-experience/live-experience.executor.js';
 import { DatabaseEngineAdapterRegistry } from './infrastructure-provisioning/database-engine.registry.js';
 import { LocalInfrastructureProviderRegistry } from './infrastructure-provisioning/provider.registry.js';
 import { LocalManagedInfrastructureProvider } from './infrastructure-provisioning/local-managed.provider.js';
@@ -4294,15 +4309,145 @@ export const edgeApplicationProviders: Provider[] = [
       SECRETS_PROVIDER_PORT,
     ],
   },
+  // =========================================================================
+  // P7.9 — Product Experience Provisioning
+  // =========================================================================
+  {
+    provide: ListExperienceUseCase,
+    useFactory: (repo) => new ListExperienceUseCase(repo),
+    inject: [EXPERIENCE_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateExperienceProfileUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateExperienceProfileUseCase(repo, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishExperienceProfileUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishExperienceProfileUseCase(repo, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateExperienceApplicationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new CreateExperienceApplicationUseCase(repo, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: PublishExperienceApplicationUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new PublishExperienceApplicationUseCase(repo, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: AssignTenantExperienceUseCase,
+    useFactory: (repo, auth, outbox, audit) =>
+      new AssignTenantExperienceUseCase(repo, auth, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: BindExperienceDomainUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new BindExperienceDomainUseCase(repo, outbox, audit),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: RequestExperienceProvisionUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestExperienceProvisionUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: RequestExperienceDeactivateUseCase,
+    useFactory: (repo, wfRepo, auth, outbox, audit, createInstance, startWorkflow) =>
+      new RequestExperienceDeactivateUseCase(
+        repo,
+        wfRepo,
+        auth,
+        outbox,
+        audit,
+        createInstance,
+        startWorkflow,
+      ),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+      CreateWorkflowInstanceUseCase,
+      StartWorkflowUseCase,
+    ],
+  },
+  {
+    provide: EXPERIENCE_LIVE_EXECUTOR,
+    useFactory: (repo, wfRepo, auth, secrets) =>
+      createLiveExperienceExecutor({
+        repo,
+        authorization: auth,
+        lease: new RepositoryWorkflowLeaseValidator((stepId) => wfRepo.getStep(stepId)),
+        secrets,
+      }),
+    inject: [
+      EXPERIENCE_REPOSITORY_PORT,
+      WORKFLOW_REPOSITORY_PORT,
+      WORKFLOW_AUTHORIZATION_PORT,
+      SECRETS_PROVIDER_PORT,
+    ],
+  },
   {
     provide: WORKFLOW_HANDLER_REGISTRY,
-    useFactory: (pci, infra, keycloak, configuration) =>
-      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration),
+    useFactory: (pci, infra, keycloak, configuration, experience) =>
+      new WorkflowHandlerRegistry(pci, infra, keycloak, configuration, experience),
     inject: [
       PRODUCT_CONTROL_LIVE_EXECUTOR,
       INFRASTRUCTURE_LIVE_EXECUTOR,
       KEYCLOAK_LIVE_EXECUTOR,
       CONFIGURATION_LIVE_EXECUTOR,
+      EXPERIENCE_LIVE_EXECUTOR,
     ],
   },
 ];

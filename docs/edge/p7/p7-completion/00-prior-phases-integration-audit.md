@@ -26,9 +26,11 @@
 | 100 | `100_edge_p7_product_control_integration.sql` | P7.5 |
 | 101 | `101_edge_p7_infrastructure_database_provisioning.sql` | P7.6 |
 | 102 | `102_edge_p7_keycloak_topology_provisioning.sql` | P7.7 |
-| **103+** | *(not present)* | P7.8+ |
+| **103+** | *(not present at preflight time)* | P7.8+ |
 
 No number collision observed. P7.8 **must** start at **103**.
+
+> **Addendum (2026-11-16):** P7.8 uses migration **103** (`103_edge_p7_configuration_entitlement_deployment.sql`). P7.9 Product Experience Provisioning uses migration **104** (`104_edge_p7_product_experience_provisioning.sql`) — documentation pack **READY FOR AUDIT** (not ACCEPTED); implementation present and under independent review.
 
 ---
 
@@ -147,6 +149,8 @@ Per mandate §2.8 / §18:
 - P7.8 must **re-check P7.1 authorization** and use **P7.4 workflows** for every deployment mutation.
 - P7.8 must **never expand** commercial entitlements beyond P5 snapshots.
 - Next migration: **`103_edge_p7_configuration_entitlement_deployment.sql`**.
+
+> **Addendum (2026-11-16):** After P7.8 @ **103**, P7.9 continues at **104** (`104_edge_p7_product_experience_provisioning.sql`). See `docs/edge/p7/p7.9-product-experience-provisioning/` — verdict **READY FOR AUDIT** (not ACCEPTED).
 
 ### Gate verdict
 
