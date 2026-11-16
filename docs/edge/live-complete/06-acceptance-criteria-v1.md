@@ -10,12 +10,12 @@ Status key:
 | # | Criterion | Status | Notes |
 |---|-----------|--------|-------|
 | 1 | Remote Git contient les SHAs lab | **NEED_LAB_RUN** | Local SHAs frozen in [`00-lab-baseline.md`](./00-lab-baseline.md); push historically **403** — remote sync not proven here |
-| 2 | Golden path Pharmacy exécuté **sans** adapter `Unavailable*` sur paiement/provision | **NEED_LAB_RUN** | Code path exists (`sandbox` + `durable` + BB client); lab execution + evidence required |
+| 2 | Golden path Pharmacy exécuté **sans** adapter `Unavailable*` sur paiement/provision | **NEED_LAB_RUN** | Code path exists (`sandbox` + `lab_bb` + BB control/v1); lab execution + evidence required |
 | 3 | BB tenant DB + Keycloak + health prouvés | **NEED_LAB_RUN** | Live executors + readiness gate documented ([`04-keycloak-infra-live.md`](./04-keycloak-infra-live.md)); lab proof pending |
 | 4 | Console ops + acquisition publique tous deux OK | **NEED_LAB_RUN** | Surfaces exist; end-to-end console+portal campaign pending |
 | 5 | Pack E2E 10 scénarios vert avec correlation IDs | **NEED_LAB_RUN** | Runbook + evidence template ready ([`05-e2e-golden-path.md`](./05-e2e-golden-path.md)); E2/E3 contracts only in CI |
 | 6 | Aucun `OPERATION_NOT_IMPLEMENTED` sur le chemin critique provision/activate | **CODE_COMPLETE** | Live product-control executor + control/v1 client wired; missing BB URL fails `DEPENDENCY_UNAVAILABLE` (fail-closed). Lab may use `EDGE_P7_PROVISIONING_ADAPTER=lab_bb` for a complete BB provision path; durable SoD remains `durable` — `lab_bb` ≠ production durable claim |
-| 7 | Audit indépendant du **pilotage plateforme** = au minimum `READY FOR FINAL RE-AUDIT` | **NEED_LAB_RUN** | Depends on lab pack + evidence; not self-declared from unit tests |
+| 7 | Audit indépendant du **pilotage plateforme** = au minimum `READY FOR FINAL RE-AUDIT` | **NEED_LAB_RUN** | Stub proposal in [`09-pilotage-re-audit-readiness.md`](./09-pilotage-re-audit-readiness.md); auditor + lab evidence still required |
 
 ## What is green without claiming live docker E2E
 

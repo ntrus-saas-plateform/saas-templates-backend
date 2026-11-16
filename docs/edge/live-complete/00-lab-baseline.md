@@ -4,7 +4,7 @@ Frozen SHAs for the Edge live-complete pilot lab. Branch: `feature/console`.
 
 | Repo | Local HEAD (lab) |
 |------|------------------|
-| Backend `saas-templates-backend` | `5cf4b71259d879106e30a697f0aa10f28ecd3b45` |
+| Backend `saas-templates-backend` | `a761c0b95af7f04643427ca3669a69bbb5c06183` |
 | Frontend `saas-template-frontend` | `c256f16a72107e492ecf0f73524cef26164e3a34` |
 
 ## Push / remote note
