@@ -36,6 +36,7 @@ export const TenantManagementEventTypes = {
   LEGAL_HOLD_CHANGE_APPROVED: 'edge.p8.tenant.legal_hold.change.approved',
   LEGAL_HOLD_CHANGE_REJECTED: 'edge.p8.tenant.legal_hold.change.rejected',
   GOVERNANCE_STATUS_CHANGED: 'edge.p8.tenant.governance.status.changed',
+  DEPROVISION_AUTHORIZED: 'edge.p8.tenant.deprovision.authorized',
 } as const;
 
 export function buildTenantManagementOutboxEvent(input: {

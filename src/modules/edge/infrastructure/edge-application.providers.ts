@@ -383,6 +383,7 @@ import {
   ApproveRecoveryUseCase,
   ApproveTerminationUseCase,
   AssignTenantOwnerUseCase,
+  AuthorizeTenantDeprovisionUseCase,
   ExpireExceptionsUseCase,
   GetPortfolioAnalyticsUseCase,
   GetTenant360UseCase,
@@ -409,6 +410,7 @@ import {
   RequestMigrationUseCase,
   RequestRecoveryUseCase,
   RequestTerminationUseCase,
+  ResolveOperatorTenantAccessUseCase,
   RevokeExceptionUseCase,
   AcknowledgeFindingUseCase,
   EvaluateTenantRiskUseCase,
@@ -5321,6 +5323,11 @@ export const edgeApplicationProviders: Provider[] = [
     useClass: P7TenantTechnicalLifecycleBridge,
   },
   {
+    provide: ResolveOperatorTenantAccessUseCase,
+    useFactory: (repo) => new ResolveOperatorTenantAccessUseCase(repo),
+    inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
     provide: ListTenantsUseCase,
     useFactory: (repo) => new ListTenantsUseCase(repo),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
@@ -5671,6 +5678,16 @@ export const edgeApplicationProviders: Provider[] = [
     provide: ListLegalHoldChangeRequestsUseCase,
     useFactory: (repo) => new ListLegalHoldChangeRequestsUseCase(repo),
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
+  },
+  {
+    provide: AuthorizeTenantDeprovisionUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new AuthorizeTenantDeprovisionUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
   },
   {
     provide: UpdateLegalHoldUseCase,

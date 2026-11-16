@@ -49,13 +49,9 @@
 | I Conformité | **PARTIAL** |
 | J Certification | **ACCEPTED** |
 
-## Risques résiduels (explicites)
+## Risques résiduels (explicites) ? **FERMÉS** dans campagne 36
 
-1. Dual approval **uniquement pour le lift** legal hold (RAISE immédiat toujours possible avec `legal_hold:manage`).
-2. Pas de **E2E navigateur** multi-acteur dans cette campagne.
-3. **Deprovision P7** derrière drapeaux `metadata.p7DeprovisionAuthorized/Confirmed` + `deletionProtection`.
-4. Test de charge **1000** lignes, pas millions ? SLO production non dérivé.
-5. Vérification commerciale **SQL** sur `edge_subscriptions` ; pas d?appel API P5 live.
+Voir `36-residual-closure-certification.md` (mig `114`, dual RAISE, scope opérateur, 10k, chaos bridge, E2E smoke, deprovision API).
 
 ## Gate H ? sans Docker
 

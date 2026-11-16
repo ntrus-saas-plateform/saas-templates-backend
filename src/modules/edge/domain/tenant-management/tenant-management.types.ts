@@ -485,10 +485,26 @@ export type TenantSearchFilter = {
   riskLevel?: string;
   tagKey?: string;
   tagValue?: string;
+  /** Object-level operator portfolio restrictions (OR across dimensions). */
+  operatorRegions?: string[];
+  operatorAccountIds?: string[];
+  operatorProductIds?: string[];
+  operatorOwnerIds?: string[];
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+};
+
+export type OperatorScopeRecord = {
+  id: string;
+  administratorId: string;
+  region: string | null;
+  accountId: string | null;
+  productId: string | null;
+  ownerSubjectId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type TenantPortfolioMetrics = {

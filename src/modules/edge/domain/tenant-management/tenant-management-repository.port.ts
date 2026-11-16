@@ -14,6 +14,7 @@ import type {
   ReconciliationRunRecord,
   RiskAssessmentRecord,
   TechnicalResourceRef,
+  OperatorScopeRecord,
   TenantNoteRecord,
   TenantPortfolioMetrics,
   TenantRegistryRecord,
@@ -284,7 +285,26 @@ export interface TenantManagementRepositoryPort {
     subscriptionId: string,
     productId: string,
     client?: unknown,
-  ): Promise<'UNAVAILABLE_TABLE' | 'NOT_FOUND' | 'PRODUCT_MISMATCH' | 'VERIFIED'>;
+  ): Promise<
+    | 'UNAVAILABLE_TABLE'
+    | 'NOT_FOUND'
+    | 'PRODUCT_MISMATCH'
+    | 'INACTIVE'
+    | 'VERIFIED'
+  >;
+
+  listOperatorScopes(administratorId: string): Promise<OperatorScopeRecord[]>;
+  upsertOperatorScope(
+    input: {
+      administratorId: string;
+      region?: string | null;
+      accountId?: string | null;
+      productId?: string | null;
+      ownerSubjectId?: string | null;
+    },
+    client?: unknown,
+  ): Promise<OperatorScopeRecord>;
+  deleteOperatorScopes(administratorId: string, client?: unknown): Promise<number>;
 
   createLegalHoldChangeRequest(
     input: Omit<

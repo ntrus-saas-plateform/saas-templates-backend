@@ -268,4 +268,36 @@ describe('P8 tenant-management adversarial (E4-lite)', () => {
     });
     expect(result).toBe(existing);
   });
+
+  it('fail-closes lifecycle approve when P7 bridge FAILED (chaos)', async () => {
+    const repo = {
+      getLifecycleRequest: vi.fn().mockResolvedValue({
+        id: 'lr-chaos',
+        tenantRegistryId: tenant.id,
+        requestType: LifecycleRequestType.SUSPEND,
+        status: GovernanceRequestStatus.WAITING_APPROVAL,
+        requestedBy: 'requester-a',
+        version: 1,
+        justification: 'chaos justification text',
+      }),
+      getById: vi.fn().mockResolvedValue({ ...tenant, legalHold: false }),
+      updateLifecycleRequest: vi.fn(),
+    } as unknown as TenantManagementRepositoryPort;
+    const bridge = {
+      requestSuspend: vi.fn().mockResolvedValue({ outcome: 'FAILED', workflowId: null }),
+      requestResume: vi.fn(),
+      requestDeprovision: vi.fn(),
+    };
+    const outbox = { runWithOutbox: vi.fn() };
+    const uc = new ApproveLifecycleActionUseCase(
+      repo,
+      outbox as never,
+      { create: vi.fn() } as never,
+      bridge as never,
+    );
+    await expect(
+      uc.execute({ actorId: 'approver-b', requestId: 'lr-chaos' }),
+    ).rejects.toBeInstanceOf(DomainError);
+    expect(outbox.runWithOutbox).not.toHaveBeenCalled();
+  });
 });

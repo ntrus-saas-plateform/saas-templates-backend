@@ -2,8 +2,10 @@ import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-er
 import {
   assertAdministrativeTransition,
   assertJustification,
-  assertLegalHoldLiftRequiresWorkflow,
+  assertLegalHoldMutationRequiresWorkflow,
   assertNotLegalHold,
+  assertP7BridgeOutcomeAllowsApproval,
+  assertTenantInOperatorScope,
   assertSeparationOfDuties,
   canRequestLifecycle,
   coerceHealthOverallStatus,
@@ -95,10 +97,55 @@ describe('P8 tenant-management-policy', () => {
     ).toBe(RiskLevel.CRITICAL);
   });
 
-  it('requires workflow for legal hold lift', () => {
-    expect(() => assertLegalHoldLiftRequiresWorkflow(true, false)).toThrow();
-    expect(() => assertLegalHoldLiftRequiresWorkflow(true, true)).not.toThrow();
-    expect(() => assertLegalHoldLiftRequiresWorkflow(false, false)).not.toThrow();
+  it('requires workflow for legal hold RAISE and LIFT', () => {
+    expect(() => assertLegalHoldMutationRequiresWorkflow(true, false)).toThrow();
+    expect(() => assertLegalHoldMutationRequiresWorkflow(false, true)).toThrow();
+    expect(() => assertLegalHoldMutationRequiresWorkflow(true, true)).not.toThrow();
+    expect(() => assertLegalHoldMutationRequiresWorkflow(false, false)).not.toThrow();
+  });
+
+  it('fail-closes P7 bridge FAILED outcomes', () => {
+    expect(() => assertP7BridgeOutcomeAllowsApproval('FAILED')).toThrow(
+      expect.objectContaining({ code: ErrorCode.DEPENDENCY_UNAVAILABLE }),
+    );
+    expect(() => assertP7BridgeOutcomeAllowsApproval('STARTED')).not.toThrow();
+  });
+
+  it('enforces operator portfolio scope', () => {
+    expect(() =>
+      assertTenantInOperatorScope(
+        {
+          region: 'eu-west-1',
+          accountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          productId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          internalOwnerId: 'owner-1',
+        },
+        {
+          global: false,
+          regions: ['us-east-1'],
+          accountIds: [],
+          productIds: [],
+          ownerIds: [],
+        },
+      ),
+    ).toThrow(expect.objectContaining({ code: ErrorCode.FORBIDDEN }));
+    expect(() =>
+      assertTenantInOperatorScope(
+        {
+          region: 'eu-west-1',
+          accountId: null,
+          productId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          internalOwnerId: null,
+        },
+        {
+          global: false,
+          regions: ['eu-west-1'],
+          accountIds: [],
+          productIds: [],
+          ownerIds: [],
+        },
+      ),
+    ).not.toThrow();
   });
 
   it('restores governance after exception revoke', () => {

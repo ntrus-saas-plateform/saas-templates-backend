@@ -332,13 +332,22 @@ export function assertLegalHoldLiftRequiresWorkflow(
   currentLegalHold: boolean,
   requestedLegalHold: boolean,
 ): void {
-  if (currentLegalHold && !requestedLegalHold) {
-    throw new DomainError(
-      ErrorCode.VALIDATION_ERROR,
-      'Legal hold lift requires approval workflow (request LIFT then approve)',
-      [{ code: 'LEGAL_HOLD_LIFT_REQUIRES_APPROVAL' }],
-    );
+  assertLegalHoldMutationRequiresWorkflow(currentLegalHold, requestedLegalHold);
+}
+
+/** Direct PATCH/POST legal-hold mutations are forbidden — RAISE and LIFT both require SoD workflow. */
+export function assertLegalHoldMutationRequiresWorkflow(
+  currentLegalHold: boolean,
+  requestedLegalHold: boolean,
+): void {
+  if (currentLegalHold === requestedLegalHold) {
+    return;
   }
+  throw new DomainError(
+    ErrorCode.VALIDATION_ERROR,
+    'Legal hold changes require approval workflow (request RAISE/LIFT then approve)',
+    [{ code: 'LEGAL_HOLD_REQUIRES_APPROVAL' }],
+  );
 }
 
 export function p8TenantDeprovisionAllowed(tenant: {
@@ -351,4 +360,75 @@ export function p8TenantDeprovisionAllowed(tenant: {
     meta.p7DeprovisionConfirmed === true &&
     !tenant.deletionProtection
   );
+}
+
+export const TENANT_MANAGEMENT_SCOPE_GLOBAL = 'platform:tenant_management:scope:global';
+
+export type OperatorTenantAccess = {
+  global: boolean;
+  regions: string[];
+  accountIds: string[];
+  productIds: string[];
+  ownerIds: string[];
+};
+
+export function buildOperatorTenantAccess(
+  permissions: readonly string[],
+  scopes: Array<{
+    region?: string | null;
+    accountId?: string | null;
+    productId?: string | null;
+    ownerSubjectId?: string | null;
+  }>,
+): OperatorTenantAccess {
+  const global = permissions.includes(TENANT_MANAGEMENT_SCOPE_GLOBAL);
+  return {
+    global,
+    regions: scopes.map((s) => s.region?.trim()).filter((v): v is string => Boolean(v)),
+    accountIds: scopes.map((s) => s.accountId?.trim()).filter((v): v is string => Boolean(v)),
+    productIds: scopes.map((s) => s.productId?.trim()).filter((v): v is string => Boolean(v)),
+    ownerIds: scopes
+      .map((s) => s.ownerSubjectId?.trim())
+      .filter((v): v is string => Boolean(v)),
+  };
+}
+
+export function assertTenantInOperatorScope(
+  tenant: {
+    region: string | null;
+    accountId: string | null;
+    productId: string;
+    internalOwnerId: string | null;
+  },
+  access: OperatorTenantAccess,
+): void {
+  if (access.global) return;
+  const matched =
+    (access.regions.length > 0 &&
+      tenant.region !== null &&
+      access.regions.includes(tenant.region)) ||
+    (access.accountIds.length > 0 &&
+      tenant.accountId !== null &&
+      access.accountIds.includes(tenant.accountId)) ||
+    (access.productIds.length > 0 && access.productIds.includes(tenant.productId)) ||
+    (access.ownerIds.length > 0 &&
+      tenant.internalOwnerId !== null &&
+      access.ownerIds.includes(tenant.internalOwnerId));
+  if (!matched) {
+    throw new DomainError(
+      ErrorCode.FORBIDDEN,
+      'Tenant is outside operator portfolio scope',
+      [{ code: 'TENANT_OUT_OF_OPERATOR_SCOPE' }],
+    );
+  }
+}
+
+export function assertP7BridgeOutcomeAllowsApproval(outcome: string): void {
+  if (outcome === 'FAILED') {
+    throw new DomainError(
+      ErrorCode.DEPENDENCY_UNAVAILABLE,
+      'P7 technical lifecycle bridge failed; approval was not recorded (fail-closed)',
+      [{ code: 'P7_BRIDGE_FAILED' }],
+    );
+  }
 }

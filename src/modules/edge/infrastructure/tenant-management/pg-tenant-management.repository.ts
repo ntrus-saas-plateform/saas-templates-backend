@@ -15,6 +15,7 @@ import type {
   HealthSnapshotRecord,
   LifecycleRequestRecord,
   MigrationRequestRecord,
+  OperatorScopeRecord,
   RecoveryRequestRecord,
   ReconciliationFindingRecord,
   ReconciliationRunRecord,
@@ -599,6 +600,35 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
     if (filter.region) {
       params.push(filter.region);
       where.push(`region = $${params.length}`);
+    }
+    {
+      const scopeClauses: string[] = [];
+      if (filter.operatorRegions && filter.operatorRegions.length > 0) {
+        params.push(filter.operatorRegions);
+        scopeClauses.push(`region = ANY($${params.length}::text[])`);
+      }
+      if (filter.operatorAccountIds && filter.operatorAccountIds.length > 0) {
+        params.push(filter.operatorAccountIds);
+        scopeClauses.push(`account_id = ANY($${params.length}::uuid[])`);
+      }
+      if (filter.operatorProductIds && filter.operatorProductIds.length > 0) {
+        params.push(filter.operatorProductIds);
+        scopeClauses.push(`product_id = ANY($${params.length}::uuid[])`);
+      }
+      if (filter.operatorOwnerIds && filter.operatorOwnerIds.length > 0) {
+        params.push(filter.operatorOwnerIds);
+        scopeClauses.push(`internal_owner_id = ANY($${params.length}::text[])`);
+      }
+      if (scopeClauses.length > 0) {
+        where.push(`(${scopeClauses.join(' OR ')})`);
+      } else if (
+        filter.operatorRegions ||
+        filter.operatorAccountIds ||
+        filter.operatorProductIds ||
+        filter.operatorOwnerIds
+      ) {
+        where.push('FALSE');
+      }
     }
     if (filter.classification) {
       params.push(filter.classification);
@@ -1943,6 +1973,35 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
       params.push(filter.region);
       where.push(`region = $${params.length}`);
     }
+    {
+      const scopeClauses: string[] = [];
+      if (filter.operatorRegions && filter.operatorRegions.length > 0) {
+        params.push(filter.operatorRegions);
+        scopeClauses.push(`region = ANY($${params.length}::text[])`);
+      }
+      if (filter.operatorAccountIds && filter.operatorAccountIds.length > 0) {
+        params.push(filter.operatorAccountIds);
+        scopeClauses.push(`account_id = ANY($${params.length}::uuid[])`);
+      }
+      if (filter.operatorProductIds && filter.operatorProductIds.length > 0) {
+        params.push(filter.operatorProductIds);
+        scopeClauses.push(`product_id = ANY($${params.length}::uuid[])`);
+      }
+      if (filter.operatorOwnerIds && filter.operatorOwnerIds.length > 0) {
+        params.push(filter.operatorOwnerIds);
+        scopeClauses.push(`internal_owner_id = ANY($${params.length}::text[])`);
+      }
+      if (scopeClauses.length > 0) {
+        where.push(`(${scopeClauses.join(' OR ')})`);
+      } else if (
+        filter.operatorRegions ||
+        filter.operatorAccountIds ||
+        filter.operatorProductIds ||
+        filter.operatorOwnerIds
+      ) {
+        where.push('FALSE');
+      }
+    }
     if (filter.classification) {
       params.push(filter.classification);
       where.push(`classification = $${params.length}`);
@@ -2619,18 +2678,106 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
     subscriptionId: string,
     productId: string,
     client?: unknown,
-  ): Promise<'UNAVAILABLE_TABLE' | 'NOT_FOUND' | 'PRODUCT_MISMATCH' | 'VERIFIED'> {
+  ): Promise<'UNAVAILABLE_TABLE' | 'NOT_FOUND' | 'PRODUCT_MISMATCH' | 'INACTIVE' | 'VERIFIED'> {
     if (!(await this.tableExists('edge_subscriptions'))) {
       return 'UNAVAILABLE_TABLE';
     }
-    const rows = await this.q<{ product_id: unknown }>(
-      `SELECT product_id FROM edge_subscriptions WHERE id = $1`,
+    const rows = await this.q<{ product_id: unknown; status: unknown }>(
+      `SELECT product_id, status FROM edge_subscriptions WHERE id = $1`,
       [subscriptionId],
       client,
     );
     if (!rows[0]) return 'NOT_FOUND';
     if (str(rows[0].product_id) !== productId) return 'PRODUCT_MISMATCH';
+    const status = str(rows[0].status).toUpperCase();
+    const activeStatuses = new Set(['ACTIVE', 'TRIALING', 'PAST_DUE']);
+    if (status && !activeStatuses.has(status)) {
+      return 'INACTIVE';
+    }
     return 'VERIFIED';
+  }
+
+  async listOperatorScopes(administratorId: string): Promise<OperatorScopeRecord[]> {
+    if (!(await this.tableExists('edge_p8_operator_scopes'))) {
+      return [];
+    }
+    const rows = await this.q(
+      `SELECT * FROM edge_p8_operator_scopes WHERE administrator_id = $1 ORDER BY created_at ASC`,
+      [administratorId],
+    );
+    return rows.map((row) => this.mapOperatorScope(row));
+  }
+
+  async upsertOperatorScope(
+    input: {
+      administratorId: string;
+      region?: string | null;
+      accountId?: string | null;
+      productId?: string | null;
+      ownerSubjectId?: string | null;
+    },
+    client?: unknown,
+  ): Promise<OperatorScopeRecord> {
+    const existing = await this.q(
+      `SELECT * FROM edge_p8_operator_scopes
+       WHERE administrator_id = $1
+         AND COALESCE(region, '') = COALESCE($2, '')
+         AND COALESCE(account_id, '00000000-0000-0000-0000-000000000000'::uuid)
+             = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND COALESCE(product_id, '00000000-0000-0000-0000-000000000000'::uuid)
+             = COALESCE($4::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND COALESCE(owner_subject_id, '') = COALESCE($5, '')
+       LIMIT 1`,
+      [
+        input.administratorId,
+        input.region?.trim() || null,
+        input.accountId ?? null,
+        input.productId ?? null,
+        input.ownerSubjectId?.trim() || null,
+      ],
+      client,
+    );
+    if (existing[0]) return this.mapOperatorScope(existing[0]);
+    const rows = await this.q(
+      `INSERT INTO edge_p8_operator_scopes (
+         administrator_id, region, account_id, product_id, owner_subject_id
+       ) VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        input.administratorId,
+        input.region?.trim() || null,
+        input.accountId ?? null,
+        input.productId ?? null,
+        input.ownerSubjectId?.trim() || null,
+      ],
+      client,
+    );
+    return this.mapOperatorScope(rows[0]!);
+  }
+
+  async deleteOperatorScopes(administratorId: string, client?: unknown): Promise<number> {
+    const rows = await this.q<{ c: string }>(
+      `WITH deleted AS (
+         DELETE FROM edge_p8_operator_scopes WHERE administrator_id = $1 RETURNING 1
+       )
+       SELECT COUNT(*)::text AS c FROM deleted`,
+      [administratorId],
+      client,
+    );
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  private mapOperatorScope(row: Record<string, unknown>): OperatorScopeRecord {
+    return {
+      id: str(row.id),
+      administratorId: str(row.administrator_id),
+      region: strOrNull(row.region),
+      accountId: strOrNull(row.account_id),
+      productId: strOrNull(row.product_id),
+      ownerSubjectId: strOrNull(row.owner_subject_id),
+      createdAt: asDate(row.created_at) ?? new Date(),
+      updatedAt: asDate(row.updated_at) ?? new Date(),
+    };
   }
 
   async createLegalHoldChangeRequest(

@@ -350,22 +350,78 @@ describe('P8 tenant-management use cases', () => {
     });
   });
 
-  it('UpdateLegalHoldUseCase blocks direct lift', async () => {
-    const tenant = { ...baseTenant(), legalHold: true, version: 3 };
-    const repo = {
-      getById: vi.fn().mockResolvedValue(tenant),
-    } as unknown as TenantManagementRepositoryPort;
-    const uc = new UpdateLegalHoldUseCase(repo, {} as never, {} as never);
+  it('UpdateLegalHoldUseCase blocks direct lift and raise', async () => {
+    const held = { ...baseTenant(), legalHold: true, version: 3 };
+    const clear = { ...baseTenant(), legalHold: false, version: 3 };
+    const uc = new UpdateLegalHoldUseCase(
+      { getById: vi.fn().mockResolvedValue(held) } as unknown as TenantManagementRepositoryPort,
+      {} as never,
+      {} as never,
+    );
     await expect(
       uc.execute({
         actorId: 'admin',
-        tenantRegistryId: tenant.id,
+        tenantRegistryId: held.id,
         expectedVersion: 3,
         legalHold: false,
         justification: 'attempt direct lift',
         legalHoldPermissionGranted: true,
       }),
     ).rejects.toBeInstanceOf(DomainError);
+
+    const raiseUc = new UpdateLegalHoldUseCase(
+      { getById: vi.fn().mockResolvedValue(clear) } as unknown as TenantManagementRepositoryPort,
+      {} as never,
+      {} as never,
+    );
+    await expect(
+      raiseUc.execute({
+        actorId: 'admin',
+        tenantRegistryId: clear.id,
+        expectedVersion: 3,
+        legalHold: true,
+        justification: 'attempt direct raise',
+        legalHoldPermissionGranted: true,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it('ApproveLifecycleActionUseCase fail-closes when P7 bridge returns FAILED', async () => {
+    const tenant = {
+      ...baseTenant(),
+      lifecycleRecordId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    };
+    const request = {
+      id: 'lr-fail',
+      tenantRegistryId: tenant.id,
+      requestType: LifecycleRequestType.SUSPEND,
+      status: GovernanceRequestStatus.WAITING_APPROVAL,
+      requestedBy: 'requester-a',
+      version: 1,
+      justification: 'suspend justification text',
+    };
+    const bridge: TenantTechnicalLifecycleBridgePort = {
+      requestSuspend: vi.fn().mockResolvedValue({ outcome: 'FAILED', workflowId: null }),
+      requestResume: vi.fn(),
+      requestDeprovision: vi.fn(),
+    };
+    const repo = {
+      getLifecycleRequest: vi.fn().mockResolvedValue(request),
+      getById: vi.fn().mockResolvedValue(tenant),
+      updateTenant: vi.fn(),
+      updateLifecycleRequest: vi.fn(),
+    } as unknown as TenantManagementRepositoryPort;
+    const outbox = { runWithOutbox: vi.fn() };
+    const uc = new ApproveLifecycleActionUseCase(
+      repo,
+      outbox as never,
+      { create: vi.fn() } as never,
+      bridge,
+    );
+    await expect(
+      uc.execute({ actorId: 'approver-b', requestId: request.id }),
+    ).rejects.toBeInstanceOf(DomainError);
+    expect(outbox.runWithOutbox).not.toHaveBeenCalled();
   });
 
   it('ApproveLegalHoldChangeUseCase lifts hold with SoD', async () => {

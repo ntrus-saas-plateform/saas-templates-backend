@@ -52,6 +52,10 @@ describe('EdgeTenantManagementController authz', () => {
     { method: 'getRiskAssessments', permission: 'platform:tenant_management:read' },
     { method: 'patchTenantPolicies', permission: 'platform:tenant_management:update_metadata' },
     {
+      method: 'postTenantDeprovisionAuthorization',
+      permission: 'platform:tenant_management:deprovision:authorize',
+    },
+    {
       method: 'postTenantLegalHold',
       permission: 'platform:tenant_management:legal_hold:manage',
     },

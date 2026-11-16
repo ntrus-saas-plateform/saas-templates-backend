@@ -10,6 +10,7 @@ import { PgAuditEventRepository } from '../../src/modules/edge/infrastructure/pe
 import { PgTenantManagementRepository } from '../../src/modules/edge/infrastructure/tenant-management/pg-tenant-management.repository.js';
 import {
   ApproveLegalHoldChangeUseCase,
+  GetTenantUseCase,
   ListTenantsUseCase,
   RegisterTenantUseCase,
   RequestLegalHoldChangeUseCase,
@@ -96,6 +97,7 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
     });
     const result = await applyControlPlaneMigrations(pool);
     expect(result.applied).toContain('113_edge_p8_enterprise_certification');
+    expect(result.applied).toContain('114_edge_p8_residual_enterprise_closure');
     await pool.query(`
       ALTER TABLE control_plane_outbox_events
         DROP CONSTRAINT IF EXISTS control_plane_outbox_events_tenant_id_fkey;
@@ -135,7 +137,8 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
   it('re-register preserves legal_hold=true', async () => {
     const repo = buildRepo();
     const register = new RegisterTenantUseCase(repo, buildOutbox(), buildAudit());
-    const hold = new UpdateLegalHoldUseCase(repo, buildOutbox(), buildAudit());
+    const requestHold = new RequestLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
+    const approveHold = new ApproveLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
     const productTenantId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0202';
     const created = await register.execute({
       actorId: ACTOR_A,
@@ -144,14 +147,14 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
       displayName: 'Hold Tenant',
       productId,
     });
-    await hold.execute({
+    const raiseReq = await requestHold.execute({
       actorId: ACTOR_A,
       tenantRegistryId: created.id,
-      expectedVersion: created.version,
-      legalHold: true,
+      action: LegalHoldChangeAction.RAISE,
       justification: 'hold for litigation case',
-      legalHoldPermissionGranted: true,
+      idempotencyKey: 'raise-idem-0202',
     });
+    await approveHold.execute({ actorId: ACTOR_B, requestId: raiseReq.id });
     const updated = await register.execute({
       actorId: ACTOR_A,
       productTenantId,
@@ -212,12 +215,12 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
     expect(Number(afterOutbox.rows[0]?.c)).toBeGreaterThan(Number(beforeOutbox.rows[0]?.c));
   });
 
-  it('legal hold lift requires approve SoD (two actors)', async () => {
+  it('legal hold RAISE and LIFT require approve SoD (two actors)', async () => {
     const repo = buildRepo();
     const register = new RegisterTenantUseCase(repo, buildOutbox(), buildAudit());
-    const hold = new UpdateLegalHoldUseCase(repo, buildOutbox(), buildAudit());
-    const requestLift = new RequestLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
-    const approveLift = new ApproveLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
+    const requestChange = new RequestLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
+    const approveChange = new ApproveLegalHoldChangeUseCase(repo, buildOutbox(), buildAudit());
+    const direct = new UpdateLegalHoldUseCase(repo, buildOutbox(), buildAudit());
 
     const productTenantId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeee0505';
     const created = await register.execute({
@@ -227,16 +230,32 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
       displayName: 'Lift SoD',
       productId,
     });
-    const held = await hold.execute({
+
+    await expect(
+      direct.execute({
+        actorId: ACTOR_A,
+        tenantRegistryId: created.id,
+        expectedVersion: created.version,
+        legalHold: true,
+        justification: 'direct raise must fail',
+        legalHoldPermissionGranted: true,
+      }),
+    ).rejects.toMatchObject({ details: expect.arrayContaining([expect.objectContaining({ code: 'LEGAL_HOLD_REQUIRES_APPROVAL' })]) });
+
+    const raiseReq = await requestChange.execute({
       actorId: ACTOR_A,
       tenantRegistryId: created.id,
-      expectedVersion: created.version,
-      legalHold: true,
+      action: LegalHoldChangeAction.RAISE,
       justification: 'activate hold for sod test',
-      legalHoldPermissionGranted: true,
+      idempotencyKey: 'raise-idem-0505',
     });
+    await expect(
+      approveChange.execute({ actorId: ACTOR_A, requestId: raiseReq.id }),
+    ).rejects.toBeInstanceOf(DomainError);
+    const raised = await approveChange.execute({ actorId: ACTOR_B, requestId: raiseReq.id });
+    expect(raised.tenant.legalHold).toBe(true);
 
-    const liftReq = await requestLift.execute({
+    const liftReq = await requestChange.execute({
       actorId: ACTOR_A,
       tenantRegistryId: created.id,
       action: LegalHoldChangeAction.LIFT,
@@ -246,11 +265,44 @@ describe.skipIf(!runTestcontainers)('P8 tenant management transactional (Testcon
     expect(liftReq.status).toBe('PENDING');
 
     await expect(
-      approveLift.execute({ actorId: ACTOR_A, requestId: liftReq.id }),
+      approveChange.execute({ actorId: ACTOR_A, requestId: liftReq.id }),
     ).rejects.toBeInstanceOf(DomainError);
 
-    const approved = await approveLift.execute({ actorId: ACTOR_B, requestId: liftReq.id });
+    const approved = await approveChange.execute({ actorId: ACTOR_B, requestId: liftReq.id });
     expect(approved.tenant.legalHold).toBe(false);
-    expect(held.legalHold).toBe(true);
+  });
+
+  it('operator scope blocks cross-portfolio getById', async () => {
+    const repo = buildRepo();
+    const register = new RegisterTenantUseCase(repo, buildOutbox(), buildAudit());
+    const created = await register.execute({
+      actorId: ACTOR_A,
+      productTenantId: 'ffffffff-ffff-4fff-8fff-ffffffffff06',
+      tenantCode: 'p8-scope-tenant',
+      displayName: 'Scoped Tenant',
+      productId,
+      region: 'eu-west-1',
+    });
+    const get = new GetTenantUseCase(repo);
+    await expect(
+      get.execute(created.id, {
+        global: false,
+        regions: ['us-east-1'],
+        accountIds: [],
+        productIds: [],
+        ownerIds: [],
+      }),
+    ).rejects.toMatchObject({
+      details: expect.arrayContaining([expect.objectContaining({ code: 'TENANT_OUT_OF_OPERATOR_SCOPE' })]),
+    });
+    await expect(
+      get.execute(created.id, {
+        global: false,
+        regions: ['eu-west-1'],
+        accountIds: [],
+        productIds: [],
+        ownerIds: [],
+      }),
+    ).resolves.toMatchObject({ id: created.id });
   });
 });

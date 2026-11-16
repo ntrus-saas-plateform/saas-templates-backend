@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'node:crypto';
 import { EdgeRoute, RequireEdgePermissions } from '../../../../shared/auth/decorators.js';
 import { EdgeAuthGuard } from '../../../../shared/auth/edge-auth.guard.js';
+import { EdgeContextService } from '../../../../shared/auth/edge-context.service.js';
 import { EdgeOptionalWorkspaceGuard } from '../../../../shared/auth/edge-optional-workspace.guard.js';
 import { EdgePermissionGuard } from '../../../../shared/auth/edge-permission.guard.js';
 import {
@@ -27,6 +28,7 @@ import {
   ApproveRecoveryUseCase,
   ApproveTerminationUseCase,
   AssignTenantOwnerUseCase,
+  AuthorizeTenantDeprovisionUseCase,
   EvaluateTenantRiskUseCase,
   ExecuteBulkOperationUseCase,
   ExpireExceptionsUseCase,
@@ -62,6 +64,7 @@ import {
   RequestMigrationUseCase,
   RequestRecoveryUseCase,
   RequestTerminationUseCase,
+  ResolveOperatorTenantAccessUseCase,
   RevokeExceptionUseCase,
   RunReconciliationUseCase,
   SyncTenantsFromP7UseCase,
@@ -74,6 +77,7 @@ import {
   AddTenantNoteDto,
   ApproveLifecycleActionDto,
   AssignTenantOwnerDto,
+  AuthorizeTenantDeprovisionDto,
   ExecuteBulkOperationDto,
   GovernanceListQueryDto,
   ManageTenantTagDto,
@@ -115,6 +119,8 @@ function actorId(req: EdgeRequest): string {
 @Controller()
 export class EdgeTenantManagementController {
   constructor(
+    private readonly edgeContext: EdgeContextService,
+    private readonly resolveOperatorAccess: ResolveOperatorTenantAccessUseCase,
     private readonly listTenants: ListTenantsUseCase,
     private readonly getTenant: GetTenantUseCase,
     private readonly getTenant360: GetTenant360UseCase,
@@ -158,6 +164,7 @@ export class EdgeTenantManagementController {
     private readonly evaluateRisk: EvaluateTenantRiskUseCase,
     private readonly listRisk: ListRiskAssessmentsUseCase,
     private readonly updatePolicies: UpdateTenantPoliciesUseCase,
+    private readonly authorizeDeprovision: AuthorizeTenantDeprovisionUseCase,
     private readonly updateLegalHold: UpdateLegalHoldUseCase,
     private readonly requestLegalHoldChange: RequestLegalHoldChangeUseCase,
     private readonly listLegalHoldChanges: ListLegalHoldChangeRequestsUseCase,
@@ -167,11 +174,19 @@ export class EdgeTenantManagementController {
     private readonly acknowledgeFinding: AcknowledgeFindingUseCase,
   ) {}
 
+  private async operatorAccess() {
+    const ctx = this.edgeContext.get();
+    return this.resolveOperatorAccess.execute({
+      administratorId: ctx.administratorId,
+      permissions: ctx.permissions ?? [],
+    });
+  }
+
   @Get('edge/tenants')
   @RequireEdgePermissions('platform:tenant_management:search')
   @ApiOperation({ summary: 'Search tenant registry' })
   async searchTenants(@Query() query: TenantSearchQueryDto) {
-    return this.listTenants.execute(query);
+    return this.listTenants.execute(query, await this.operatorAccess());
   }
 
   @Get('edge/tenants/export')
@@ -182,6 +197,7 @@ export class EdgeTenantManagementController {
       actorId: actorId(req),
       filter: query,
       correlationId: randomUUID(),
+      access: await this.operatorAccess(),
     });
     return result.csv;
   }
@@ -521,13 +537,13 @@ export class EdgeTenantManagementController {
   @Get('edge/tenants/:id')
   @RequireEdgePermissions('platform:tenant_management:read')
   async getTenantById(@Param('id') id: string) {
-    return this.getTenant.execute(id);
+    return this.getTenant.execute(id, await this.operatorAccess());
   }
 
   @Get('edge/tenants/:id/360')
   @RequireEdgePermissions('platform:tenant_management:read')
   async getTenant360ById(@Param('id') id: string) {
-    return this.getTenant360.execute(id);
+    return this.getTenant360.execute(id, await this.operatorAccess());
   }
 
   @Patch('edge/tenants/:id')
@@ -686,6 +702,26 @@ export class EdgeTenantManagementController {
       securityPolicyRef: body.securityPolicyRef,
       dataResidencyRef: body.dataResidencyRef,
       deletionProtection: body.deletionProtection,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Post('edge/tenants/:id/deprovision-authorization')
+  @RequireEdgePermissions('platform:tenant_management:deprovision:authorize')
+  async postTenantDeprovisionAuthorization(
+    @Param('id') id: string,
+    @Body() body: AuthorizeTenantDeprovisionDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.authorizeDeprovision.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      expectedVersion: body.expectedVersion,
+      authorized: body.authorized === true,
+      confirmed: body.confirmed === true,
+      liftDeletionProtection: body.liftDeletionProtection === true,
+      justification: body.justification,
+      deprovisionAuthorizePermissionGranted: true,
       correlationId: body.correlationId?.trim() || randomUUID(),
     });
   }

@@ -18,14 +18,14 @@
 | AUD-P8-006 | P1 | **REMEDIATED** | E2 | Bulk : IDs gelés au preview + `expectedPreviewCount` obligatoire (controller + DTO) |
 | AUD-P8-007 | P1 | **REMEDIATED** | E2 | Type bulk `EXPORT` retiré — ne contourne plus `platform:tenant_management:export` |
 | AUD-P8-F02 | P1 | **REMEDIATED** | E2 | `assertHealthSnapshotSource` — HEALTHY exige `p7.*` / `probe.*` / `system.*` |
-| AUD-P8-F03 | P1 | **PARTIALLY REMEDIATED** | E2 | Register → `GovernanceStatus.REVIEW_REQUIRED` + event activity ; **aucun appel P5 live** |
-| AUD-P8-008 | P1 | **OPEN** | E1 | IDOR plateforme par design (control-plane) ; P2 si gouvernance RBAC stricte |
-| AUD-P8-F04 | P1 | **REMEDIATED** | E3 | `test/integration/edge-p8-tenant-management-transactional.spec.ts` (5 tests, Docker local) |
-| AUD-P8-F05 | P1 | **PARTIALLY REMEDIATED** | E4-lite | `test/security/edge-p8-tenant-management-adversarial.spec.ts` — pas E2E navigateur |
-| AUD-P8-F06 | P2 | **REMEDIATED** | E3/load | Smoke 1000 tenants · `edge-p8-registry-search-scale.spec.ts` |
-| AUD-P8-F07 | P2 | **OPEN** | — | Chaos / injection défaillance bridge P7 **non exécutée** |
-| AUD-P8-F08 | P2 | **REMEDIATED** | E2+E3 | Mig `113` · lift via request/approve SoD |
-| AUD-P8-F09 | P2 | **OPEN** | E1 | Scoping portfolio object-level inchangé |
-| AUD-P8-F10 | P1 | **REMEDIATED** | E2+E3 | `P7TenantTechnicalLifecycleBridge` sur approve SUSPEND/RESUME ; deprovision flag-gated |
+| AUD-P8-F03 | P1 | **REMEDIATED** | E2 | Register → SQL P5 `edge_subscriptions` product + **status actif** ; table absente → REVIEW |
+| AUD-P8-008 | P1 | **REMEDIATED** | E2+E3 | `scope:global` + `edge_p8_operator_scopes` enforce get/search/export |
+| AUD-P8-F04 | P1 | **REMEDIATED** | E3 | `edge-p8-tenant-management-transactional.spec.ts` (6 tests) |
+| AUD-P8-F05 | P1 | **REMEDIATED** | E4+E2E | Adversarial + Playwright `e2e/edge-tenants-smoke.spec.ts` |
+| AUD-P8-F06 | P2 | **REMEDIATED** | load | Smoke **10k** tenants + trigram indexes · &lt; 3000 ms |
+| AUD-P8-F07 | P2 | **REMEDIATED** | E2+E4 | Bridge `FAILED` fail-closed (approve non persisté) |
+| AUD-P8-F08 | P2 | **REMEDIATED** | E2+E3 | Mig `113`+`114` · RAISE et LIFT via SoD |
+| AUD-P8-F09 | P2 | **REMEDIATED** | E2+E3 | Object-level operator scope |
+| AUD-P8-F10 | P1 | **REMEDIATED** | E2+E3 | Bridge P7 + API `deprovision-authorization` |
 
-**Bloquant certification levé** pour P0/P1 code + E3/E4-lite ; résiduels F07, F09, E2E browser, P5 live (F03).
+**Bloquant certification levé** ; campagne résiduelle documentée dans `36-residual-closure-certification.md`.

@@ -766,6 +766,36 @@ export class UpdateTenantPoliciesDto {
   correlationId?: string;
 }
 
+export class AuthorizeTenantDeprovisionDto {
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @ApiProperty({ description: 'Must be true' })
+  authorized!: boolean;
+
+  @ApiProperty({ description: 'Must be true' })
+  confirmed!: boolean;
+
+  @ApiPropertyOptional({
+    description: 'When true, also clears deletionProtection in the same authorization act',
+  })
+  @IsOptional()
+  liftDeletionProtection?: boolean;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  justification!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
 export class AcknowledgeFindingDto {
   @ApiProperty({ enum: ['ACKNOWLEDGED', 'DISMISSED'] })
   @IsString()

@@ -40,8 +40,8 @@ describe.skipIf(!runTestcontainers)('P8 registry search scale smoke (Testcontain
     );
     productId = product.rows[0].id;
 
-    const batchSize = 100;
-    for (let batch = 0; batch < 10; batch += 1) {
+    const batchSize = 250;
+    for (let batch = 0; batch < 40; batch += 1) {
       const values: string[] = [];
       const params: unknown[] = [];
       for (let i = 0; i < batchSize; i += 1) {
@@ -74,21 +74,21 @@ describe.skipIf(!runTestcontainers)('P8 registry search scale smoke (Testcontain
     const count = await pool.query<{ c: number }>(
       `SELECT COUNT(*)::int AS c FROM edge_p8_tenants WHERE tenant_code LIKE 'p8-scale-%'`,
     );
-    expect(count.rows[0]?.c).toBe(1000);
-  }, 300_000);
+    expect(count.rows[0]?.c).toBe(10_000);
+  }, 600_000);
 
   afterAll(async () => {
     await pool?.end();
     await container?.stop();
   });
 
-  it('search with q filter + limit 50 completes under 5000ms locally', async () => {
+  it('search with q filter + limit 50 completes under 3000ms at 10k rows', async () => {
     const repo = new PgTenantManagementRepository({ getPool: () => pool } as never);
     const uc = new ListTenantsUseCase(repo);
     const started = performance.now();
-    const result = await uc.execute({ q: 'p8-scale-9', limit: 50, offset: 0 });
+    const result = await uc.execute({ q: 'p8-scale-999', limit: 50, offset: 0 });
     const elapsedMs = performance.now() - started;
     expect(result.items.length).toBeLessThanOrEqual(50);
-    expect(elapsedMs, `measured search duration ${elapsedMs.toFixed(1)}ms`).toBeLessThan(5000);
+    expect(elapsedMs, `measured search duration ${elapsedMs.toFixed(1)}ms`).toBeLessThan(3000);
   }, 60_000);
 });
