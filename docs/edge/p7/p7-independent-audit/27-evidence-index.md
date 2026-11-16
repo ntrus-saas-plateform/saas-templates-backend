@@ -23,7 +23,7 @@
 | Frontend reviewed | `5b83a1bc5ce839925ff5a717103dd33016eb3db9` |
 | Remote backend tip | `4fadf08` |
 | Remote frontend tip | `d7dcb2e` |
-| Remediation commit | *(recorded after local commit; push may 403)* |
+| Remediation commit | `4273c13a9387ab471d77247e1e2dcc0d68aab971` (push may 403) |
 
 ## Commands executed (independent)
 

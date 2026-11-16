@@ -6,6 +6,7 @@
 | **Date** | 2026-11-16 |
 | **Branch** | `feature/console` |
 | **Initial audit HEAD (REJECTED baseline)** | `cd064ee677ea6cc069e3a50408f9d84a31de9cb2` |
+| **Remediation HEAD** | `4273c13a9387ab471d77247e1e2dcc0d68aab971` |
 | **Frontend HEAD reviewed** | `5b83a1bc5ce839925ff5a717103dd33016eb3db9` |
 | **Remote backend `feature/console`** | `4fadf08` (local ahead; push **403** to `kabikaAsyst`) |
 | **Remote frontend `feature/console`** | `d7dcb2e` (local ahead; push **403**) |
