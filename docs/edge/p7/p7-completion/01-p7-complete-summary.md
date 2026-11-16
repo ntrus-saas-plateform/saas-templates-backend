@@ -7,7 +7,7 @@
 | **Overall verdict** | **READY FOR AUDIT** |
 | **Accepted?** | **No — not ACCEPTED** |
 | **Push** | **HTTP 403** — `Permission denied` to `kabikaAsyst` on both remotes |
-| **Backend HEAD** | `de71b5020e075481b3d9ff7fefde718751e67b4a` |
+| **Backend HEAD** | `eaa5d8ed67333e9f366c5e3811c52fd6b473eae0` |
 | **Frontend HEAD** | `206a6c09a062b80ec1c496f7d3de3ebe52d06088` |
 
 > Ready for independent audit only. **Not ACCEPTED.** Does not authorize Modes A–C production claims.
