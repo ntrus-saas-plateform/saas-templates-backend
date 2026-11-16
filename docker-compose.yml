@@ -137,10 +137,12 @@ services:
       SWAGGER_ENABLED: 'true'
       METRICS_AUTH_TOKEN: dev-metrics-token
       # Live-complete lab path — see docs/edge/live-complete/01-env-lab.example.md
+      # lab_bb calls BB /control/v1 (durable blocks without P5 canonical auth).
+      # BB listens on PORT=3000 by default; host.docker.internal reaches host-published BB.
       BILLING_PAYMENT_ADAPTER: sandbox
-      EDGE_P7_PROVISIONING_ADAPTER: durable
-      # EDGE_BB_CONTROL_BASE_URL: http://host.docker.internal:3100
-      # EDGE_BB_CONTROL_TOKEN: lab-edge-control-token
+      EDGE_P7_PROVISIONING_ADAPTER: lab_bb
+      EDGE_BB_CONTROL_BASE_URL: http://host.docker.internal:3000
+      EDGE_BB_CONTROL_TOKEN: lab-token
       EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP: 'true'
     depends_on:
       postgres:

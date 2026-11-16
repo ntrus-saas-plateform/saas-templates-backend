@@ -303,8 +303,10 @@ export const environmentSchema = z.object({
   BILLING_PROCESS_DUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
   BILLING_OVERDUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(1800),
 
-  // P7.1 provisioning authorization — default-off (C-02); Unavailable until durable
-  EDGE_P7_PROVISIONING_ADAPTER: z.enum(['unavailable', 'durable']).default('unavailable'),
+  // P7.1 provisioning — default-off (C-02); lab_bb = honest BB control/v1 lab path
+  EDGE_P7_PROVISIONING_ADAPTER: z
+    .enum(['unavailable', 'durable', 'lab_bb'])
+    .default('unavailable'),
   /** JSON array: [{ "keyId","algorithm","publicKeyPem" }] — never private keys */
   EDGE_P7_AUTHORIZATION_PUBLIC_KEYS_JSON: z.string().optional(),
   /** Comma-separated allowed issuers — required non-empty for verification (fail-closed) */

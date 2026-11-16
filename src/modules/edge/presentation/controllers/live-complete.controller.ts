@@ -19,7 +19,7 @@ export type LiveCompleteStatusDto = {
 
 /**
  * Lab / operator readiness for live-complete adapters (no secrets).
- * Mode: LIVE when sandbox payment + durable P7 + BB control URL are set.
+ * Mode: LIVE when sandbox payment + lab_bb|durable P7 + BB control URL are set.
  */
 @ApiTags('edge-live-complete')
 @ApiBearerAuth()
@@ -44,12 +44,10 @@ export class EdgeLiveCompleteController {
     const provisioningAdapter = this.config.EDGE_P7_PROVISIONING_ADAPTER;
     const bbControlConfigured = Boolean(this.config.EDGE_BB_CONTROL_BASE_URL?.trim());
 
+    const provisioningLive =
+      provisioningAdapter === 'durable' || provisioningAdapter === 'lab_bb';
     let mode: LiveCompleteMode;
-    if (
-      paymentAdapter === 'sandbox' &&
-      provisioningAdapter === 'durable' &&
-      bbControlConfigured
-    ) {
+    if (paymentAdapter === 'sandbox' && provisioningLive && bbControlConfigured) {
       mode = 'LIVE';
     } else if (paymentAdapter === 'unavailable' && provisioningAdapter === 'unavailable') {
       mode = 'UNAVAILABLE';
@@ -64,10 +62,10 @@ export class EdgeLiveCompleteController {
       mode,
       note:
         mode === 'LIVE'
-          ? 'Sandbox payment, durable P7 provisioning, and BB control are configured.'
+          ? `Sandbox payment, P7 provisioning (${provisioningAdapter}), and BB control are configured.`
           : mode === 'PARTIAL'
             ? 'Some live-complete adapters are configured; lab is not fully LIVE.'
-            : 'Lab needs BILLING_PAYMENT_ADAPTER=sandbox, EDGE_P7_PROVISIONING_ADAPTER=durable, and EDGE_BB_CONTROL_BASE_URL.',
+            : 'Lab needs BILLING_PAYMENT_ADAPTER=sandbox, EDGE_P7_PROVISIONING_ADAPTER=lab_bb|durable, and EDGE_BB_CONTROL_BASE_URL.',
     };
   }
 }

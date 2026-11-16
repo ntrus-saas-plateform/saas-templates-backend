@@ -44,6 +44,7 @@
     "keycloak:import": "node --import tsx scripts/import-keycloak-realm.ts",
     "seed:local": "node --import tsx scripts/ensure-dev-databases.ts && node --import tsx scripts/migrate-control-plane.ts && node --import tsx scripts/seed-dev.ts && node --import tsx scripts/migrate-tenant.ts aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa && node --import tsx scripts/migrate-tenant.ts bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb && node --import tsx scripts/import-keycloak-realm.ts",
     "seed:edge-e2e": "node --import tsx scripts/seed-edge-e2e.ts",
+    "seed:live-complete": "node --import tsx scripts/seed-live-complete-pharmacy.ts",
     "test:edge:marketing": "vitest run src/modules/edge/domain/marketing src/modules/edge/infrastructure/marketing src/modules/edge/application/marketing",
     "test:edge:sales": "vitest run src/modules/edge/domain/sales src/modules/edge/infrastructure/sales",
     "test:edge:sales:db": "vitest run --config ./vitest.config.integration.ts test/integration/edge-sales-db.spec.ts",

@@ -42,8 +42,16 @@ Critical switches:
 ## Migrate checklist
 
 1. Start Postgres (compose `postgres` healthy).
-2. Apply control-plane migrations: `pnpm migrate:control` (includes P5 `087+`, P6 `090+`, P7/P8, P9 `115+`, P10 `117+`, P11 `122+` through current HEAD).
-3. Seed / bind Pharmacy product presentation + commercial plan for acquisition (lab seed or console).
+2. Apply control-plane migrations: `pnpm migrate:control` (includes P5 `087+`, P6 `090+`, P7/P8, P9 `115+`, P10 `117+`, P11 `122+`, lab Pharmacy seed `124` through current HEAD).
+3. Seed Pharmacy product for live-complete (idempotent):
+
+```bash
+pnpm exec tsx scripts/seed-live-complete-pharmacy.ts
+# or
+pnpm seed:live-complete
+```
+
+   Prints the product id. Reuses an existing Pharmacy / `PHARMACY_LIVE` product when present. Migration `124_edge_live_complete_pharmacy_seed.sql` also inserts if missing during `migrate:control`.
 4. Start BB Nest; confirm control/v1 reachable with lab token.
 5. Start Edge `platform` with live-path env; start console FE.
 

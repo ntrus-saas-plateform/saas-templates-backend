@@ -22,6 +22,13 @@ See [`01-env-lab.example.md`](./01-env-lab.example.md) and [`00-lab-baseline.md`
 | Lab smoke (opt-in) | `LIVE_COMPLETE_E2E=1 EDGE_API_URL=http://localhost:3000 pnpm test:e2e -- test/e2e/live-complete-smoke.e2e-spec.ts` |
 | Manual scenarios 1–10 | Compose lab up + migrate + seed Pharmacy; follow steps below; record evidence in [`05-e2e-evidence-template.md`](./05-e2e-evidence-template.md) |
 
+### Lab smoke assertions (`LIVE_COMPLETE_E2E=1`)
+
+Probes only — not a full golden-path claim:
+
+1. `GET {EDGE_API_URL}/liveness` → **200** (unversioned; excluded from `/api` prefix in `main.ts`).
+2. `GET {EDGE_API_URL}/api/v1/edge/live-complete/status` → **200** or **401/403** (route exists; auth may be required). **Never 404**.
+
 ---
 
 ## Scenario 1 — Console ops golden path

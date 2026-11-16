@@ -5,11 +5,13 @@ Paste into local `.env` / compose overrides for the Edge live-complete lab. Secr
 ```bash
 # --- Live path adapters ---
 BILLING_PAYMENT_ADAPTER=sandbox
-EDGE_P7_PROVISIONING_ADAPTER=durable
+# lab_bb calls BB /control/v1 (durable needs P5 canonical auth and blocks without it)
+EDGE_P7_PROVISIONING_ADAPTER=lab_bb
 
 # --- Business backend control/v1 (tenant ready / provision) ---
-EDGE_BB_CONTROL_BASE_URL=http://host.docker.internal:3100
-EDGE_BB_CONTROL_TOKEN=lab-edge-control-token
+# BB default PORT=3000 — publish/map that port on the host for host.docker.internal
+EDGE_BB_CONTROL_BASE_URL=http://host.docker.internal:3000
+EDGE_BB_CONTROL_TOKEN=lab-token
 EDGE_BB_CONTROL_ALLOW_INSECURE_HTTP=true
 
 # --- Product control / PCI (Edge → BB HTTP) ---

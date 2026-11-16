@@ -649,6 +649,7 @@ import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authoriz
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
 import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
 import { DurableSubscriptionProvisioningAdapter } from './provisioning/durable-provisioning.adapter.js';
+import { LabBbProvisioningAdapter } from './provisioning/lab-bb-provisioning.adapter.js';
 import { ResolvingSubscriptionProvisioningAdapter } from './provisioning/resolving-provisioning.adapter.js';
 import { loadProvisioningTrustMaterial } from './provisioning/trust-material.js';
 import {
@@ -2956,7 +2957,27 @@ export const edgeApplicationProviders: Provider[] = [
     useFactory: (accept) => new DurableSubscriptionProvisioningAdapter(accept),
     inject: [AcceptProvisioningAuthorizationUseCase],
   },
-  ResolvingSubscriptionProvisioningAdapter,
+  {
+    provide: LabBbProvisioningAdapter,
+    useFactory: (bb: ControlV1BusinessBackendClient) => new LabBbProvisioningAdapter(bb),
+    inject: [CONTROL_V1_BB_CLIENT_PORT],
+  },
+  {
+    provide: ResolvingSubscriptionProvisioningAdapter,
+    useFactory: (
+      config: EnvironmentConfig,
+      unavailable: UnavailableSubscriptionProvisioningAdapter,
+      durable: DurableSubscriptionProvisioningAdapter,
+      labBb: LabBbProvisioningAdapter,
+    ) =>
+      new ResolvingSubscriptionProvisioningAdapter(config, unavailable, durable, labBb),
+    inject: [
+      APP_CONFIG,
+      UnavailableSubscriptionProvisioningAdapter,
+      DurableSubscriptionProvisioningAdapter,
+      LabBbProvisioningAdapter,
+    ],
+  },
   {
     provide: SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
     useExisting: ResolvingSubscriptionProvisioningAdapter,
@@ -3592,24 +3613,31 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [BILLING_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT],
   },
   {
+    provide: MarkInvoicePaidIfSettledUseCase,
+    useFactory: (b, outbox, confirm, requestProvisioning) =>
+      new MarkInvoicePaidIfSettledUseCase(b, outbox, confirm, requestProvisioning),
+    inject: [
+      BILLING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      ConfirmBillingCoordinationUseCase,
+      RequestProvisioningUseCase,
+    ],
+  },
+  {
     provide: ConfirmPaymentIntentUseCase,
-    useFactory: (b, p, outbox) => new ConfirmPaymentIntentUseCase(b, p, outbox),
-    inject: [BILLING_REPOSITORY_PORT, PAYMENT_PROVIDER_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (b, p, outbox, markPaid) =>
+      new ConfirmPaymentIntentUseCase(b, p, outbox, markPaid),
+    inject: [
+      BILLING_REPOSITORY_PORT,
+      PAYMENT_PROVIDER_PORT,
+      ControlPlaneOutboxTransactionService,
+      MarkInvoicePaidIfSettledUseCase,
+    ],
   },
   {
     provide: AllocatePaymentUseCase,
     useFactory: (b) => new AllocatePaymentUseCase(b),
     inject: [BILLING_REPOSITORY_PORT],
-  },
-  {
-    provide: MarkInvoicePaidIfSettledUseCase,
-    useFactory: (b, outbox, confirm) =>
-      new MarkInvoicePaidIfSettledUseCase(b, outbox, confirm),
-    inject: [
-      BILLING_REPOSITORY_PORT,
-      ControlPlaneOutboxTransactionService,
-      ConfirmBillingCoordinationUseCase,
-    ],
   },
   {
     provide: CreateRefundUseCase,
@@ -4879,6 +4907,7 @@ export const edgeApplicationProviders: Provider[] = [
       productControl,
       subscriptions,
       outbox,
+      tenantRuntimeStatus,
     ) =>
       createLiveActivationExecutor({
         repo,
@@ -4891,6 +4920,7 @@ export const edgeApplicationProviders: Provider[] = [
         productControl,
         subscriptions,
         outbox,
+        tenantRuntimeStatus,
       }),
     inject: [
       ACTIVATION_REPOSITORY_PORT,
@@ -4903,6 +4933,7 @@ export const edgeApplicationProviders: Provider[] = [
       PRODUCT_CONTROL_REPOSITORY_PORT,
       SUBSCRIPTION_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
+      TENANT_RUNTIME_STATUS_PORT,
     ],
   },
   // =========================================================================

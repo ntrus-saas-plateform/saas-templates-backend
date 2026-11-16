@@ -1254,6 +1254,27 @@ export class RequestProvisioningUseCase {
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
     const correlationId = randomUUID();
+
+    const existingReqs = await this.subscriptions.listProvisioningRequests(sub.id);
+    const existingTenantRef =
+      existingReqs.map((r) => r.tenantRef).find((t): t is string => !!t?.trim()) ??
+      (typeof sub.metadata?.tenantRef === 'string' && sub.metadata.tenantRef.trim()
+        ? sub.metadata.tenantRef.trim()
+        : null) ??
+      (typeof sub.metadata?.tenantId === 'string' && sub.metadata.tenantId.trim()
+        ? sub.metadata.tenantId.trim()
+        : null) ??
+      (typeof sub.metadata?.tenant_id === 'string' && sub.metadata.tenant_id.trim()
+        ? sub.metadata.tenant_id.trim()
+        : null);
+
+    const payload: Record<string, unknown> = {
+      tenantId: existingTenantRef ?? undefined,
+      productId: sub.productId,
+      subscriptionId: sub.id,
+      note: 'lab_bb_payload',
+    };
+
     let outcome = 'REQUESTED';
     let externalRef: string | null = null;
     let failureMessage: string | null = null;
@@ -1264,6 +1285,7 @@ export class RequestProvisioningUseCase {
         accountId: sub.accountId,
         productId: sub.productId,
         correlationId,
+        payload,
       });
       if (result.outcome === 'UNAVAILABLE') {
         outcome = 'UNAVAILABLE';
@@ -1278,7 +1300,9 @@ export class RequestProvisioningUseCase {
       correlationId,
       outcome,
       externalRef,
+      tenantRef: externalRef ?? existingTenantRef,
       failureMessage,
+      payload,
     });
     await enqueueSubscription(
       this.outbox,

@@ -17,6 +17,7 @@ import type { KeycloakRepositoryPort } from '../../domain/keycloak-topology/keyc
 import { KeycloakTopologyStatus } from '../../domain/keycloak-topology/keycloak.types.js';
 import type { ProductControlRepositoryPort } from '../../domain/product-control/product-control-repository.port.js';
 import { ProductControlEndpointStatus } from '../../domain/product-control/product-control.types.js';
+import type { TenantRuntimeStatusPort } from '../../domain/acquisition/tenant-runtime-status.port.js';
 import type { SubscriptionRepositoryPort } from '../../domain/ports/subscription-repository.port.js';
 import {
   createProvisioningCompletedEvent,
@@ -152,6 +153,7 @@ export function createLiveActivationExecutor(deps: {
   productControl?: ProductControlRepositoryPort | null;
   subscriptions?: SubscriptionRepositoryPort | null;
   outbox?: ControlPlaneOutboxTransactionService | null;
+  tenantRuntimeStatus?: TenantRuntimeStatusPort | null;
 }): ActivationLiveExecutor {
   const validateLease = async (
     input: WorkflowHandlerInput,
@@ -733,16 +735,50 @@ export function createLiveActivationExecutor(deps: {
             status: ProductControlEndpointStatus.ACTIVE,
             limit: 50,
           });
-          const passed = endpoints.length > 0;
+          const endpointsActive = endpoints.length > 0;
           await writeCheck(evaluation, {
             checkCode: 'product_control.reachable',
-            status: passed ? ReadinessCheckStatus.PASSED : ReadinessCheckStatus.FAILED,
-            message: passed
+            status: endpointsActive
+              ? ReadinessCheckStatus.PASSED
+              : ReadinessCheckStatus.FAILED,
+            message: endpointsActive
               ? 'Product control ACTIVE endpoint reachable'
               : 'No ACTIVE product control endpoint for product',
             details: { endpointCount: endpoints.length },
           });
-          return ok({ check: passed ? 'PASSED' : 'FAILED' });
+
+          let bbReadyPassed = true;
+          if (deps.tenantRuntimeStatus && evaluation.tenantId) {
+            const status = await deps.tenantRuntimeStatus.isTenantReady(evaluation.tenantId);
+            const unavailable = status.source === 'UNAVAILABLE';
+            bbReadyPassed = !unavailable && status.ready === true;
+            await writeCheck(evaluation, {
+              checkCode: 'product_control.bb_tenant_ready',
+              status: bbReadyPassed
+                ? ReadinessCheckStatus.PASSED
+                : ReadinessCheckStatus.FAILED,
+              message: unavailable
+                ? `BB tenant ready UNAVAILABLE (fail-closed): ${status.detail ?? status.source}`
+                : bbReadyPassed
+                  ? `BB tenant ready (source=${status.source})`
+                  : `BB tenant not ready (source=${status.source}${
+                      status.detail ? `: ${status.detail}` : ''
+                    })`,
+              details: {
+                tenantId: evaluation.tenantId,
+                ready: status.ready,
+                source: status.source,
+                detail: status.detail ?? null,
+              },
+            });
+          }
+
+          const passed = endpointsActive && bbReadyPassed;
+          return ok({
+            check: passed ? 'PASSED' : 'FAILED',
+            endpointsActive,
+            bbReadyPassed,
+          });
         }
 
         case 'readiness.aggregate': {

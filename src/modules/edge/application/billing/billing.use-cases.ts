@@ -27,7 +27,10 @@ import {
 import type { PaymentProviderPort } from '../../domain/billing/payment-provider.port.js';
 import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
 import type { SubscriptionRepositoryPort } from '../../domain/ports/subscription-repository.port.js';
-import { ConfirmBillingCoordinationUseCase } from '../subscription/subscription.use-cases.js';
+import {
+  ConfirmBillingCoordinationUseCase,
+  RequestProvisioningUseCase,
+} from '../subscription/subscription.use-cases.js';
 import {
   addMoney,
   formatMoneyAmount,
@@ -483,6 +486,7 @@ export class ConfirmPaymentIntentUseCase {
     private readonly billing: BillingRepositoryPort,
     private readonly payments: PaymentProviderPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly markInvoicePaidIfSettled?: MarkInvoicePaidIfSettledUseCase,
   ) {}
 
   async execute(input: {
@@ -558,7 +562,39 @@ export class ConfirmPaymentIntentUseCase {
       }),
     );
 
-    return { intent: updated, confirmed: true, proof: outcome.proof };
+    let settled: Awaited<ReturnType<MarkInvoicePaidIfSettledUseCase['execute']>> | null = null;
+    if (intent.invoiceId) {
+      const invoice = await this.billing.getInvoice(intent.invoiceId);
+      if (invoice) {
+        const paid = addMoney(
+          parseMoneyAmount(invoice.amountPaid, invoice.currency),
+          parseMoneyAmount(intent.amount, intent.currency),
+        );
+        const dueBefore = parseMoneyAmount(invoice.amountDue, invoice.currency);
+        const applied = parseMoneyAmount(intent.amount, intent.currency);
+        const dueUnits = dueBefore.units > applied.units ? dueBefore.units - applied.units : 0n;
+        const due = { currency: dueBefore.currency, units: dueUnits };
+        await this.billing.createPaymentAllocation({
+          paymentIntentId: intent.id,
+          invoiceId: invoice.id,
+          amount: intent.amount,
+          currency: intent.currency,
+        });
+        await this.billing.updateInvoice(invoice.id, {
+          amountPaid: formatMoneyAmount(paid),
+          amountDue: formatMoneyAmount(due),
+        });
+        if (this.markInvoicePaidIfSettled) {
+          settled = await this.markInvoicePaidIfSettled.execute({
+            actorId: input.actorId,
+            invoiceId: invoice.id,
+            subscriptionId: invoice.subscriptionId ?? null,
+          });
+        }
+      }
+    }
+
+    return { intent: updated, confirmed: true, proof: outcome.proof, settled };
   }
 }
 
@@ -587,6 +623,7 @@ export class MarkInvoicePaidIfSettledUseCase {
     private readonly billing: BillingRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
     private readonly confirmBilling?: ConfirmBillingCoordinationUseCase,
+    private readonly requestProvisioning?: RequestProvisioningUseCase,
   ) {}
 
   async execute(input: {
@@ -621,6 +658,7 @@ export class MarkInvoicePaidIfSettledUseCase {
     }
 
     const correlationId = randomUUID();
+    const subscriptionId = input.subscriptionId ?? invoice.subscriptionId ?? null;
     if (nextStatus === InvoiceStatus.PAID) {
       await enqueueBilling(
         this.outbox,
@@ -631,12 +669,23 @@ export class MarkInvoicePaidIfSettledUseCase {
           billingAccountId: invoice.billingAccountId,
         }),
       );
-      if (input.subscriptionId && input.coordinationId && this.confirmBilling) {
+      if (subscriptionId && input.coordinationId && this.confirmBilling) {
         await this.confirmBilling.execute({
           actorId: input.actorId,
-          subscriptionId: input.subscriptionId,
+          subscriptionId,
           coordinationId: input.coordinationId,
         });
+      }
+      // Auto-request provision after PAID — never unwind paid state on provision failure.
+      if (subscriptionId && this.requestProvisioning) {
+        try {
+          await this.requestProvisioning.execute({
+            actorId: input.actorId,
+            subscriptionId,
+          });
+        } catch {
+          // Paid state must stand; RequestProvisioningUseCase records failures when possible.
+        }
       }
     } else if (nextStatus === InvoiceStatus.PARTIALLY_PAID) {
       await enqueueBilling(
