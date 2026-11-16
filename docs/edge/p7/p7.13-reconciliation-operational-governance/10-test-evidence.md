@@ -1,27 +1,11 @@
 # P7.13 — Test Evidence
 
-## Backend
+| Suite | Result (2026-11-16) |
+|-------|---------------------|
+| `tsc --noEmit` | **0 errors** |
+| Reconciliation policy + auth | **28 / 28 passed** |
+| Full unit | **1037 / 1037 passed** |
+| Security | **89 / 89 passed** |
+| Frontend `components/edge/reconciliation` | **3 / 3 passed** |
 
-| Suite | Focus |
-|-------|-------|
-| `reconciliation-policy.spec.ts` | UNKNOWN≠MISSING; waiver expiry; unsafe auto-remediate deny; approve requires P7.1 |
-| `reconciliation.controller.auth.spec.ts` | Permission metadata on all endpoints |
-
-## Frontend
-
-| Suite | Focus |
-|-------|-------|
-| `edge-reconciliation-module.test.tsx` | Forbidden without read; no invented REMEDIATED; UNKNOWN detail + observe/remediate controls |
-
-## Commands
-
-```bash
-# backend
-npx tsc --noEmit
-npx vitest run src/modules/edge/domain/reconciliation src/modules/edge/presentation/controllers/reconciliation.controller.auth.spec.ts
-
-# frontend
-npx vitest run components/edge/reconciliation
-```
-
-Counts recorded in `12-acceptance-report.md` after execution.
+Migration: **109** (`109_edge_p7_reconciliation_operational_governance.sql`) — **108** reserved by P8.

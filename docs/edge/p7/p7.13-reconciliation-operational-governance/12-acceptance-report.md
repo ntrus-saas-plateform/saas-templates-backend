@@ -41,9 +41,11 @@
 
 | Suite | Result |
 |-------|--------|
-| Backend `tsc --noEmit` | *(filled after verify)* |
-| Backend P7.13 focused (policy + auth) | *(filled after verify)* |
-| Frontend `components/edge/reconciliation` | *(filled after verify)* |
+| Backend `tsc --noEmit` | **0 errors** |
+| Backend unit | **1037 / 1037 passed** |
+| Backend security | **89 / 89 passed** |
+| Backend P7.13 focused (policy + auth) | **28 / 28 passed** (2 files) |
+| Frontend `components/edge/reconciliation` | **3 / 3 passed** |
 
 ## Verdict
 
