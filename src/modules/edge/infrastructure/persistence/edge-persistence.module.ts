@@ -67,6 +67,8 @@ import { PgServiceCatalogRepository } from '../platform-operations/pg-service-ca
 import { PgOperationsRepository } from '../platform-operations/pg-operations.repository.js';
 import { PgAcquisitionRepository } from '../acquisition/pg-acquisition.repository.js';
 import { createAcquisitionDocumentStorage } from '../acquisition/create-acquisition-document-storage.js';
+import { REVENUE_OPERATIONS_REPOSITORY_PORT } from '../../domain/revenue-operations/revenue-repository.port.js';
+import { PgRevenueRepository } from '../revenue-operations/pg-revenue.repository.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -177,6 +179,8 @@ const providers = [
     provide: ACQUISITION_DOCUMENT_STORAGE_PORT,
     useFactory: () => createAcquisitionDocumentStorage(),
   },
+  // P11 — SaaS Business & Revenue Operations (migration 122).
+  { provide: REVENUE_OPERATIONS_REPOSITORY_PORT, useClass: PgRevenueRepository },
 ];
 
 @Module({

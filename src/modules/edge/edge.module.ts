@@ -63,6 +63,7 @@ import { EdgeTenantManagementController } from './presentation/controllers/tenan
 import { EdgePlatformOperationsController } from './presentation/controllers/platform-operations.controller.js';
 import { AcquisitionController } from './presentation/controllers/acquisition.controller.js';
 import { AcquisitionPublicController } from './presentation/controllers/acquisition-public.controller.js';
+import { EdgeRevenueOperationsController } from './presentation/controllers/revenue-operations.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -119,6 +120,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgePlatformOperationsController,
     AcquisitionController,
     AcquisitionPublicController,
+    EdgeRevenueOperationsController,
   ],
   providers: [
     ...edgeApplicationProviders,

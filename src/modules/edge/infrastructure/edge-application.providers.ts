@@ -453,6 +453,45 @@ import {
   TransitionProspectUseCase,
 } from '../application/acquisition/acquisition.use-cases.js';
 import {
+  REVENUE_OPERATIONS_REPOSITORY_PORT,
+  REVENUE_PROJECTION_INPUT_PORT,
+} from '../domain/revenue-operations/revenue-repository.port.js';
+import { LiveRevenueProjectionAdapter } from './revenue-operations/live-revenue-projection.adapter.js';
+import { P5P6AssuranceAdapter } from './revenue-operations/p5-p6-assurance.adapter.js';
+import { StubRevenueProjectionAdapter } from './revenue-operations/stub-revenue-projection.adapter.js';
+import {
+  AcknowledgeBusinessAlertUseCase,
+  AppendBusinessAuditUseCase,
+  ApproveCommissionUseCase,
+  CalculateCommissionUseCase,
+  ComputeMrrMovementUseCase,
+  CreateBusinessAlertPolicyUseCase,
+  CreateBusinessDecisionUseCase,
+  CreateCommissionPlanUseCase,
+  CreateForecastScenarioUseCase,
+  CreateLeakageCaseUseCase,
+  CreateRevenueForecastUseCase,
+  CreateRevenueTargetUseCase,
+  EvaluateBusinessAlertUseCase,
+  GenerateBusinessReportUseCase,
+  GetBusinessAuditUseCase,
+  GetRenewalIntelligenceOverviewUseCase,
+  GetRetentionOverviewUseCase,
+  GetRevenueOverviewUseCase,
+  ListBusinessAlertsUseCase,
+  ListBusinessReportsUseCase,
+  ListMetricDefinitionsUseCase,
+  ListRevenueTargetsUseCase,
+  PublishMetricDefinitionUseCase,
+  RecordMetricSnapshotUseCase,
+  RecordProductProfitabilitySnapshotUseCase,
+  RecordRetentionSnapshotUseCase,
+  RecordUnitEconomicsSnapshotUseCase,
+  RegisterMetricDefinitionUseCase,
+  RunAssuranceScanUseCase,
+  TransitionLeakageCaseUseCase,
+} from '../application/revenue-operations/revenue.use-cases.js';
+import {
   AcknowledgeAlertUseCase,
   ApproveAutomationExecutionUseCase,
   ApproveChangeUseCase,
@@ -6726,5 +6765,180 @@ export const edgeApplicationProviders: Provider[] = [
     provide: GetAcquisitionOverviewUseCase,
     useFactory: (repo) => new GetAcquisitionOverviewUseCase(repo),
     inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  // --- P11.0–P11.1 SaaS Business & Revenue Operations -------------------------
+  {
+    provide: LiveRevenueProjectionAdapter,
+    useFactory: (subs) => new LiveRevenueProjectionAdapter(subs),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    // Prefer live P5 projection (REVENUE_PROJECTION_PORT aliases this same Symbol)
+    provide: REVENUE_PROJECTION_INPUT_PORT,
+    useExisting: LiveRevenueProjectionAdapter,
+  },
+  {
+    provide: StubRevenueProjectionAdapter,
+    useClass: StubRevenueProjectionAdapter,
+  },
+  {
+    provide: P5P6AssuranceAdapter,
+    useFactory: (subs, billing) => new P5P6AssuranceAdapter(subs, billing),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, BILLING_REPOSITORY_PORT],
+  },
+  {
+    provide: RegisterMetricDefinitionUseCase,
+    useFactory: (repo, outbox) => new RegisterMetricDefinitionUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: PublishMetricDefinitionUseCase,
+    useFactory: (repo, outbox) => new PublishMetricDefinitionUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListMetricDefinitionsUseCase,
+    useFactory: (repo) => new ListMetricDefinitionsUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: RecordMetricSnapshotUseCase,
+    useFactory: (repo, outbox) => new RecordMetricSnapshotUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetRevenueOverviewUseCase,
+    useFactory: (repo) => new GetRevenueOverviewUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: ComputeMrrMovementUseCase,
+    useFactory: (repo, projection, outbox) =>
+      new ComputeMrrMovementUseCase(repo, projection, outbox),
+    inject: [
+      REVENUE_OPERATIONS_REPOSITORY_PORT,
+      REVENUE_PROJECTION_INPUT_PORT,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: CreateRevenueForecastUseCase,
+    useFactory: (repo, outbox) => new CreateRevenueForecastUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateForecastScenarioUseCase,
+    useFactory: (repo, outbox) => new CreateForecastScenarioUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateLeakageCaseUseCase,
+    useFactory: (repo, outbox) => new CreateLeakageCaseUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: TransitionLeakageCaseUseCase,
+    useFactory: (repo, outbox) => new TransitionLeakageCaseUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateCommissionPlanUseCase,
+    useFactory: (repo, outbox) => new CreateCommissionPlanUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CalculateCommissionUseCase,
+    useFactory: (repo, outbox) => new CalculateCommissionUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ApproveCommissionUseCase,
+    useFactory: (repo, outbox) => new ApproveCommissionUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetRetentionOverviewUseCase,
+    useFactory: (repo) => new GetRetentionOverviewUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: RecordRetentionSnapshotUseCase,
+    useFactory: (repo, outbox) => new RecordRetentionSnapshotUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RecordProductProfitabilitySnapshotUseCase,
+    useFactory: (repo, outbox) => new RecordProductProfitabilitySnapshotUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RunAssuranceScanUseCase,
+    useFactory: (repo, outbox) => new RunAssuranceScanUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetBusinessAuditUseCase,
+    useFactory: (repo) => new GetBusinessAuditUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: AppendBusinessAuditUseCase,
+    useFactory: (repo, outbox) => new AppendBusinessAuditUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RecordUnitEconomicsSnapshotUseCase,
+    useFactory: (repo, outbox) => new RecordUnitEconomicsSnapshotUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetRenewalIntelligenceOverviewUseCase,
+    useFactory: (subs) => new GetRenewalIntelligenceOverviewUseCase(subs),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateBusinessAlertPolicyUseCase,
+    useFactory: (repo, outbox) => new CreateBusinessAlertPolicyUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: EvaluateBusinessAlertUseCase,
+    useFactory: (repo, outbox) => new EvaluateBusinessAlertUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListBusinessAlertsUseCase,
+    useFactory: (repo) => new ListBusinessAlertsUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: AcknowledgeBusinessAlertUseCase,
+    useFactory: (repo, outbox) => new AcknowledgeBusinessAlertUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateRevenueTargetUseCase,
+    useFactory: (repo, outbox) => new CreateRevenueTargetUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListRevenueTargetsUseCase,
+    useFactory: (repo) => new ListRevenueTargetsUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateBusinessDecisionUseCase,
+    useFactory: (repo, outbox) => new CreateBusinessDecisionUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListBusinessReportsUseCase,
+    useFactory: (repo) => new ListBusinessReportsUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+  },
+  {
+    provide: GenerateBusinessReportUseCase,
+    useFactory: (repo, outbox) => new GenerateBusinessReportUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
 ];
