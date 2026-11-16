@@ -43,6 +43,13 @@ export type NormalizedSubscriptionRevenueLine = {
   activeAtPeriodEnd?: boolean;
   /** Whether the subscription was active at period start */
   activeAtPeriodStart?: boolean;
+  /**
+   * Prior-period normalized monthly amount for the same subscription (when known).
+   * Used by deriveMrrMovementLines to classify EXPANSION/CONTRACTION (e.g. 100→150).
+   */
+  priorPeriodAmount?: number | null;
+  /** Line-level quality — UNKNOWN payment must not imply MEASURED cash (F-P11-004). */
+  dataQuality?: DataQuality | string;
 };
 
 export type MrrCalculatorOptions = {
@@ -305,4 +312,118 @@ export function computeMrrMovements(
  */
 export function isCollectedEligible(paymentStatus: string | null | undefined): boolean {
   return String(paymentStatus ?? '').toUpperCase() === 'PAID';
+}
+
+export type PeriodSubscriptionObservation = {
+  subscriptionRefId: string;
+  customerRefId?: string | null;
+  /** Current (period-end) normalized monthly amount */
+  amount: number;
+  currency: string;
+  billingPeriod?: string;
+  isFreeTrial?: boolean;
+  paymentStatus?: string;
+  activeAtPeriodStart: boolean;
+  activeAtPeriodEnd: boolean;
+  /** Prior-period monthly amount when known (for expansion/contraction) */
+  priorPeriodAmount?: number | null;
+  dataQuality?: string;
+};
+
+/**
+ * Derive MRR movement lines from period activity (F-P11-005 / F-P11-006).
+ * - !start && end → NEW
+ * - start && !end → CHURNED
+ * - start && end + prior 100 → current 150 → EXPANSION (+50) plus ENDING/STARTING
+ * - start && end + prior 150 → current 100 → CONTRACTION (+50)
+ * - start && end without prior → ENDING + STARTING only (no invented expansion)
+ */
+export function deriveMrrMovementLines(
+  observations: readonly PeriodSubscriptionObservation[],
+): NormalizedSubscriptionRevenueLine[] {
+  const out: NormalizedSubscriptionRevenueLine[] = [];
+
+  for (const obs of observations) {
+    const base = {
+      subscriptionRefId: obs.subscriptionRefId,
+      customerRefId: obs.customerRefId,
+      currency: obs.currency,
+      billingPeriod: obs.billingPeriod ?? 'MONTHLY',
+      isFreeTrial: obs.isFreeTrial,
+      paymentStatus: obs.paymentStatus,
+      dataQuality: obs.dataQuality,
+    };
+
+    const start = Boolean(obs.activeAtPeriodStart);
+    const end = Boolean(obs.activeAtPeriodEnd);
+
+    if (!start && end) {
+      out.push({
+        ...base,
+        amount: obs.amount,
+        movementType: 'NEW',
+        activeAtPeriodStart: false,
+        activeAtPeriodEnd: true,
+      });
+      continue;
+    }
+
+    if (start && !end) {
+      out.push({
+        ...base,
+        amount: obs.amount,
+        movementType: 'CHURNED',
+        activeAtPeriodStart: true,
+        activeAtPeriodEnd: false,
+      });
+      continue;
+    }
+
+    if (start && end) {
+      // Separate ENDING vs STARTING flags so ending MRR ≠ starting+ending double-count.
+      out.push({
+        ...base,
+        amount: obs.amount,
+        movementType: 'ENDING',
+        activeAtPeriodStart: false,
+        activeAtPeriodEnd: true,
+      });
+      out.push({
+        ...base,
+        amount: obs.priorPeriodAmount != null && Number.isFinite(obs.priorPeriodAmount)
+          ? Number(obs.priorPeriodAmount)
+          : obs.amount,
+        movementType: 'STARTING',
+        activeAtPeriodStart: true,
+        activeAtPeriodEnd: false,
+      });
+
+      const prior = obs.priorPeriodAmount;
+      if (prior != null && Number.isFinite(prior)) {
+        const delta = obs.amount - Number(prior);
+        // Delta-only lines: do not set activeAt* or they double-count into ending/starting MRR.
+        if (delta > 0) {
+          out.push({
+            ...base,
+            amount: delta,
+            movementType: 'EXPANSION',
+            activeAtPeriodStart: false,
+            activeAtPeriodEnd: false,
+            priorPeriodAmount: prior,
+          });
+        } else if (delta < 0) {
+          out.push({
+            ...base,
+            amount: Math.abs(delta),
+            movementType: 'CONTRACTION',
+            activeAtPeriodStart: false,
+            activeAtPeriodEnd: false,
+            priorPeriodAmount: prior,
+          });
+        }
+      }
+    }
+  }
+
+  return out;
 }

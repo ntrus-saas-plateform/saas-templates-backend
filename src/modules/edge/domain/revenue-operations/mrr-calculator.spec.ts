@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeMrrMovements,
+  deriveMrrMovementLines,
   isCollectedEligible,
   normalizeToMonthlyMrr,
   type NormalizedSubscriptionRevenueLine,
@@ -173,5 +174,48 @@ describe('computeMrrMovements', () => {
     // Unpaid still contributes to MRR classification, but notes document collection rule
     expect(result.mrrNew.amount).toBe(200);
     expect(result.notes.some((n) => n.toLowerCase().includes('collected'))).toBe(true);
+  });
+});
+
+describe('deriveMrrMovementLines (F-P11-005/006)', () => {
+  it('derives EXPANSION from prior 100 → current 150', () => {
+    const lines = deriveMrrMovementLines([
+      {
+        subscriptionRefId: 'sub-up',
+        amount: 150,
+        priorPeriodAmount: 100,
+        currency: 'USD',
+        activeAtPeriodStart: true,
+        activeAtPeriodEnd: true,
+        paymentStatus: 'UNKNOWN',
+        dataQuality: 'ESTIMATED',
+      },
+    ]);
+    const expansion = lines.find((l) => l.movementType === 'EXPANSION');
+    expect(expansion?.amount).toBe(50);
+    const result = computeMrrMovements(lines);
+    expect(result.mrrExpansion.amount).toBe(50);
+    expect(result.mrrEnding.amount).toBe(150);
+  });
+
+  it('derives NEW and CHURNED from activity flags', () => {
+    const lines = deriveMrrMovementLines([
+      {
+        subscriptionRefId: 'new',
+        amount: 80,
+        currency: 'USD',
+        activeAtPeriodStart: false,
+        activeAtPeriodEnd: true,
+      },
+      {
+        subscriptionRefId: 'gone',
+        amount: 40,
+        currency: 'USD',
+        activeAtPeriodStart: true,
+        activeAtPeriodEnd: false,
+      },
+    ]);
+    expect(lines.some((l) => l.movementType === 'NEW' && l.amount === 80)).toBe(true);
+    expect(lines.some((l) => l.movementType === 'CHURNED' && l.amount === 40)).toBe(true);
   });
 });

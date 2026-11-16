@@ -224,6 +224,55 @@ export class ComputeCashRevenueDto {
   persistSnapshots?: boolean;
 }
 
+export class ComputeChurnRatesDto {
+  @ApiProperty()
+  @IsDateString()
+  periodStart!: string;
+
+  @ApiProperty()
+  @IsDateString()
+  periodEnd!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  asOf?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  businessUnitId?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsNumber()
+  startingLogos?: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsNumber()
+  churnedLogos?: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsNumber()
+  startingSubscriptions?: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsNumber()
+  churnedSubscriptions?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  persistSnapshots?: boolean;
+}
+
 export class ComputeMrrMovementDto {
   @ApiProperty()
   @IsDateString()

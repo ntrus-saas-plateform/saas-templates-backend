@@ -15,6 +15,7 @@ describe('EdgeRevenueOperationsController auth matrix', () => {
     { method: 'revenueOverview', permission: 'platform:revenue:read' },
     { method: 'computeMrrMovement', permission: 'platform:revenue:read' },
     { method: 'computeCashRevenue', permission: 'platform:revenue:read' },
+    { method: 'computeChurnRates', permission: 'platform:revenue:read' },
     { method: 'retentionOverview', permission: 'platform:revenue:read' },
     { method: 'recordRetentionSnapshot', permission: 'platform:business:metrics:manage' },
     { method: 'recordUnitEconomicsSnapshot', permission: 'platform:business:metrics:manage' },

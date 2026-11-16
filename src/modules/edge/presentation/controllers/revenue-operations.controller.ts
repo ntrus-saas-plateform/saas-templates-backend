@@ -10,6 +10,7 @@ import {
   ApproveCommissionUseCase,
   CalculateCommissionUseCase,
   ComputeCashRevenueUseCase,
+  ComputeChurnRatesUseCase,
   ComputeMrrMovementUseCase,
   CreateBusinessAlertPolicyUseCase,
   CreateBusinessDecisionUseCase,
@@ -45,6 +46,7 @@ import {
   BusinessAuditQueryDto,
   CalculateCommissionDto,
   ComputeCashRevenueDto,
+  ComputeChurnRatesDto,
   ComputeMrrMovementDto,
   CreateBusinessAlertPolicyDto,
   CreateBusinessDecisionDto,
@@ -93,6 +95,7 @@ export class EdgeRevenueOperationsController {
     private readonly overview: GetRevenueOverviewUseCase,
     private readonly computeMrr: ComputeMrrMovementUseCase,
     private readonly computeCash: ComputeCashRevenueUseCase,
+    private readonly computeChurn: ComputeChurnRatesUseCase,
     private readonly createForecast: CreateRevenueForecastUseCase,
     private readonly createScenario: CreateForecastScenarioUseCase,
     private readonly createLeakage: CreateLeakageCaseUseCase,
@@ -183,6 +186,15 @@ export class EdgeRevenueOperationsController {
   })
   computeCashRevenue(@Req() req: EdgeRequest, @Body() body: ComputeCashRevenueDto) {
     return this.computeCash.execute({ actorId: actorId(req), ...body });
+  }
+
+  @Post('edge/revenue/churn/compute')
+  @RequireEdgePermissions('platform:revenue:read')
+  @ApiOperation({
+    summary: 'Compute LOGO_CHURN / SUBSCRIPTION_CHURN (F-P11-009 — never invent denominators)',
+  })
+  computeChurnRates(@Req() req: EdgeRequest, @Body() body: ComputeChurnRatesDto) {
+    return this.computeChurn.execute({ actorId: actorId(req), ...body });
   }
 
   // --- Retention ----------------------------------------------------------

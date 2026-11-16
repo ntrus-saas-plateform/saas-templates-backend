@@ -22,6 +22,10 @@ import {
   type PaymentCashRef,
 } from '../../domain/revenue-operations/cash-revenue-calculator.js';
 import {
+  computeLogoChurn,
+  computeSubscriptionChurn,
+} from '../../domain/revenue-operations/churn-calculator.js';
+import {
   assertCashMetricSnapshotProvenance,
   assertForecastMutable,
   assertLeakageCaseTransition,
@@ -602,6 +606,99 @@ export class ComputeCashRevenueUseCase {
         client,
       );
       return { result, snapshots, provenance };
+    });
+  }
+}
+
+/**
+ * F-P11-009 — executable LOGO_CHURN / SUBSCRIPTION_CHURN (never invent denominators).
+ */
+export class ComputeChurnRatesUseCase {
+  constructor(
+    private readonly repo: RevenueOperationsRepositoryPort,
+    private readonly outbox?: ControlPlaneOutboxTransactionService,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    periodStart: Date | string;
+    periodEnd: Date | string;
+    asOf?: Date | string;
+    currency?: string;
+    businessUnitId?: string | null;
+    startingLogos?: number | null;
+    churnedLogos?: number | null;
+    startingSubscriptions?: number | null;
+    churnedSubscriptions?: number | null;
+    persistSnapshots?: boolean;
+    correlationId?: string | null;
+  }) {
+    const periodStart = new Date(input.periodStart);
+    const periodEnd = new Date(input.periodEnd);
+    const asOf = input.asOf ? new Date(input.asOf) : periodEnd;
+    const logo = computeLogoChurn({
+      startingLogos: input.startingLogos,
+      churnedLogos: input.churnedLogos,
+    });
+    const subscription = computeSubscriptionChurn({
+      startingSubscriptions: input.startingSubscriptions,
+      churnedSubscriptions: input.churnedSubscriptions,
+    });
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    const provenance = {
+      source: 'engine',
+      calculator: 'churn-calculator',
+      logoNotes: logo.notes,
+      subscriptionNotes: subscription.notes,
+    };
+
+    if (!input.persistSnapshots) {
+      return { logo, subscription, snapshots: [] as unknown[], provenance };
+    }
+
+    const currency = (input.currency ?? 'USD').trim().toUpperCase() || 'USD';
+    return withOutbox(this.outbox, async (client, enqueue) => {
+      const pairs = [
+        { code: 'LOGO_CHURN', bucket: logo },
+        { code: 'SUBSCRIPTION_CHURN', bucket: subscription },
+      ] as const;
+      const snapshots = [];
+      for (const { code, bucket } of pairs) {
+        const def = await this.repo.getMetricDefinitionByCode(code);
+        if (!def || String(def.status).toUpperCase() !== 'PUBLISHED') continue;
+        const snap = await this.repo.recordMetricSnapshot(
+          {
+            metricCode: code,
+            definitionVersion: def.version,
+            definitionVersionId: def.currentPublishedVersionId,
+            businessUnitId: input.businessUnitId ?? null,
+            periodStart,
+            periodEnd,
+            asOf,
+            value: bucket.rate,
+            currency,
+            dataQuality: bucket.dataQuality,
+            sourceProvenance: provenance,
+            createdBy: input.actorId,
+          },
+          client,
+        );
+        snapshots.push(snap);
+      }
+      await enqueue(
+        buildRevenueOutboxEvent({
+          eventType: RevenueEventTypes.METRIC_SNAPSHOT_RECORDED,
+          aggregateId: randomUUID(),
+          correlationId,
+          actorId: input.actorId,
+          payload: {
+            logo,
+            subscription,
+            snapshotCount: snapshots.length,
+          },
+        }),
+      );
+      return { logo, subscription, snapshots, provenance };
     });
   }
 }

@@ -3,13 +3,19 @@ import {
   SUBSCRIPTION_REPOSITORY_PORT,
   type SubscriptionRepositoryPort,
 } from '../../domain/ports/subscription-repository.port.js';
-import { normalizeToMonthlyMrr } from '../../domain/revenue-operations/mrr-calculator.js';
+import {
+  deriveMrrMovementLines,
+  normalizeToMonthlyMrr,
+} from '../../domain/revenue-operations/mrr-calculator.js';
 import type { RevenueProjectionInputPort } from '../../domain/revenue-operations/revenue-repository.port.js';
 
 /**
  * Live P5 projection — reads active subscriptions and extracts commercial amounts safely.
  * Annual/yearly billing_frequency → amount/12 (monthly MRR line with billingPeriod MONTHLY).
  * Lines without a found amount are skipped (never fabricated as measured zero).
+ *
+ * F-P11-004: paymentStatus UNKNOWN → dataQuality ESTIMATED (not MEASURED cash-implying).
+ * F-P11-005/006: derive NEW/CHURNED/EXPANSION/CONTRACTION from activity + prior amount.
  */
 @Injectable()
 export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort {
@@ -38,6 +44,7 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
       activeAtPeriodStart?: boolean;
       dataQuality?: string;
       skipNote?: string;
+      priorPeriodAmount?: number | null;
     }>
   > {
     if (!this.subscriptions) {
@@ -50,22 +57,8 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
       offset: 0,
     });
 
-    const lines: Array<{
-      subscriptionRefId: string;
-      customerRefId?: string | null;
-      amount: number;
-      currency: string;
-      billingPeriod: string;
-      isFreeTrial?: boolean;
-      paymentStatus?: string;
-      movementType: string;
-      activeAtPeriodEnd?: boolean;
-      activeAtPeriodStart?: boolean;
-      dataQuality?: string;
-      skipNote?: string;
-    }> = [];
-
     const notes: string[] = [];
+    const observations = [];
 
     for (const sub of items) {
       if (input.currency && sub.currency && sub.currency !== input.currency) {
@@ -88,6 +81,10 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
         continue;
       }
 
+      const priorRaw = extractPriorAmount(sub.commercialSnapshot);
+      const priorMonthly =
+        priorRaw == null ? null : normalizeToMonthlyMrr(priorRaw, frequency);
+
       const activeAtPeriodEnd = isActiveAt(sub, input.periodEnd);
       const activeAtPeriodStart = isActiveAt(sub, input.periodStart);
       const isFreeTrial =
@@ -95,27 +92,29 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
         sub.trialEndAt > input.periodStart &&
         (sub.trialStartAt == null || sub.trialStartAt <= input.periodEnd);
 
-      lines.push({
+      // Payment status unknown from P5 list alone — must not claim MEASURED cash (F-P11-004).
+      const paymentStatus = 'UNKNOWN';
+      const dataQuality = 'ESTIMATED';
+
+      observations.push({
         subscriptionRefId: sub.id,
         customerRefId: sub.accountId,
         amount: monthly,
         currency: sub.currency || input.currency || 'USD',
-        // Already normalized annual→/12 above
         billingPeriod: 'MONTHLY',
         isFreeTrial: Boolean(isFreeTrial),
-        paymentStatus: 'UNKNOWN',
-        movementType: activeAtPeriodEnd ? 'ENDING' : 'STARTING',
-        activeAtPeriodEnd,
+        paymentStatus,
         activeAtPeriodStart,
-        dataQuality: 'MEASURED',
+        activeAtPeriodEnd,
+        priorPeriodAmount:
+          priorMonthly != null && Number.isFinite(priorMonthly) ? priorMonthly : null,
+        dataQuality,
       });
     }
 
-    // Attach skip notes on empty result via a sentinel is not possible on the port;
-    // callers treat empty as UNAVAILABLE. Notes are intentionally not fabricated into amounts.
     void notes;
     void input.businessUnitId;
-    return lines;
+    return deriveMrrMovementLines(observations);
   }
 }
 
@@ -128,6 +127,25 @@ function extractCommercialAmount(snapshot: Record<string, unknown> | null | unde
     snapshot.amount,
     snapshot.recurringAmount,
     snapshot.mrr,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    const n = typeof c === 'number' ? c : Number(c);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Prior-period amount keys used for expansion/contraction derivation (F-P11-006). */
+function extractPriorAmount(snapshot: Record<string, unknown> | null | undefined): number | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const candidates = [
+    snapshot.priorPeriodAmount,
+    snapshot.prior_period_amount,
+    snapshot.previousAmount,
+    snapshot.previous_amount,
+    snapshot.priorMrr,
+    snapshot.prior_mrr,
   ];
   for (const c of candidates) {
     if (c == null) continue;
