@@ -90,11 +90,16 @@ Voir `09-risk-register.md` (R1–R12).
 
 ## 14. Git SHAs
 
-Renseignés après commit local (section ci-dessous / mise à jour post-commit).
+| Repo | Branche | SHA |
+|---|---|---|
+| `saas-templates-backend` | `feature/console` | `9b9d2cb32c39759e43ba27cb8376503ea6a5abb4` |
+| `saas-template-frontend` | `feature/console` | `225c4a1efb4f44cc65d9d9c5a6d1af4749f3017b` |
+
+Migration 108 + docs préaudit `00`–`09` présents dans l’historique de branche (commit antérieur `a6c7b07` / suite P7.12).
 
 ## 15. Push status
 
-Non poussé tant que non confirmé par commande `git push` réussie.
+**Non poussé.** Commits locaux uniquement (`ahead` remote). Aucun `git push` exécuté dans cette session.
 
 ## 16. Acceptance gate results
 
