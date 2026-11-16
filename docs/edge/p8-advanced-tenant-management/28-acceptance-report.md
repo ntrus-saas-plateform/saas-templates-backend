@@ -92,7 +92,7 @@ Voir `09-risk-register.md` (R1–R12).
 
 | Repo | Branche | SHA |
 |---|---|---|
-| `saas-templates-backend` | `feature/console` | `9b9d2cb32c39759e43ba27cb8376503ea6a5abb4` |
+| `saas-templates-backend` | `feature/console` | `f1065776c65f267828607ef11e4f308f53dbbe8a` (feat P8: `9b9d2cb`) |
 | `saas-template-frontend` | `feature/console` | `225c4a1efb4f44cc65d9d9c5a6d1af4749f3017b` |
 
 Migration 108 + docs préaudit `00`–`09` présents dans l’historique de branche (commit antérieur `a6c7b07` / suite P7.12).
