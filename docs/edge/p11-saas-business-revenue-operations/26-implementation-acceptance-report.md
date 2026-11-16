@@ -11,14 +11,14 @@
 P11 foundation and core revenue intelligence are delivered with tests and an Edge Admin Console MVP.  
 This is **not** ACCEPTED and **not** claimed complete against every §27 acceptance gate (Testcontainers, full E2E 65–72, 30-section console, live accounting recognition).
 
-## Starting SHAs (P11 workstream)
+## Git evidence (P11 workstream)
 
-| Repo | Starting SHA |
-|------|--------------|
-| Backend `saas-templates-backend` | `ab29691498f0b5347bcc57f19f891cbc67b0f24f` |
-| Frontend `saas-template-frontend` | `d456acbe9f9aa249e8ead3c09374e4b461ff213b` |
+| Repo | Starting SHA | Ending HEAD SHA | Push status |
+|------|--------------|-----------------|-------------|
+| Backend `saas-templates-backend` | `ab29691498f0b5347bcc57f19f891cbc67b0f24f` | `7e29a03ac453dfc632a68db2298fb7ff9a8224e8` | **DENIED** — `403` to `ntrus-saas-plateform/saas-templates-backend` as `kabikaAsyst`; local `feature/console` ahead of `origin/feature/console` |
+| Frontend `saas-template-frontend` | `d456acbe9f9aa249e8ead3c09374e4b461ff213b` | `e1225cce69052b8e7b298afaca8e24731f27108b` | **DENIED** — `403` to `ntrus-saas-plateform/saas-template-frontend` as `kabikaAsyst`; local `feature/console` ahead of `origin/feature/console` |
 
-Ending SHAs are recorded after commit/push in the git evidence section below (updated at commit time).
+Do **not** claim remote branch contains these SHAs until a successful push is verified.
 
 ## Delivered
 
