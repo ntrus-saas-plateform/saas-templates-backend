@@ -5,6 +5,7 @@ import { EdgePersistenceModule } from './infrastructure/persistence/edge-persist
 import { edgeApplicationProviders } from './infrastructure/edge-application.providers.js';
 import { MarketingLeadQualifiedSalesHandler } from './infrastructure/sales/marketing-lead-qualified.handler.js';
 import { SalesHandoffRequestedHandler } from './infrastructure/subscription/sales-handoff-requested.handler.js';
+import { P10SubscriptionHandoffHandler } from './infrastructure/acquisition/p10-subscription-handoff.handler.js';
 import { BillingCoordinationRequestedHandler } from './infrastructure/billing/billing-coordination-requested.handler.js';
 import { BillingJobsBootstrap } from './infrastructure/billing/billing-jobs.bootstrap.js';
 import { ReceiveSalesLeadUseCase } from './application/sales/sales.use-cases.js';
@@ -60,6 +61,8 @@ import { EdgeConnectivityAgentController } from './presentation/controllers/conn
 import { EdgeCertificationController } from './presentation/controllers/certification.controller.js';
 import { EdgeTenantManagementController } from './presentation/controllers/tenant-management.controller.js';
 import { EdgePlatformOperationsController } from './presentation/controllers/platform-operations.controller.js';
+import { AcquisitionController } from './presentation/controllers/acquisition.controller.js';
+import { AcquisitionPublicController } from './presentation/controllers/acquisition-public.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -114,11 +117,14 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeCertificationController,
     EdgeTenantManagementController,
     EdgePlatformOperationsController,
+    AcquisitionController,
+    AcquisitionPublicController,
   ],
   providers: [
     ...edgeApplicationProviders,
     MarketingLeadQualifiedSalesHandler,
     SalesHandoffRequestedHandler,
+    P10SubscriptionHandoffHandler,
     BillingCoordinationRequestedHandler,
     BillingJobsBootstrap,
     WorkflowWorkerBootstrap,
@@ -127,11 +133,13 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
       useFactory: (
         marketing: MarketingLeadQualifiedSalesHandler,
         handoff: SalesHandoffRequestedHandler,
+        p10Handoff: P10SubscriptionHandoffHandler,
         billingCoordination: BillingCoordinationRequestedHandler,
-      ) => [marketing, handoff, billingCoordination],
+      ) => [marketing, handoff, p10Handoff, billingCoordination],
       inject: [
         MarketingLeadQualifiedSalesHandler,
         SalesHandoffRequestedHandler,
+        P10SubscriptionHandoffHandler,
         BillingCoordinationRequestedHandler,
       ],
     },
@@ -142,6 +150,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     ReceiveSalesLeadUseCase,
     MarketingLeadQualifiedSalesHandler,
     SalesHandoffRequestedHandler,
+    P10SubscriptionHandoffHandler,
     BillingCoordinationRequestedHandler,
   ],
 })

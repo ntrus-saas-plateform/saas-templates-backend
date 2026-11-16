@@ -61,8 +61,12 @@ import { TENANT_MANAGEMENT_REPOSITORY_PORT } from '../../domain/tenant-managemen
 import { PgTenantManagementRepository } from '../tenant-management/pg-tenant-management.repository.js';
 import { SERVICE_CATALOG_REPOSITORY_PORT } from '../../domain/platform-operations/service-catalog-repository.port.js';
 import { SERVICE_OPERATIONS_REPOSITORY_PORT } from '../../domain/platform-operations/operations-repository.port.js';
+import { ACQUISITION_REPOSITORY_PORT } from '../../domain/acquisition/acquisition-repository.port.js';
+import { ACQUISITION_DOCUMENT_STORAGE_PORT } from '../../domain/acquisition/document-storage.port.js';
 import { PgServiceCatalogRepository } from '../platform-operations/pg-service-catalog.repository.js';
 import { PgOperationsRepository } from '../platform-operations/pg-operations.repository.js';
+import { PgAcquisitionRepository } from '../acquisition/pg-acquisition.repository.js';
+import { createAcquisitionDocumentStorage } from '../acquisition/create-acquisition-document-storage.js';
 import { PgInfrastructureRepository } from '../infrastructure-provisioning/pg-infrastructure.repository.js';
 import { PgProvisioningRepository } from '../provisioning/pg-provisioning.repository.js';
 import { PgRegistryRepository } from '../registry/pg-registry.repository.js';
@@ -167,6 +171,12 @@ const providers = [
   { provide: SERVICE_CATALOG_REPOSITORY_PORT, useClass: PgServiceCatalogRepository },
   // P9.2–P9.11 — Operations core (migration 116).
   { provide: SERVICE_OPERATIONS_REPOSITORY_PORT, useClass: PgOperationsRepository },
+  // P10 — SaaS Customer Experience & Subscription Acquisition (migration 117).
+  { provide: ACQUISITION_REPOSITORY_PORT, useClass: PgAcquisitionRepository },
+  {
+    provide: ACQUISITION_DOCUMENT_STORAGE_PORT,
+    useFactory: () => createAcquisitionDocumentStorage(),
+  },
 ];
 
 @Module({

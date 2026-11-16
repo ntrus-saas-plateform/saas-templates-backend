@@ -384,6 +384,71 @@ import {
   RemoveServiceDependencyUseCase,
   UpdatePlatformServiceUseCase,
 } from '../application/platform-operations/service-catalog.use-cases.js';
+import { ACQUISITION_REPOSITORY_PORT } from '../domain/acquisition/acquisition-repository.port.js';
+import { ACQUISITION_DOCUMENT_STORAGE_PORT } from '../domain/acquisition/document-storage.port.js';
+import { ACQUISITION_NOTIFICATION_PORT } from '../domain/acquisition/acquisition-notification.port.js';
+import { AcquisitionNotificationAdapter } from './acquisition/acquisition-notification.adapter.js';
+import {
+  AcceptQuoteUseCase,
+  AdvanceJourneyUseCase,
+  AttachPaymentReferenceUseCase,
+  AttachQuoteReferenceUseCase,
+  CaptureAcquisitionLeadUseCase,
+  IssueAcquisitionChallengeUseCase,
+  CompleteSubscriptionHandoffUseCase,
+  CreateApplicationDraftUseCase,
+  CreateCheckoutSessionUseCase,
+  CreateDocumentRequirementUseCase,
+  CreateFormSchemaUseCase,
+  CreateFormVersionUseCase,
+  CreatePlanPresentationUseCase,
+  CreateProductContentVersionUseCase,
+  CreateProductPresentationUseCase,
+  CreateProspectUseCase,
+  CreateQuoteRequestUseCase,
+  CreateSegmentPresentationUseCase,
+  DecideQualificationUseCase,
+  GetAcquisitionOverviewUseCase,
+  GetConversionFunnelUseCase,
+  GetCustomerPortalSnapshotUseCase,
+  GetJourneyByApplicationUseCase,
+  GetOrCreateJourneyInstanceUseCase,
+  GetPublicFormBySlugUseCase,
+  GetPublicProductPageUseCase,
+  GetPublishedFormForProductUseCase,
+  ListApplicationsUseCase,
+  ListDocumentReferencesUseCase,
+  ListFormSchemasUseCase,
+  ListLeadsUseCase,
+  ListPlanPresentationsUseCase,
+  ListProductPresentationsUseCase,
+  ListProspectsUseCase,
+  ListPublicProductDiscoveryUseCase,
+  ListQuoteRequestsUseCase,
+  ListSegmentPresentationsUseCase,
+  MarkCommunicationStatusUseCase,
+  PromoteLeadUseCase,
+  GetCheckoutSessionUseCase,
+  GetPublicCheckoutSessionUseCase,
+  InitiateAcquisitionPaymentUseCase,
+  ListCheckoutSessionsUseCase,
+  ListSubscriptionHandoffsUseCase,
+  PublishFormVersionUseCase,
+  PublishProductContentUseCase,
+  QueueAcquisitionCommunicationUseCase,
+  RecordAnalyticsEventUseCase,
+  RecordPaymentResultUseCase,
+  RegisterDocumentUploadUseCase,
+  RequestMissingInformationUseCase,
+  RequestSubscriptionHandoffUseCase,
+  RevalidatePlanBeforeCheckoutUseCase,
+  ReviewDocumentUseCase,
+  SaveApplicationAnswersUseCase,
+  StartQualificationUseCase,
+  SubmitApplicationUseCase,
+  TransitionApplicationReviewUseCase,
+  TransitionProspectUseCase,
+} from '../application/acquisition/acquisition.use-cases.js';
 import {
   AcknowledgeAlertUseCase,
   ApproveAutomationExecutionUseCase,
@@ -437,7 +502,7 @@ import {
   RecordSloMeasurementUseCase,
   RejectChangeUseCase,
   RequestAutomationExecutionUseCase,
-  RequestRecoveryUseCase,
+  RequestRecoveryUseCase as OperationsRequestRecoveryUseCase,
   ResolveAlertUseCase,
   ScheduleMaintenanceUseCase,
   SubmitChangeUseCase,
@@ -480,7 +545,7 @@ import {
   RequestLegalHoldChangeUseCase,
   RequestLifecycleActionUseCase,
   RequestMigrationUseCase,
-  RequestRecoveryUseCase,
+  RequestRecoveryUseCase as TenantManagementRequestRecoveryUseCase,
   RequestTerminationUseCase,
   ResolveOperatorTenantAccessUseCase,
   RevokeExceptionUseCase,
@@ -5588,8 +5653,9 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [TENANT_MANAGEMENT_REPOSITORY_PORT],
   },
   {
-    provide: RequestRecoveryUseCase,
-    useFactory: (repo, outbox, audit) => new RequestRecoveryUseCase(repo, outbox, audit),
+    provide: TenantManagementRequestRecoveryUseCase,
+    useFactory: (repo, outbox, audit) =>
+      new TenantManagementRequestRecoveryUseCase(repo, outbox, audit),
     inject: [
       TENANT_MANAGEMENT_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
@@ -6125,9 +6191,9 @@ export const edgeApplicationProviders: Provider[] = [
     ],
   },
   {
-    provide: RequestRecoveryUseCase,
+    provide: OperationsRequestRecoveryUseCase,
     useFactory: (repo, outbox, audit) =>
-      new RequestRecoveryUseCase(repo, outbox, audit),
+      new OperationsRequestRecoveryUseCase(repo, outbox, audit),
     inject: [
       SERVICE_OPERATIONS_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
@@ -6316,5 +6382,330 @@ export const edgeApplicationProviders: Provider[] = [
     provide: ListMonitoringProbeResultsUseCase,
     useFactory: (repo) => new ListMonitoringProbeResultsUseCase(repo),
     inject: [SERVICE_OPERATIONS_REPOSITORY_PORT],
+  },
+  // P10 — Acquisition CX
+  {
+    provide: CreateProductPresentationUseCase,
+    useFactory: (repo, outbox) => new CreateProductPresentationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateProductContentVersionUseCase,
+    useFactory: (repo, outbox) => new CreateProductContentVersionUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: PublishProductContentUseCase,
+    useFactory: (repo, outbox) => new PublishProductContentUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListPublicProductDiscoveryUseCase,
+    useFactory: (repo, products) => new ListPublicProductDiscoveryUseCase(repo, products),
+    inject: [ACQUISITION_REPOSITORY_PORT, PRODUCT_REPOSITORY_PORT],
+  },
+  {
+    provide: GetPublicProductPageUseCase,
+    useFactory: (repo, products) => new GetPublicProductPageUseCase(repo, products),
+    inject: [ACQUISITION_REPOSITORY_PORT, PRODUCT_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateSegmentPresentationUseCase,
+    useFactory: (repo, outbox) => new CreateSegmentPresentationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreatePlanPresentationUseCase,
+    useFactory: (repo, outbox) => new CreatePlanPresentationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListPlanPresentationsUseCase,
+    useFactory: (repo) => new ListPlanPresentationsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListProductPresentationsUseCase,
+    useFactory: (repo) => new ListProductPresentationsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSegmentPresentationsUseCase,
+    useFactory: (repo) => new ListSegmentPresentationsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListLeadsUseCase,
+    useFactory: (repo) => new ListLeadsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListFormSchemasUseCase,
+    useFactory: (repo) => new ListFormSchemasUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListApplicationsUseCase,
+    useFactory: (repo) => new ListApplicationsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetJourneyByApplicationUseCase,
+    useFactory: (repo) => new GetJourneyByApplicationUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetPublicFormBySlugUseCase,
+    useFactory: (repo) => new GetPublicFormBySlugUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateProspectUseCase,
+    useFactory: (repo, outbox) => new CreateProspectUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: TransitionProspectUseCase,
+    useFactory: (repo, outbox) => new TransitionProspectUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListProspectsUseCase,
+    useFactory: (repo) => new ListProspectsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: IssueAcquisitionChallengeUseCase,
+    useFactory: () => new IssueAcquisitionChallengeUseCase(),
+    inject: [],
+  },
+  {
+    provide: CaptureAcquisitionLeadUseCase,
+    useFactory: (repo, outbox) => new CaptureAcquisitionLeadUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: PromoteLeadUseCase,
+    useFactory: (repo, outbox) => new PromoteLeadUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateFormSchemaUseCase,
+    useFactory: (repo, outbox, products) => new CreateFormSchemaUseCase(repo, outbox, products),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      PRODUCT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: CreateFormVersionUseCase,
+    useFactory: (repo, outbox) => new CreateFormVersionUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: PublishFormVersionUseCase,
+    useFactory: (repo, outbox, products) => new PublishFormVersionUseCase(repo, outbox, products),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      PRODUCT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: GetPublishedFormForProductUseCase,
+    useFactory: (repo) => new GetPublishedFormForProductUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: CreateDocumentRequirementUseCase,
+    useFactory: (repo, outbox) => new CreateDocumentRequirementUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RegisterDocumentUploadUseCase,
+    useFactory: (repo, outbox, storage) =>
+      new RegisterDocumentUploadUseCase(repo, outbox, storage),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      ACQUISITION_DOCUMENT_STORAGE_PORT,
+    ],
+  },
+  {
+    provide: ListDocumentReferencesUseCase,
+    useFactory: (repo) => new ListDocumentReferencesUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListQuoteRequestsUseCase,
+    useFactory: (repo) => new ListQuoteRequestsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ReviewDocumentUseCase,
+    useFactory: (repo, outbox) => new ReviewDocumentUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: StartQualificationUseCase,
+    useFactory: (repo, outbox) => new StartQualificationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: DecideQualificationUseCase,
+    useFactory: (repo, outbox) => new DecideQualificationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateQuoteRequestUseCase,
+    useFactory: (repo, outbox) => new CreateQuoteRequestUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: AttachQuoteReferenceUseCase,
+    useFactory: (repo, outbox) => new AttachQuoteReferenceUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: AcceptQuoteUseCase,
+    useFactory: (repo, outbox) => new AcceptQuoteUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateApplicationDraftUseCase,
+    useFactory: (repo, outbox) => new CreateApplicationDraftUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: SaveApplicationAnswersUseCase,
+    useFactory: (repo, outbox) => new SaveApplicationAnswersUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: SubmitApplicationUseCase,
+    useFactory: (repo, outbox) => new SubmitApplicationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: TransitionApplicationReviewUseCase,
+    useFactory: (repo, outbox) => new TransitionApplicationReviewUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RequestMissingInformationUseCase,
+    useFactory: (repo, outbox) => new RequestMissingInformationUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CreateCheckoutSessionUseCase,
+    useFactory: (repo, outbox) => new CreateCheckoutSessionUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetCheckoutSessionUseCase,
+    useFactory: (repo) => new GetCheckoutSessionUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetPublicCheckoutSessionUseCase,
+    useFactory: (repo) => new GetPublicCheckoutSessionUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListCheckoutSessionsUseCase,
+    useFactory: (repo) => new ListCheckoutSessionsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListSubscriptionHandoffsUseCase,
+    useFactory: (repo) => new ListSubscriptionHandoffsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: AttachPaymentReferenceUseCase,
+    useFactory: (repo, outbox) => new AttachPaymentReferenceUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: InitiateAcquisitionPaymentUseCase,
+    useFactory: (repo, createPaymentIntent, attachPayment, outbox) =>
+      new InitiateAcquisitionPaymentUseCase(repo, createPaymentIntent, attachPayment, outbox),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      CreatePaymentIntentUseCase,
+      AttachPaymentReferenceUseCase,
+      ControlPlaneOutboxTransactionService,
+    ],
+  },
+  {
+    provide: RecordPaymentResultUseCase,
+    useFactory: (repo, outbox) => new RecordPaymentResultUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RequestSubscriptionHandoffUseCase,
+    useFactory: (repo, outbox) => new RequestSubscriptionHandoffUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: CompleteSubscriptionHandoffUseCase,
+    useFactory: (repo, outbox) => new CompleteSubscriptionHandoffUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RevalidatePlanBeforeCheckoutUseCase,
+    useFactory: (repo, commercial) => new RevalidatePlanBeforeCheckoutUseCase(repo, commercial),
+    inject: [ACQUISITION_REPOSITORY_PORT, COMMERCIAL_REPOSITORY_PORT],
+  },
+  {
+    provide: GetOrCreateJourneyInstanceUseCase,
+    useFactory: (repo, outbox) => new GetOrCreateJourneyInstanceUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: AdvanceJourneyUseCase,
+    useFactory: (repo, outbox) => new AdvanceJourneyUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetCustomerPortalSnapshotUseCase,
+    useFactory: (repo) => new GetCustomerPortalSnapshotUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: ACQUISITION_NOTIFICATION_PORT,
+    useFactory: (outbox) => new AcquisitionNotificationAdapter(outbox),
+    inject: [ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: QueueAcquisitionCommunicationUseCase,
+    useFactory: (repo, outbox, notifications) =>
+      new QueueAcquisitionCommunicationUseCase(repo, outbox, notifications),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      ACQUISITION_NOTIFICATION_PORT,
+    ],
+  },
+  {
+    provide: MarkCommunicationStatusUseCase,
+    useFactory: (repo, outbox) => new MarkCommunicationStatusUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: RecordAnalyticsEventUseCase,
+    useFactory: (repo, outbox) => new RecordAnalyticsEventUseCase(repo, outbox),
+    inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: GetConversionFunnelUseCase,
+    useFactory: (repo) => new GetConversionFunnelUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
+    provide: GetAcquisitionOverviewUseCase,
+    useFactory: (repo) => new GetAcquisitionOverviewUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
   },
 ];
