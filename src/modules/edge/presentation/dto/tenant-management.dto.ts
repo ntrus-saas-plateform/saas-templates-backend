@@ -11,6 +11,7 @@ import {
   IsUUID,
   Max,
   Min,
+  MinLength,
 } from 'class-validator';
 import {
   EnvironmentClassification,
@@ -654,16 +655,32 @@ export class PreviewBulkOperationDto {
 }
 
 export class ExecuteBulkOperationDto {
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @Type(() => Number)
   @IsInt()
-  expectedPreviewCount?: number;
+  @Min(0)
+  expectedPreviewCount!: number;
+}
+
+export class UpdateLegalHoldDto {
+  @ApiProperty()
+  legalHold!: boolean;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  justification!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  approverId?: string;
+  @IsUUID()
+  correlationId?: string;
 }
 
 export class RecordHealthSnapshotDto {
@@ -700,10 +717,6 @@ export class UpdateTenantPoliciesDto {
   @IsInt()
   @Min(1)
   expectedVersion!: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  legalHold?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -61,6 +61,7 @@ import {
   RevokeExceptionUseCase,
   RunReconciliationUseCase,
   SyncTenantsFromP7UseCase,
+  UpdateLegalHoldUseCase,
   UpdateTenantMetadataUseCase,
   UpdateTenantPoliciesUseCase,
 } from '../../application/tenant-management/tenant-management.use-cases.js';
@@ -88,6 +89,7 @@ import {
   RunReconciliationDto,
   TenantActivityQueryDto,
   TenantSearchQueryDto,
+  UpdateLegalHoldDto,
   UpdateTenantMetadataDto,
   UpdateTenantPoliciesDto,
 } from '../dto/tenant-management.dto.js';
@@ -151,6 +153,7 @@ export class EdgeTenantManagementController {
     private readonly evaluateRisk: EvaluateTenantRiskUseCase,
     private readonly listRisk: ListRiskAssessmentsUseCase,
     private readonly updatePolicies: UpdateTenantPoliciesUseCase,
+    private readonly updateLegalHold: UpdateLegalHoldUseCase,
     private readonly listReconciliationRuns: ListTenantReconciliationRunsUseCase,
     private readonly acknowledgeFinding: AcknowledgeFindingUseCase,
   ) {}
@@ -497,7 +500,6 @@ export class EdgeTenantManagementController {
       actorId: actorId(req),
       bulkOperationId: id,
       expectedPreviewCount: body.expectedPreviewCount,
-      approverId: body.approverId ?? null,
     });
   }
 
@@ -671,11 +673,28 @@ export class EdgeTenantManagementController {
       actorId: actorId(req),
       tenantRegistryId: id,
       expectedVersion: body.expectedVersion,
-      legalHold: body.legalHold,
       retentionPolicyRef: body.retentionPolicyRef,
       securityPolicyRef: body.securityPolicyRef,
       dataResidencyRef: body.dataResidencyRef,
       deletionProtection: body.deletionProtection,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Post('edge/tenants/:id/legal-hold')
+  @RequireEdgePermissions('platform:tenant_management:legal_hold:manage')
+  async postTenantLegalHold(
+    @Param('id') id: string,
+    @Body() body: UpdateLegalHoldDto,
+    @Req() req: EdgeRequest,
+  ) {
+    return this.updateLegalHold.execute({
+      actorId: actorId(req),
+      tenantRegistryId: id,
+      expectedVersion: body.expectedVersion,
+      legalHold: body.legalHold,
+      justification: body.justification,
+      legalHoldPermissionGranted: true,
       correlationId: body.correlationId?.trim() || randomUUID(),
     });
   }

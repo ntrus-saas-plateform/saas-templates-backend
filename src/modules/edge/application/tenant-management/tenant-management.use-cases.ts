@@ -6,6 +6,9 @@ import { LifecycleStatus } from '../../domain/tenant-lifecycle/lifecycle.types.j
 import {
   assertAdministrativeTransition,
   assertJustification,
+  assertHealthSnapshotSource,
+  assertLifecycleApprovalAllowedUnderLegalHold,
+  assertLifecycleRequestAllowedUnderLegalHold,
   assertNotLegalHold,
   assertSeparationOfDuties,
   canRequestLifecycle,
@@ -17,7 +20,10 @@ import {
   governanceStatusAfterExceptionRevoke,
   HEALTH_FRESHNESS_MS,
   isDedicatedGovernanceApprovable,
+  isImmediateAdminLifecycleApproval,
   nextStatusAfterApproval,
+  normalizeReconciliationMode,
+  p7ApprovalAdministrativeIntent,
   slugifyTenantCode,
   unavailableGovernanceCheck,
 } from '../../domain/tenant-management/tenant-management-policy.js';
@@ -282,59 +288,123 @@ export class RegisterTenantUseCase {
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       const existing = await this.repo.getByProductTenantId(input.productTenantId);
       const now = new Date();
-      const base: Omit<
-        TenantRegistryRecord,
-        'id' | 'createdAt' | 'updatedAt' | 'version'
-      > = {
-        productTenantId: input.productTenantId,
-        tenantCode: code,
-        tenantSlug: slug,
-        displayName: input.displayName.trim(),
-        legalNameRef: null,
-        productId: input.productId,
-        productCode: input.productCode ?? null,
-        accountId: input.accountId ?? null,
-        subscriptionId: input.subscriptionId ?? null,
-        classification: input.classification ?? TenantClassification.STANDARD,
-        segment: null,
-        deploymentProfile: null,
-        environmentClassification: EnvironmentClassification.PRODUCTION,
-        region: input.region ?? null,
-        administrativeStatus: AdministrativeStatus.PENDING_REVIEW,
-        technicalStatus: TechnicalStatus.UNKNOWN,
-        governanceStatus: GovernanceStatus.REVIEW_REQUIRED,
-        healthStatus: HealthStatus.UNKNOWN,
-        riskLevel: RiskLevel.UNKNOWN,
-        platformTenantRef: null,
-        provisioningRequestId: null,
-        activationRecordId: null,
-        lifecycleRecordId: null,
-        internalOwnerId: null,
-        operationalTeam: null,
-        supportClassification: null,
-        locale: null,
-        timezone: null,
-        defaultLanguage: null,
-        dataResidencyRef: null,
-        retentionPolicyRef: null,
-        securityPolicyRef: null,
-        legalHold: false,
-        deletionProtection: true,
-        lastAdminActivityAt: now,
-        lastSyncedAt: null,
-        technicalObservedAt: null,
-        healthObservedAt: null,
-        metadata: input.metadata ?? {},
-        createdBy: input.actorId,
-        updatedBy: input.actorId,
-      };
+      const commercialRefsProvided =
+        (input.accountId !== undefined &&
+          input.accountId !== null &&
+          input.accountId.trim() !== '') ||
+        (input.subscriptionId !== undefined &&
+          input.subscriptionId !== null &&
+          input.subscriptionId.trim() !== '');
 
-      const record = existing
-        ? await this.repo.upsertByProductTenantId(
-            { ...base, id: existing.id, version: existing.version },
-            client,
-          )
-        : await this.repo.registerTenant(base, client);
+      let record: TenantRegistryRecord;
+      let unverifiedCommercial = false;
+
+      if (existing) {
+        const upsertPayload: Omit<
+          TenantRegistryRecord,
+          'id' | 'createdAt' | 'updatedAt' | 'version'
+        > & { id: string; version: number } = {
+          id: existing.id,
+          version: existing.version,
+          productTenantId: input.productTenantId,
+          tenantCode: code,
+          tenantSlug: slug,
+          displayName: input.displayName.trim(),
+          legalNameRef: existing.legalNameRef,
+          productId: input.productId,
+          productCode: input.productCode ?? existing.productCode,
+          accountId:
+            input.accountId !== undefined && input.accountId !== null
+              ? input.accountId
+              : existing.accountId,
+          subscriptionId:
+            input.subscriptionId !== undefined && input.subscriptionId !== null
+              ? input.subscriptionId
+              : existing.subscriptionId,
+          classification: input.classification ?? existing.classification,
+          segment: existing.segment,
+          deploymentProfile: existing.deploymentProfile,
+          environmentClassification: existing.environmentClassification,
+          region: input.region ?? existing.region,
+          administrativeStatus: existing.administrativeStatus,
+          technicalStatus: existing.technicalStatus,
+          governanceStatus: commercialRefsProvided
+            ? GovernanceStatus.REVIEW_REQUIRED
+            : existing.governanceStatus,
+          healthStatus: existing.healthStatus,
+          riskLevel: existing.riskLevel,
+          platformTenantRef: existing.platformTenantRef,
+          provisioningRequestId: existing.provisioningRequestId,
+          activationRecordId: existing.activationRecordId,
+          lifecycleRecordId: existing.lifecycleRecordId,
+          internalOwnerId: existing.internalOwnerId,
+          operationalTeam: existing.operationalTeam,
+          supportClassification: existing.supportClassification,
+          locale: existing.locale,
+          timezone: existing.timezone,
+          defaultLanguage: existing.defaultLanguage,
+          dataResidencyRef: existing.dataResidencyRef,
+          retentionPolicyRef: existing.retentionPolicyRef,
+          securityPolicyRef: existing.securityPolicyRef,
+          legalHold: existing.legalHold,
+          deletionProtection: existing.deletionProtection,
+          lastAdminActivityAt: now,
+          lastSyncedAt: existing.lastSyncedAt,
+          technicalObservedAt: existing.technicalObservedAt,
+          healthObservedAt: existing.healthObservedAt,
+          metadata: { ...existing.metadata, ...(input.metadata ?? {}) },
+          createdBy: existing.createdBy,
+          updatedBy: input.actorId,
+        };
+        unverifiedCommercial = commercialRefsProvided;
+        record = await this.repo.upsertByProductTenantId(upsertPayload, client);
+      } else {
+        const base: Omit<TenantRegistryRecord, 'id' | 'createdAt' | 'updatedAt' | 'version'> = {
+          productTenantId: input.productTenantId,
+          tenantCode: code,
+          tenantSlug: slug,
+          displayName: input.displayName.trim(),
+          legalNameRef: null,
+          productId: input.productId,
+          productCode: input.productCode ?? null,
+          accountId: input.accountId ?? null,
+          subscriptionId: input.subscriptionId ?? null,
+          classification: input.classification ?? TenantClassification.STANDARD,
+          segment: null,
+          deploymentProfile: null,
+          environmentClassification: EnvironmentClassification.PRODUCTION,
+          region: input.region ?? null,
+          administrativeStatus: AdministrativeStatus.PENDING_REVIEW,
+          technicalStatus: TechnicalStatus.UNKNOWN,
+          governanceStatus: GovernanceStatus.REVIEW_REQUIRED,
+          healthStatus: HealthStatus.UNKNOWN,
+          riskLevel: RiskLevel.UNKNOWN,
+          platformTenantRef: null,
+          provisioningRequestId: null,
+          activationRecordId: null,
+          lifecycleRecordId: null,
+          internalOwnerId: null,
+          operationalTeam: null,
+          supportClassification: null,
+          locale: null,
+          timezone: null,
+          defaultLanguage: null,
+          dataResidencyRef: null,
+          retentionPolicyRef: null,
+          securityPolicyRef: null,
+          legalHold: false,
+          deletionProtection: true,
+          lastAdminActivityAt: now,
+          lastSyncedAt: null,
+          technicalObservedAt: null,
+          healthObservedAt: null,
+          metadata: input.metadata ?? {},
+          createdBy: input.actorId,
+          updatedBy: input.actorId,
+        };
+        unverifiedCommercial = commercialRefsProvided;
+        record = await this.repo.registerTenant(base, client);
+      }
 
       await enqueue(
         buildTenantManagementOutboxEvent({
@@ -366,10 +436,42 @@ export class RegisterTenantUseCase {
           beforeRef: existing ? { version: existing.version } : null,
           afterRef: { id: record.id, version: record.version },
           evidenceRef: null,
-          details: { tenantCode: record.tenantCode },
+          details: {
+            tenantCode: record.tenantCode,
+            ...(unverifiedCommercial ? { note: 'UNVERIFIED_COMMERCIAL_REFS' } : {}),
+          },
         },
         client,
       );
+
+      if (unverifiedCommercial) {
+        await this.repo.appendActivity(
+          {
+            tenantRegistryId: record.id,
+            productTenantId: record.productTenantId,
+            eventType: 'COMMERCIAL_REFS_UNVERIFIED',
+            action: 'REGISTER',
+            actorId: input.actorId,
+            actorType: 'ADMIN',
+            source: 'p8.tenant_management',
+            outcome: 'SUCCESS',
+            reason: 'UNVERIFIED_COMMERCIAL_REFS',
+            correlationId,
+            causationId: null,
+            beforeRef: null,
+            afterRef: {
+              accountId: record.accountId,
+              subscriptionId: record.subscriptionId,
+            },
+            evidenceRef: null,
+            details: {
+              message:
+                'Commercial references stored without P5 verification; governance review required',
+            },
+          },
+          client,
+        );
+      }
 
       await requireAudit(
         this.audit,
@@ -793,9 +895,7 @@ export class RequestLifecycleActionUseCase {
       throw new DomainError(ErrorCode.CONFLICT, eligibility.reason);
     }
 
-    if (input.requestType === LifecycleRequestType.TERMINATE) {
-      assertNotLegalHold(tenant.legalHold, 'TERMINATE');
-    }
+    assertLifecycleRequestAllowedUnderLegalHold(tenant.legalHold, input.requestType);
 
     const correlationId = input.correlationId?.trim() || randomUUID();
 
@@ -875,22 +975,44 @@ export class ApproveLifecycleActionUseCase {
       throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
     }
 
-    const nextAdmin = nextStatusAfterApproval(request.requestType);
+    assertLifecycleApprovalAllowedUnderLegalHold(tenant.legalHold, request.requestType);
+
+    const immediateAdmin = isImmediateAdminLifecycleApproval(request.requestType);
+    const intentAdmin = immediateAdmin
+      ? null
+      : p7ApprovalAdministrativeIntent(request.requestType, String(tenant.administrativeStatus));
+    const nextAdmin = immediateAdmin ? nextStatusAfterApproval(request.requestType) : null;
+    const delegation = immediateAdmin ? 'P8_ADMIN' : 'P7_PENDING';
     const correlationId = input.correlationId?.trim() || randomUUID();
 
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
-      if (nextAdmin) {
+      let tenantVersion = tenant.version;
+      if (immediateAdmin && nextAdmin) {
         assertAdministrativeTransition(String(tenant.administrativeStatus), nextAdmin);
-        await this.repo.updateTenant(
+        const updatedTenant = await this.repo.updateTenant(
           tenant.id,
           {
             administrativeStatus: nextAdmin,
             lastAdminActivityAt: new Date(),
           },
-          tenant.version,
+          tenantVersion,
           input.actorId,
           client,
         );
+        tenantVersion = updatedTenant.version;
+      } else if (intentAdmin) {
+        assertAdministrativeTransition(String(tenant.administrativeStatus), intentAdmin);
+        const updatedTenant = await this.repo.updateTenant(
+          tenant.id,
+          {
+            administrativeStatus: intentAdmin,
+            lastAdminActivityAt: new Date(),
+          },
+          tenantVersion,
+          input.actorId,
+          client,
+        );
+        tenantVersion = updatedTenant.version;
       }
 
       const updated = await this.repo.updateLifecycleRequest(
@@ -900,8 +1022,8 @@ export class ApproveLifecycleActionUseCase {
           approverId: input.actorId,
           approvedAt: new Date(),
           result: {
-            delegation: 'P7_PENDING',
-            administrativeTransition: nextAdmin,
+            delegation,
+            administrativeTransition: nextAdmin ?? intentAdmin,
           },
         },
         request.version,
@@ -917,7 +1039,7 @@ export class ApproveLifecycleActionUseCase {
             tenantRegistryId: tenant.id,
             requestType: request.requestType,
             approverId: input.actorId,
-            delegation: 'P7_PENDING',
+            delegation,
           },
         }),
       );
@@ -929,7 +1051,7 @@ export class ApproveLifecycleActionUseCase {
           actorId: input.actorId,
           subjectType: 'LIFECYCLE_REQUEST',
           subjectId: updated.id,
-          details: { delegation: 'P7_PENDING' },
+          details: { delegation },
         },
         client,
       );
@@ -1278,7 +1400,7 @@ export class RunReconciliationUseCase {
     dryRun?: boolean;
     correlationId?: string | null;
   }) {
-    const mode = input.mode?.trim() || (input.dryRun ? 'dry_run' : 'on_demand');
+    const mode = normalizeReconciliationMode(input.mode, input.dryRun);
     const correlationId = input.correlationId?.trim() || randomUUID();
     const p7Rows = await this.repo.listDistinctProductTenantIdsFromP7();
     const registryIds = new Set(await this.repo.listRegistryProductTenantIds());
@@ -2305,7 +2427,7 @@ export class PreviewBulkOperationUseCase {
     idempotencyKey: string;
     correlationId?: string | null;
   }) {
-    const allowed = ['TAG', 'ASSIGN', 'CLASSIFY', 'EXPORT', 'REVIEW', 'RECONCILE'];
+    const allowed = ['TAG', 'ASSIGN', 'CLASSIFY', 'REVIEW', 'RECONCILE'];
     if (!allowed.includes(input.operationType)) {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'Unsupported bulk operation type');
     }
@@ -2313,6 +2435,8 @@ export class PreviewBulkOperationUseCase {
     if (existing) return existing;
 
     const preview = await this.repo.search({ ...input.filter, limit: 1, offset: 0 });
+    const scope = await this.repo.search({ ...input.filter, limit: 5000, offset: 0 });
+    const frozenTenantIds = scope.items.map((t) => t.id);
     const correlationId = input.correlationId?.trim() || randomUUID();
 
     return this.repo.createBulkOperation({
@@ -2320,7 +2444,7 @@ export class PreviewBulkOperationUseCase {
       status: 'PREVIEW',
       previewCount: preview.total,
       filter: input.filter as Record<string, unknown>,
-      payload: input.payload ?? {},
+      payload: { ...(input.payload ?? {}), frozenTenantIds },
       results: [],
       requestedBy: input.actorId,
       approverId: null,
@@ -2340,8 +2464,7 @@ export class ExecuteBulkOperationUseCase {
   async execute(input: {
     actorId: string;
     bulkOperationId: string;
-    expectedPreviewCount?: number;
-    approverId?: string | null;
+    expectedPreviewCount: number;
   }) {
     const op = await this.repo.getBulkOperation(input.bulkOperationId);
     if (!op) {
@@ -2354,21 +2477,29 @@ export class ExecuteBulkOperationUseCase {
     const type = op.operationType;
     const filter = op.filter as TenantSearchFilter;
     const search = await this.repo.search({ ...filter, limit: 5000, offset: 0 });
-    if (
-      input.expectedPreviewCount != null &&
-      input.expectedPreviewCount !== search.total &&
-      input.expectedPreviewCount !== op.previewCount
-    ) {
+    if (input.expectedPreviewCount !== search.total || input.expectedPreviewCount !== op.previewCount) {
       throw new DomainError(ErrorCode.CONFLICT, 'Preview count mismatch — re-run preview');
     }
 
+    const frozenTenantIds = (op.payload as { frozenTenantIds?: string[] }).frozenTenantIds;
+    if (!frozenTenantIds?.length) {
+      throw new DomainError(
+        ErrorCode.CONFLICT,
+        'Bulk operation missing frozen tenant scope — re-run preview',
+      );
+    }
+    const frozenSet = new Set(frozenTenantIds);
+    const tenants = search.items.filter((t) => frozenSet.has(t.id));
+    if (tenants.length !== frozenTenantIds.length) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Frozen tenant scope no longer matches search results');
+    }
+
     if (BULK_SENSITIVE_TYPES.has(type) && op.status === 'PREVIEW') {
-      const approverId = input.approverId?.trim();
-      if (!approverId) {
-        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'approverId required for sensitive bulk');
-      }
-      assertSeparationOfDuties(op.requestedBy, approverId);
-      await this.repo.updateBulkOperation(op.id, { status: 'APPROVED', approverId });
+      assertSeparationOfDuties(op.requestedBy, input.actorId);
+      await this.repo.updateBulkOperation(op.id, {
+        status: 'APPROVED',
+        approverId: input.actorId,
+      });
     }
 
     const results: unknown[] = [];
@@ -2379,7 +2510,7 @@ export class ExecuteBulkOperationUseCase {
       if (!tagKey) {
         throw new DomainError(ErrorCode.VALIDATION_ERROR, 'payload.tagKey is required for TAG bulk');
       }
-      for (const tenant of search.items) {
+      for (const tenant of tenants) {
         await this.repo.addTag({
           tenantRegistryId: tenant.id,
           tagKey,
@@ -2391,7 +2522,7 @@ export class ExecuteBulkOperationUseCase {
     } else if (type === 'ASSIGN') {
       const internalOwnerId = (op.payload as { internalOwnerId?: string | null }).internalOwnerId;
       const operationalTeam = (op.payload as { operationalTeam?: string | null }).operationalTeam;
-      for (const tenant of search.items) {
+      for (const tenant of tenants) {
         const updated = await this.repo.updateTenant(
           tenant.id,
           {
@@ -2408,7 +2539,7 @@ export class ExecuteBulkOperationUseCase {
       if (!classification) {
         throw new DomainError(ErrorCode.VALIDATION_ERROR, 'payload.classification is required');
       }
-      for (const tenant of search.items) {
+      for (const tenant of tenants) {
         const updated = await this.repo.updateTenant(
           tenant.id,
           { classification },
@@ -2417,11 +2548,8 @@ export class ExecuteBulkOperationUseCase {
         );
         results.push({ tenantRegistryId: updated.id, classification });
       }
-    } else if (type === 'EXPORT') {
-      const csv = await this.repo.exportTenantsCsv(filter);
-      results.push({ format: 'CSV', bytes: csv.length });
     } else if (type === 'REVIEW') {
-      for (const tenant of search.items) {
+      for (const tenant of tenants) {
         if (String(tenant.governanceStatus) === GovernanceStatus.COMPLIANT) {
           const updated = await this.repo.updateTenant(
             tenant.id,
@@ -2503,6 +2631,7 @@ export class RecordHealthSnapshotUseCase {
     }
     const observedAt = input.observedAt;
     const coerced = coerceHealthOverallStatus(input.overallStatus, observedAt);
+    assertHealthSnapshotSource(String(coerced), input.sourceSystem);
     const staleAfter =
       input.staleAfter ?? new Date(observedAt.getTime() + HEALTH_FRESHNESS_MS);
     const correlationId = input.correlationId?.trim() || randomUUID();
@@ -2661,7 +2790,6 @@ export class UpdateTenantPoliciesUseCase {
     actorId: string;
     tenantRegistryId: string;
     expectedVersion: number;
-    legalHold?: boolean;
     retentionPolicyRef?: string | null;
     securityPolicyRef?: string | null;
     dataResidencyRef?: string | null;
@@ -2676,23 +2804,6 @@ export class UpdateTenantPoliciesUseCase {
 
     return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
       let record = tenant;
-      if (input.legalHold !== undefined && input.legalHold !== tenant.legalHold) {
-        record = await this.repo.updateLegalHold(
-          tenant.id,
-          input.legalHold,
-          input.expectedVersion,
-          input.actorId,
-          client,
-        );
-        await enqueue(
-          buildTenantManagementOutboxEvent({
-            eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGED,
-            aggregateId: record.id,
-            correlationId,
-            payload: { legalHold: input.legalHold, actorId: input.actorId },
-          }),
-        );
-      }
 
       const policyPatch: {
         retentionPolicyRef?: string | null;
@@ -2728,6 +2839,85 @@ export class UpdateTenantPoliciesUseCase {
             securityPolicyRef: record.securityPolicyRef,
             dataResidencyRef: record.dataResidencyRef,
             deletionProtection: record.deletionProtection,
+          },
+        },
+        client,
+      );
+
+      return record;
+    });
+  }
+}
+
+export class UpdateLegalHoldUseCase {
+  constructor(
+    private readonly repo: TenantManagementRepositoryPort,
+    private readonly outbox: ControlPlaneOutboxTransactionService,
+    private readonly audit: AuditEventRepositoryPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    tenantRegistryId: string;
+    expectedVersion: number;
+    legalHold: boolean;
+    justification: string;
+    legalHoldPermissionGranted: boolean;
+    correlationId?: string | null;
+  }) {
+    if (!input.legalHoldPermissionGranted) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'legal hold changes require platform:tenant_management:legal_hold:manage',
+      );
+    }
+    assertJustification(input.justification);
+
+    const tenant = await this.repo.getById(input.tenantRegistryId);
+    if (!tenant) {
+      throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Tenant registry record not found');
+    }
+    if (input.legalHold === tenant.legalHold) {
+      return tenant;
+    }
+
+    const correlationId = input.correlationId?.trim() || randomUUID();
+    const justification = input.justification.trim();
+
+    return this.outbox.runWithOutbox(EDGE_P8_OUTBOX_TENANT, async (client, enqueue) => {
+      const record = await this.repo.updateLegalHold(
+        tenant.id,
+        input.legalHold,
+        input.expectedVersion,
+        input.actorId,
+        client,
+      );
+
+      await enqueue(
+        buildTenantManagementOutboxEvent({
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGED,
+          aggregateId: record.id,
+          correlationId,
+          payload: {
+            legalHold: input.legalHold,
+            actorId: input.actorId,
+            justification,
+            previousLegalHold: tenant.legalHold,
+          },
+        }),
+      );
+
+      await requireAudit(
+        this.audit,
+        {
+          eventType: TenantManagementEventTypes.LEGAL_HOLD_CHANGED,
+          actorId: input.actorId,
+          subjectType: 'TENANT_REGISTRY',
+          subjectId: record.id,
+          details: {
+            legalHold: input.legalHold,
+            previousLegalHold: tenant.legalHold,
+            justification,
           },
         },
         client,

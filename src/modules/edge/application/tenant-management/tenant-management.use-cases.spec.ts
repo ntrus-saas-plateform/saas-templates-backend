@@ -3,14 +3,19 @@ import { DomainError } from '../../../../core/domain/errors/domain-error.js';
 import type { TenantManagementRepositoryPort } from '../../domain/tenant-management/tenant-management-repository.port.js';
 import {
   AdministrativeStatus,
+  GovernanceRequestStatus,
   GovernanceStatus,
   HealthStatus,
+  LifecycleRequestType,
   RiskLevel,
 } from '../../domain/tenant-management/tenant-management.types.js';
 import {
+  ApproveLifecycleActionUseCase,
   EvaluateTenantRiskUseCase,
   ExecuteBulkOperationUseCase,
   RecordHealthSnapshotUseCase,
+  RegisterTenantUseCase,
+  RunReconciliationUseCase,
 } from './tenant-management.use-cases.js';
 
 function baseTenant() {
@@ -91,7 +96,7 @@ describe('P8 tenant-management use cases', () => {
       tenantRegistryId: tenant.id,
       overallStatus: HealthStatus.HEALTHY,
       indicators: {},
-      sourceSystem: 'test',
+      sourceSystem: 'p7.monitor',
       observedAt: old,
     });
 
@@ -99,6 +104,25 @@ describe('P8 tenant-management use cases', () => {
       expect.objectContaining({ overallStatus: HealthStatus.STALE }),
       expect.anything(),
     );
+  });
+
+  it('RecordHealthSnapshotUseCase rejects untrusted HEALTHY source', async () => {
+    const tenant = baseTenant();
+    const repo = {
+      getById: vi.fn().mockResolvedValue(tenant),
+    } as unknown as TenantManagementRepositoryPort;
+
+    const uc = new RecordHealthSnapshotUseCase(repo, {} as never, {} as never);
+    await expect(
+      uc.execute({
+        actorId: 'admin',
+        tenantRegistryId: tenant.id,
+        overallStatus: HealthStatus.HEALTHY,
+        indicators: {},
+        sourceSystem: 'manual',
+        observedAt: new Date(),
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
   it('EvaluateTenantRiskUseCase applies legal hold rule', async () => {
@@ -133,9 +157,9 @@ describe('P8 tenant-management use cases', () => {
         id: 'bulk-1',
         operationType: 'ASSIGN',
         status: 'PREVIEW',
-        previewCount: 1,
+        previewCount: 0,
         filter: {},
-        payload: { internalOwnerId: 'owner-1' },
+        payload: { frozenTenantIds: [] },
         results: [],
         requestedBy: 'requester-a',
         approverId: null,
@@ -153,8 +177,124 @@ describe('P8 tenant-management use cases', () => {
       uc.execute({
         actorId: 'requester-a',
         bulkOperationId: 'bulk-1',
-        approverId: 'requester-a',
+        expectedPreviewCount: 0,
       }),
     ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it('ExecuteBulkOperationUseCase requires expectedPreviewCount to match preview', async () => {
+    const repo = {
+      getBulkOperation: vi.fn().mockResolvedValue({
+        id: 'bulk-1',
+        operationType: 'TAG',
+        status: 'PREVIEW',
+        previewCount: 2,
+        filter: {},
+        payload: { frozenTenantIds: ['a', 'b'], tagKey: 'env' },
+        results: [],
+        requestedBy: 'requester-a',
+        approverId: null,
+        correlationId: null,
+        idempotencyKey: 'key',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+      search: vi.fn().mockResolvedValue({
+        items: [
+          { id: 'a', version: 1 },
+          { id: 'b', version: 1 },
+        ],
+        total: 2,
+      }),
+    } as unknown as TenantManagementRepositoryPort;
+
+    const uc = new ExecuteBulkOperationUseCase(repo, {} as never, {} as never);
+    await expect(
+      uc.execute({
+        actorId: 'executor-b',
+        bulkOperationId: 'bulk-1',
+        expectedPreviewCount: 3,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it('RegisterTenantUseCase preserves legalHold on re-register', async () => {
+    const existing = { ...baseTenant(), legalHold: true, version: 4 };
+    let upsertArg: { legalHold: boolean } | undefined;
+    const repo = {
+      getByProductTenantId: vi.fn().mockResolvedValue(existing),
+      upsertByProductTenantId: vi.fn().mockImplementation(async (input) => {
+        upsertArg = input;
+        return { ...existing, ...input, displayName: input.displayName };
+      }),
+      appendActivity: vi.fn(),
+    } as unknown as TenantManagementRepositoryPort;
+    const outbox = {
+      runWithOutbox: vi.fn(async (_t, fn) => fn({}, vi.fn())),
+    };
+    const audit = { create: vi.fn() };
+
+    const uc = new RegisterTenantUseCase(repo, outbox as never, audit as never);
+    await uc.execute({
+      actorId: 'registrar',
+      productTenantId: existing.productTenantId,
+      tenantCode: existing.tenantCode,
+      displayName: 'Updated display',
+      productId: existing.productId,
+    });
+
+    expect(upsertArg?.legalHold).toBe(true);
+  });
+
+  it('RunReconciliationUseCase persists uppercase reconciliation mode', async () => {
+    let capturedMode: string | undefined;
+    const repo = {
+      listDistinctProductTenantIdsFromP7: vi.fn().mockResolvedValue([]),
+      listRegistryProductTenantIds: vi.fn().mockResolvedValue([]),
+      createReconciliationRun: vi.fn().mockImplementation(async (input) => {
+        capturedMode = input.mode;
+        return { id: 'run-1', ...input };
+      }),
+      detectDuplicateRegistryRows: vi.fn().mockResolvedValue([]),
+      detectDuplicateAccountProductRefs: vi.fn().mockResolvedValue([]),
+      updateReconciliationRun: vi.fn(),
+    } as unknown as TenantManagementRepositoryPort;
+
+    const uc = new RunReconciliationUseCase(repo, {} as never, {} as never);
+    await uc.execute({ actorId: 'reconciler', dryRun: true });
+
+    expect(capturedMode).toBe('DRY_RUN');
+  });
+
+  it('ApproveLifecycleActionUseCase does not set SUSPENDED on SUSPEND approval', async () => {
+    const tenant = { ...baseTenant(), administrativeStatus: AdministrativeStatus.ACTIVE };
+    const request = {
+      id: 'lr-1',
+      tenantRegistryId: tenant.id,
+      requestType: LifecycleRequestType.SUSPEND,
+      status: GovernanceRequestStatus.WAITING_APPROVAL,
+      requestedBy: 'requester-a',
+      version: 1,
+    };
+    const updateTenant = vi.fn();
+    const repo = {
+      getLifecycleRequest: vi.fn().mockResolvedValue(request),
+      getById: vi.fn().mockResolvedValue(tenant),
+      updateTenant,
+      updateLifecycleRequest: vi.fn().mockResolvedValue({
+        ...request,
+        status: GovernanceRequestStatus.APPROVED,
+        result: { delegation: 'P7_PENDING' },
+      }),
+    } as unknown as TenantManagementRepositoryPort;
+    const outbox = {
+      runWithOutbox: vi.fn(async (_t, fn) => fn({}, vi.fn())),
+    };
+    const audit = { create: vi.fn() };
+
+    const uc = new ApproveLifecycleActionUseCase(repo, outbox as never, audit as never);
+    await uc.execute({ actorId: 'approver-b', requestId: request.id });
+
+    expect(updateTenant).not.toHaveBeenCalled();
   });
 });

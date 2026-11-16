@@ -416,6 +416,7 @@ import {
   RecordHealthSnapshotUseCase,
   RunReconciliationUseCase as TenantRunReconciliationUseCase,
   SyncTenantsFromP7UseCase,
+  UpdateLegalHoldUseCase,
   UpdateTenantMetadataUseCase,
   UpdateTenantPoliciesUseCase,
 } from '../application/tenant-management/tenant-management.use-cases.js';
@@ -5609,6 +5610,15 @@ export const edgeApplicationProviders: Provider[] = [
   {
     provide: UpdateTenantPoliciesUseCase,
     useFactory: (repo, outbox, audit) => new UpdateTenantPoliciesUseCase(repo, outbox, audit),
+    inject: [
+      TENANT_MANAGEMENT_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      AUDIT_EVENT_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: UpdateLegalHoldUseCase,
+    useFactory: (repo, outbox, audit) => new UpdateLegalHoldUseCase(repo, outbox, audit),
     inject: [
       TENANT_MANAGEMENT_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,

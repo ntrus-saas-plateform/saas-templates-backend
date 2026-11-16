@@ -92,6 +92,105 @@ export function assertNotLegalHold(legalHold: boolean, action: string): void {
   }
 }
 
+/** Lifecycle requests blocked while legal hold is active (AUD-P8-003). */
+export const LIFECYCLE_REQUEST_BLOCKED_UNDER_LEGAL_HOLD = new Set<string>([
+  LifecycleRequestType.SUSPEND,
+  LifecycleRequestType.DEACTIVATE,
+  LifecycleRequestType.TERMINATE,
+  LifecycleRequestType.ARCHIVE,
+  LifecycleRequestType.MIGRATE,
+]);
+
+export function assertLifecycleRequestAllowedUnderLegalHold(
+  legalHold: boolean,
+  requestType: LifecycleRequestType | string,
+): void {
+  if (legalHold && LIFECYCLE_REQUEST_BLOCKED_UNDER_LEGAL_HOLD.has(String(requestType))) {
+    assertNotLegalHold(legalHold, String(requestType));
+  }
+}
+
+export function assertLifecycleApprovalAllowedUnderLegalHold(
+  legalHold: boolean,
+  requestType: LifecycleRequestType | string,
+): void {
+  if (legalHold) {
+    assertNotLegalHold(legalHold, `APPROVE_${requestType}`);
+  }
+}
+
+export function isImmediateAdminLifecycleApproval(requestType: LifecycleRequestType | string): boolean {
+  return (
+    requestType === LifecycleRequestType.RESTRICT || requestType === LifecycleRequestType.UNRESTRICT
+  );
+}
+
+/** Optional interim admin flags while P7 executes (AUD-P8-004). */
+export function p7ApprovalAdministrativeIntent(
+  requestType: LifecycleRequestType | string,
+  currentAdministrativeStatus: string,
+): AdministrativeStatus | null {
+  if (requestType === LifecycleRequestType.DEACTIVATE) {
+    if (currentAdministrativeStatus === AdministrativeStatus.DEACTIVATION_REQUESTED) {
+      return null;
+    }
+    return AdministrativeStatus.DEACTIVATION_REQUESTED;
+  }
+  if (requestType === LifecycleRequestType.TERMINATE) {
+    if (currentAdministrativeStatus === AdministrativeStatus.TERMINATION_REQUESTED) {
+      return null;
+    }
+    return AdministrativeStatus.TERMINATION_REQUESTED;
+  }
+  return null;
+}
+
+const RECONCILIATION_MODE_ALIASES: Record<string, string> = {
+  on_demand: 'ON_DEMAND',
+  scheduled: 'SCHEDULED',
+  event_driven: 'EVENT_DRIVEN',
+  dry_run: 'DRY_RUN',
+};
+
+export function normalizeReconciliationMode(mode: string | undefined, dryRun?: boolean): string {
+  const raw = (mode?.trim() || (dryRun ? 'dry_run' : 'on_demand')).toLowerCase();
+  const normalized = RECONCILIATION_MODE_ALIASES[raw] ?? raw.toUpperCase();
+  const allowed = new Set(['ON_DEMAND', 'DRY_RUN', 'SCHEDULED', 'EVENT_DRIVEN']);
+  if (!allowed.has(normalized)) {
+    throw new DomainError(
+      ErrorCode.VALIDATION_ERROR,
+      `Unsupported reconciliation mode: ${mode ?? raw}`,
+      [{ code: 'RECONCILIATION_MODE_INVALID', mode: raw }],
+    );
+  }
+  return normalized;
+}
+
+export function assertHealthSnapshotSource(overallStatus: string, sourceSystem: string): void {
+  if (overallStatus !== HealthStatus.HEALTHY) {
+    return;
+  }
+  const source = sourceSystem.trim().toLowerCase();
+  if (!source) {
+    throw new DomainError(
+      ErrorCode.VALIDATION_ERROR,
+      'HEALTHY snapshots require a trusted sourceSystem (p7.*, probe.*, or system.*)',
+      [{ code: 'HEALTH_SOURCE_UNTRUSTED', sourceSystem }],
+    );
+  }
+  if (
+    !source.startsWith('p7.') &&
+    !source.startsWith('probe.') &&
+    !source.startsWith('system.')
+  ) {
+    throw new DomainError(
+      ErrorCode.VALIDATION_ERROR,
+      'HEALTHY snapshots require sourceSystem prefixed with p7., probe., or system.',
+      [{ code: 'HEALTH_SOURCE_UNTRUSTED', sourceSystem }],
+    );
+  }
+}
+
 export function assertJustification(justification: string | null | undefined): void {
   if (!justification || justification.trim().length < 8) {
     throw new DomainError(
@@ -220,4 +319,4 @@ export function governanceStatusAfterExceptionRevoke(
   return GovernanceStatus.COMPLIANT;
 }
 
-export const BULK_SENSITIVE_TYPES = new Set(['ASSIGN', 'CLASSIFY', 'EXPORT', 'RECONCILE']);
+export const BULK_SENSITIVE_TYPES = new Set(['ASSIGN', 'CLASSIFY', 'RECONCILE']);
