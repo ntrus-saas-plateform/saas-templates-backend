@@ -471,6 +471,7 @@ import {
   ApproveCommissionUseCase,
   CalculateCommissionUseCase,
   ComputeCashRevenueUseCase,
+  ComputeChurnRatesUseCase,
   ComputeMrrMovementUseCase,
   CreateBusinessAlertPolicyUseCase,
   CreateBusinessDecisionUseCase,
@@ -6898,6 +6899,11 @@ export const edgeApplicationProviders: Provider[] = [
       BILLING_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
     ],
+  },
+  {
+    provide: ComputeChurnRatesUseCase,
+    useFactory: (repo, outbox) => new ComputeChurnRatesUseCase(repo, outbox),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
   {
     provide: CreateRevenueForecastUseCase,
