@@ -21,7 +21,6 @@ import {
   RegisterKeycloakServerUseCase,
   RequestKeycloakProvisioningUseCase,
 } from '../../application/keycloak-topology/keycloak.use-cases.js';
-import type { CreateKeycloakTopologyUseCase } from '../../application/keycloak-topology/keycloak.use-cases.js';
 import { KeycloakTopologyType } from '../../domain/keycloak-topology/keycloak.types.js';
 import {
   CreateKeycloakTopologyDto,
@@ -55,7 +54,6 @@ export class EdgeKeycloakController {
     private readonly lists: ListKeycloakUseCase,
     private readonly registerServerUseCase: RegisterKeycloakServerUseCase,
     private readonly discover: DiscoverKeycloakCapabilitiesUseCase,
-    private readonly _createTopology: CreateKeycloakTopologyUseCase,
     private readonly requestProvisioningUseCase: RequestKeycloakProvisioningUseCase,
     private readonly launchWorkflow: LaunchTopologyWorkflowUseCase,
   ) {}

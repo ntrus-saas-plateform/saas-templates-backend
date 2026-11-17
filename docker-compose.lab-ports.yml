@@ -1,0 +1,14 @@
+# Lab port overrides — host 5432/8080 already occupied on this machine.
+services:
+  postgres:
+    ports:
+      - '55432:5432'
+  keycloak:
+    ports:
+      - '8181:8080'
+  platform:
+    profiles: ['full']
+    ports:
+      - '3000:3000'
+    environment:
+      EDGE_BB_CONTROL_BASE_URL: http://host.docker.internal:3100

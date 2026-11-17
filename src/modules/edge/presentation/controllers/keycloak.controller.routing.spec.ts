@@ -153,7 +153,6 @@ describe('P7.7 P1 — controller → workflow routing', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
       launch as never,
     );
   }
