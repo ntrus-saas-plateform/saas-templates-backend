@@ -58,14 +58,14 @@ Probes only — not a full golden-path claim:
 | **Expected** | New payment intent confirmed; subscription reflects new plan; no invented PAID |
 | **Run** | Console subscriptions + billing |
 
-## Scenario 4 — Suspend / resume
+## Scenario 4 — Suspend / resume (+ dunning policy)
 
 | | |
 |--|--|
-| **Preconditions** | ACTIVE tenant + subscription |
-| **Steps** | Suspend (authorized ops) → verify access/billing state → resume |
-| **Expected** | Suspended state durable; resume restores ACTIVE without fake provision SUCCESS |
-| **Run** | Console tenants/subscriptions lifecycle actions |
+| **Preconditions** | ACTIVE tenant + subscription ; `DUNNING_DEFAULT` policy seeded (migration 128) |
+| **Steps** | Open collection on overdue invoice → subscription PAST_DUE (grace) → Escalate → SUSPEND + BB `/control/v1/suspend` → Resolve → ACTIVE + BB resume + republish entitlements |
+| **Expected** | Grace restriction without inventing cash ; suspend/reactivate sync BB when configured ; FE billing “Apply policy” / “Run dunning scan” |
+| **Run** | Console billing collections + subscriptions ; contract `dunning-lifecycle-orchestration.spec.ts` |
 
 ## Scenario 5 — Deprovision authorize (SoD)
 

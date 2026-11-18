@@ -15,6 +15,10 @@ import {
 /**
  * Lab-only P7 provisioning adapter: calls Business Backend `/control/v1/provision`
  * and polls `/tenants/:id/ready`. Never invents ACCEPTED/COMPLETE without BB HTTP proof.
+ *
+ * @lab-only @non-production — forbidden when NODE_ENV=production (RGOM-E7.1 / ADR-021).
+ * Prefer `payload.entitlements` when provided; empty `{}` is allowed **only** in lab to
+ * exercise connectivity, not as a commercial grant path.
  */
 @Injectable()
 export class LabBbProvisioningAdapter implements SubscriptionProvisioningCoordinationPort {
@@ -45,17 +49,35 @@ export class LabBbProvisioningAdapter implements SubscriptionProvisioningCoordin
         : null);
     const tenantId = fromPayload || randomUUID();
 
+    const entitlementsFromPayload =
+      payload.entitlements && typeof payload.entitlements === 'object'
+        ? (payload.entitlements as Record<string, unknown>)
+        : null;
+    const entitlementVersion =
+      typeof payload.entitlement_version === 'number'
+        ? payload.entitlement_version
+        : typeof payload.entitlementVersion === 'number'
+          ? payload.entitlementVersion
+          : 1;
+
     // Minimal ControlProvisionBody fields required by BB validation.
     const body: Record<string, unknown> = {
       tenant_id: tenantId,
       account_id: input.accountId,
       subscription_id: input.subscriptionId,
       product_id: input.productId,
-      plan_version: 'lab-1',
+      plan_version:
+        typeof payload.plan_version === 'string'
+          ? payload.plan_version
+          : typeof payload.planVersion === 'string'
+            ? payload.planVersion
+            : 'lab-1',
       region: 'lab',
       environment: 'staging',
-      entitlement_version: 1,
-      entitlements: {},
+      entitlement_version: entitlementVersion,
+      // Lab may still omit entitlements for connectivity smoke; prod adapters must never.
+      entitlements: entitlementsFromPayload ?? { modules: { identity: true }, _lab: true },
+      grants: Array.isArray(payload.grants) ? payload.grants : undefined,
       initial_admin_contact: {
         name: 'Lab Admin',
         email: `lab-admin+${tenantId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}@example.invalid`,

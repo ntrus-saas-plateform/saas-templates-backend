@@ -75,6 +75,11 @@ export class MetricsService {
   readonly edgeKeycloakSyncFailures: Counter;
   readonly edgeReconciliationDrifts: Counter<'drift_type'>;
   readonly edgeAuditPersistenceFailures: Counter;
+  /** Provisioning jobs SLO (doc 39/40 H1) — low cardinality. */
+  readonly edgeProvisioningJobsProcessed: Counter<'result'>;
+  readonly edgeProvisioningJobsDuration: Histogram<'job_type'>;
+  readonly edgeProvisioningJobsPending: Gauge;
+  readonly edgeProvisioningJobsLagSeconds: Gauge;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry });
@@ -432,6 +437,29 @@ export class MetricsService {
     this.edgeAuditPersistenceFailures = new Counter({
       name: 'edge_audit_persistence_failures_total',
       help: 'Failures persisting Edge audit events',
+      registers: [this.registry],
+    });
+    this.edgeProvisioningJobsProcessed = new Counter({
+      name: 'edge_provisioning_jobs_processed_total',
+      help: 'Provisioning job tick outcomes',
+      labelNames: ['result'],
+      registers: [this.registry],
+    });
+    this.edgeProvisioningJobsDuration = new Histogram({
+      name: 'edge_provisioning_jobs_duration_seconds',
+      help: 'Provisioning job execution duration',
+      labelNames: ['job_type'],
+      buckets: [0.05, 0.1, 0.5, 1, 5, 15, 60, 180],
+      registers: [this.registry],
+    });
+    this.edgeProvisioningJobsPending = new Gauge({
+      name: 'edge_provisioning_jobs_pending',
+      help: 'Pending+failed retryable provisioning jobs (set by worker backlog query)',
+      registers: [this.registry],
+    });
+    this.edgeProvisioningJobsLagSeconds = new Gauge({
+      name: 'edge_provisioning_jobs_lag_seconds',
+      help: 'Age in seconds of the oldest pending/failed retryable provisioning job',
       registers: [this.registry],
     });
   }

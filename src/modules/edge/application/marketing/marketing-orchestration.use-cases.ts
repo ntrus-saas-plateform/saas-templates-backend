@@ -742,6 +742,13 @@ export class SummarizeMarketingAnalyticsUseCase {
   }
 }
 
+export class ListMarketingSuppressionsUseCase {
+  constructor(private readonly marketing: MarketingRepositoryPort) {}
+  execute(opts?: { activeOnly?: boolean }) {
+    return this.marketing.listSuppressions(opts);
+  }
+}
+
 export class CreateMarketingSuppressionUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
   async execute(input: {

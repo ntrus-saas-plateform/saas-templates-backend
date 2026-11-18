@@ -36,6 +36,7 @@ import {
   formatMoneyAmount,
   parseMoneyAmount,
 } from '../../domain/commercial/pricing-math.js';
+import { buildSubscriptionInvoiceLines } from '../../domain/billing/billing-cadence.js';
 
 async function enqueueBilling(
   outbox: ControlPlaneOutboxTransactionService | undefined,
@@ -173,6 +174,7 @@ export class CreateDraftInvoiceFromSubscriptionUseCase {
       taxableAmount?: string;
       lineTotal?: string;
       planRef?: string | null;
+      metadata?: Record<string, unknown>;
     }[];
   }) {
     const sub = await this.subscriptions.getById(input.subscriptionId);
@@ -201,24 +203,37 @@ export class CreateDraftInvoiceFromSubscriptionUseCase {
       status: InvoiceStatus.DRAFT,
     });
 
+    // Setup fee only on first invoice for the subscription (one-time).
+    const priorInvoices = await this.billing.listInvoices({
+      billingAccountId: account.id,
+      limit: 50,
+    });
+    const hasPriorForSub = priorInvoices.some(
+      (inv) => inv.subscriptionId === sub.id && inv.id !== invoice.id,
+    );
+    const cadenceLines = buildSubscriptionInvoiceLines({
+      subscriptionNumber: sub.subscriptionNumber,
+      planId: sub.planId,
+      billingFrequency: sub.billingFrequency,
+      commercialSnapshot: sub.commercialSnapshot,
+      includeSetupFee: !hasPriorForSub,
+      currency: sub.currency,
+    });
+
     const defaultLines =
       input.lines ??
-      ([
-        {
-          lineNumber: 1,
-          description: `Subscription ${sub.subscriptionNumber}`,
-          quantity: '1',
-          unitPrice:
-            (sub.commercialSnapshot?.amount as string | undefined) ??
-            (sub.commercialSnapshot?.total as string | undefined) ??
-            '0.00',
-          discountAmount: '0',
-          taxAmount: '0',
-          taxableAmount: '0',
-          lineTotal: '0',
-          planRef: sub.planId,
-        },
-      ] as const);
+      cadenceLines.map((l) => ({
+        lineNumber: l.lineNumber,
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        discountAmount: l.discountAmount,
+        taxAmount: l.taxAmount,
+        taxableAmount: l.taxableAmount,
+        lineTotal: l.lineTotal,
+        planRef: l.planRef,
+        metadata: l.metadata as Record<string, unknown>,
+      }));
 
     const computed = sumInvoiceTotals({
       currency: sub.currency,
@@ -244,6 +259,10 @@ export class CreateDraftInvoiceFromSubscriptionUseCase {
       const discount = parseMoneyAmount(l.discountAmount ?? '0', sub.currency);
       const net = addMoney(lineMoney, { currency: sub.currency, units: -discount.units });
       const lineTotal = l.lineTotal ?? formatMoneyAmount(net);
+      const meta =
+        'metadata' in l && l.metadata && typeof l.metadata === 'object'
+          ? (l.metadata as Record<string, unknown>)
+          : {};
       return {
         lineNumber: l.lineNumber ?? i + 1,
         description: l.description,
@@ -256,7 +275,7 @@ export class CreateDraftInvoiceFromSubscriptionUseCase {
         lineTotal,
         productRef: sub.productId,
         planRef: l.planRef ?? sub.planId,
-        metadata: {},
+        metadata: meta,
       };
     });
 
@@ -624,6 +643,21 @@ export class MarkInvoicePaidIfSettledUseCase {
     private readonly outbox?: ControlPlaneOutboxTransactionService,
     private readonly confirmBilling?: ConfirmBillingCoordinationUseCase,
     private readonly requestProvisioning?: RequestProvisioningUseCase,
+    private readonly advanceProvisioning?: {
+      execute(input: {
+        actorId: string;
+        subscriptionId: string;
+      }): Promise<Record<string, unknown>>;
+    },
+    private readonly provisioningJobs?: {
+      enqueue(input: {
+        subscriptionId: string;
+        jobType: 'ADVANCE_AFTER_PAID' | 'REQUEST_PROVISION';
+        payload?: Record<string, unknown>;
+        idempotencyKey?: string | null;
+        correlationId?: string | null;
+      }): Promise<unknown>;
+    },
   ) {}
 
   async execute(input: {
@@ -659,6 +693,7 @@ export class MarkInvoicePaidIfSettledUseCase {
 
     const correlationId = randomUUID();
     const subscriptionId = input.subscriptionId ?? invoice.subscriptionId ?? null;
+    let provisioningAdvance: Record<string, unknown> | null = null;
     if (nextStatus === InvoiceStatus.PAID) {
       await enqueueBilling(
         this.outbox,
@@ -687,6 +722,40 @@ export class MarkInvoicePaidIfSettledUseCase {
           // Paid state must stand; RequestProvisioningUseCase records failures when possible.
         }
       }
+      // Advance ready → publish → activate when BB responds (bb_control / lab_bb).
+      // deferred: enqueue durable job (H1 scale) instead of inline HTTP blocking.
+      const advanceMode = (process.env.EDGE_PROVISIONING_ADVANCE_MODE ?? 'inline').toLowerCase();
+      if (subscriptionId && this.advanceProvisioning && advanceMode !== 'deferred') {
+        try {
+          provisioningAdvance = await this.advanceProvisioning.execute({
+            actorId: input.actorId,
+            subscriptionId,
+          });
+        } catch {
+          provisioningAdvance = { advanced: false, reason: 'ADVANCE_FAILED' };
+        }
+      } else if (subscriptionId && advanceMode === 'deferred') {
+        let job: unknown = null;
+        if (this.provisioningJobs) {
+          try {
+            job = await this.provisioningJobs.enqueue({
+              subscriptionId,
+              jobType: 'ADVANCE_AFTER_PAID',
+              idempotencyKey: `advance-after-paid:${subscriptionId}:${input.invoiceId}`,
+              correlationId,
+              payload: { invoiceId: input.invoiceId, source: 'MarkInvoicePaidIfSettled' },
+            });
+          } catch {
+            job = null;
+          }
+        }
+        provisioningAdvance = {
+          advanced: false,
+          reason: 'DEFERRED',
+          job,
+          note: 'EDGE_PROVISIONING_ADVANCE_MODE=deferred — ProcessProvisioningJobsUseCase / advance-after-paid API',
+        };
+      }
     } else if (nextStatus === InvoiceStatus.PARTIALLY_PAID) {
       await enqueueBilling(
         this.outbox,
@@ -700,7 +769,11 @@ export class MarkInvoicePaidIfSettledUseCase {
       );
     }
 
-    return { invoice: await this.billing.getInvoice(invoice.id), settled: nextStatus === InvoiceStatus.PAID };
+    return {
+      invoice: await this.billing.getInvoice(invoice.id),
+      settled: nextStatus === InvoiceStatus.PAID,
+      provisioningAdvance,
+    };
   }
 }
 
@@ -781,6 +854,9 @@ export class OpenCollectionCaseUseCase {
   constructor(
     private readonly billing: BillingRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly applyDunningPolicy?: {
+      execute(input: { actorId: string; caseId: string }): Promise<unknown>;
+    },
   ) {}
 
   async execute(input: { actorId: string; billingAccountId: string; invoiceId: string }) {
@@ -800,7 +876,15 @@ export class OpenCollectionCaseUseCase {
         invoiceId: input.invoiceId,
       }),
     );
-    return collection;
+    // RGOM-E7.6 — apply grace restriction (PAST_DUE) immediately when policy says so.
+    let dunningApply: unknown = null;
+    if (this.applyDunningPolicy) {
+      dunningApply = await this.applyDunningPolicy.execute({
+        actorId: input.actorId,
+        caseId: collection.id,
+      });
+    }
+    return { ...collection, dunningApply };
   }
 }
 

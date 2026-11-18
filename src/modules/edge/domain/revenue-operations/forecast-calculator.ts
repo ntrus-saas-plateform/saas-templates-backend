@@ -135,3 +135,60 @@ export function scenarioApplyAssumptions(
     notes,
   };
 }
+
+/** RGOM-E10 — Named forecast scenarios (prudent / central / ambitieux). Never mutate actuals. */
+export type NamedForecastScenarioCode = 'PRUDENT' | 'CENTRAL' | 'AMBITIEUX';
+
+export const NAMED_FORECAST_SCENARIO_PRESETS: Record<
+  NamedForecastScenarioCode,
+  { growthMultiplier: number; additiveDelta: number; note: string }
+> = {
+  PRUDENT: {
+    growthMultiplier: 0.95,
+    additiveDelta: 0,
+    note: 'Prudent — mild contraction vs actuals trend (-5%).',
+  },
+  CENTRAL: {
+    growthMultiplier: 1.0,
+    additiveDelta: 0,
+    note: 'Central — baseline equals actuals series (no invented uplift).',
+  },
+  AMBITIEUX: {
+    growthMultiplier: 1.1,
+    additiveDelta: 0,
+    note: 'Ambitieux — +10% growth assumption; ESTIMATED only.',
+  },
+};
+
+export type NamedForecastScenariosResult = {
+  readonly actuals: readonly number[];
+  readonly scenarios: Record<
+    NamedForecastScenarioCode,
+    ScenarioApplyResult & { code: NamedForecastScenarioCode; dataQuality: 'ESTIMATED' }
+  >;
+  readonly notes: string[];
+};
+
+export function buildNamedForecastScenarios(
+  actuals: readonly number[],
+): NamedForecastScenariosResult {
+  const notes = [
+    'Named scenarios are ESTIMATED copies — never overwrite MEASURED actuals.',
+    'UNAVAILABLE actuals must be filtered by caller before invoking.',
+  ];
+  const scenarios = {} as NamedForecastScenariosResult['scenarios'];
+  for (const code of Object.keys(NAMED_FORECAST_SCENARIO_PRESETS) as NamedForecastScenarioCode[]) {
+    const preset = NAMED_FORECAST_SCENARIO_PRESETS[code];
+    const applied = scenarioApplyAssumptions(actuals, {
+      growthMultiplier: preset.growthMultiplier,
+      additiveDelta: preset.additiveDelta,
+    });
+    scenarios[code] = {
+      ...applied,
+      code,
+      dataQuality: 'ESTIMATED',
+      notes: [...applied.notes, preset.note],
+    };
+  }
+  return { actuals: [...actuals], scenarios, notes };
+}

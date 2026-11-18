@@ -105,6 +105,12 @@ import { PgSalesRepository } from './pg-sales.repository.js';
 import { PgSalesCommerceRepository } from './pg-sales-commerce.repository.js';
 import { PgSalesPlatformRepository } from './pg-sales-platform.repository.js';
 import { PgSubscriptionRepository } from './pg-subscription.repository.js';
+import { PgSubscriptionTenantAssociationRepository } from './pg-subscription-tenant-association.repository.js';
+import { SUBSCRIPTION_TENANT_ASSOCIATION_PORT } from '../../domain/ports/subscription-tenant-association.port.js';
+import { PgCustomerSuccessRepository } from './pg-customer-success.repository.js';
+import { CUSTOMER_SUCCESS_REPOSITORY_PORT } from '../../domain/ports/customer-success-repository.port.js';
+import { PgPartnerOpportunityRepository } from './pg-partner-opportunity.repository.js';
+import { PARTNER_OPPORTUNITY_REPOSITORY_PORT } from '../../domain/ports/partner-opportunity-repository.port.js';
 import { PgBillingRepository } from './pg-billing.repository.js';
 
 const providers = [
@@ -136,6 +142,18 @@ const providers = [
   { provide: SALES_COMMERCE_REPOSITORY_PORT, useClass: PgSalesCommerceRepository },
   { provide: SALES_PLATFORM_REPOSITORY_PORT, useClass: PgSalesPlatformRepository },
   { provide: SUBSCRIPTION_REPOSITORY_PORT, useClass: PgSubscriptionRepository },
+  {
+    provide: SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
+    useClass: PgSubscriptionTenantAssociationRepository,
+  },
+  {
+    provide: CUSTOMER_SUCCESS_REPOSITORY_PORT,
+    useClass: PgCustomerSuccessRepository,
+  },
+  {
+    provide: PARTNER_OPPORTUNITY_REPOSITORY_PORT,
+    useClass: PgPartnerOpportunityRepository,
+  },
   { provide: BILLING_REPOSITORY_PORT, useClass: PgBillingRepository },
   { provide: PROVISIONING_REPOSITORY_PORT, useClass: PgProvisioningRepository },
   { provide: REGISTRY_REPOSITORY_PORT, useClass: PgRegistryRepository },

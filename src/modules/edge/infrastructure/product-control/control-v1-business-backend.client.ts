@@ -62,6 +62,38 @@ export class ControlV1BusinessBackendClient {
     return this.request('GET', `/control/v1/tenants/${id}/state`);
   }
 
+  /**
+   * RGOM-E7 — push entitlement projection to BB.
+   * Body: { entitlement_version, entitlements, grants? }
+   */
+  async putEntitlements(
+    tenantId: string,
+    body: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<ControlV1BbHttpResult> {
+    const id = encodeURIComponent(tenantId);
+    return this.request('PUT', `/control/v1/tenants/${id}/entitlements`, {
+      body,
+      idempotencyKey,
+    });
+  }
+
+  /** RGOM-E7.6 — suspend BB tenant (payment delinquency / ops). */
+  async suspendTenant(
+    body: { tenant_id: string; reason: string; effective_at?: string },
+    idempotencyKey: string,
+  ): Promise<ControlV1BbHttpResult> {
+    return this.request('POST', '/control/v1/suspend', { body, idempotencyKey });
+  }
+
+  /** RGOM-E7.6 — resume BB tenant after regularization. */
+  async resumeTenant(
+    body: { tenant_id: string; reason: string; effective_at?: string },
+    idempotencyKey: string,
+  ): Promise<ControlV1BbHttpResult> {
+    return this.request('POST', '/control/v1/resume', { body, idempotencyKey });
+  }
+
   private assertBaseUrl(): string {
     if (!this.baseUrl) {
       throw new DomainError(
@@ -98,7 +130,7 @@ export class ControlV1BusinessBackendClient {
   }
 
   private async request(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     opts?: { body?: Record<string, unknown>; idempotencyKey?: string },
   ): Promise<ControlV1BbHttpResult> {

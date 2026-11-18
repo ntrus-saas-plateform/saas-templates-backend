@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import { ControlPlaneOutboxTransactionService } from '../../../../shared/messaging/control-plane-outbox-transaction.service.js';
 import type { IntegrationEvent } from '../../../../core/domain/events/integration-event.js';
 import type { SubscriptionRepositoryPort } from '../../domain/ports/subscription-repository.port.js';
+import type { SubscriptionTenantAssociationPort } from '../../domain/ports/subscription-tenant-association.port.js';
 import type { SalesCommerceRepositoryPort } from '../../domain/ports/sales-commerce-repository.port.js';
 import { assertHandoffPackageComplete } from '../../domain/sales/sales-commerce.entity.js';
 import {
@@ -14,14 +15,39 @@ import {
   assertSubscriptionStatusTransition,
   assertSuspensionReasonRequired,
   assertTrialNotPaid,
-  EntitlementCapabilityKind,
-  type EntitlementSource,
   nextPeriodEnd,
-  resolveEffectiveEntitlements,
   SubscriptionChangeType,
   SubscriptionItemType,
   SubscriptionStatus,
 } from '../../domain/subscription/subscription.entity.js';
+import {
+  buildBbEntitlementProjectionFromItems,
+  collectEntitlementSourcesFromItems,
+  projectResolvedEntitlementsToBbControl,
+  resolvedFromSnapshotEntitlements,
+} from '../../domain/subscription/bb-entitlement-projection.js';
+import {
+  resolveEffectiveEntitlements,
+  type EntitlementSource,
+} from '../../domain/subscription/subscription.entity.js';
+import { assessEntitlementPayload } from '../../domain/provisioning/entitlement-payload.guard.js';
+import type { ControlV1BusinessBackendClient } from '../../infrastructure/product-control/control-v1-business-backend.client.js';
+import type { BindSubscriptionTenantAssociationUseCase } from './subscription-tenant-association.use-cases.js';
+import { assertPlanChangeKeepsProductTenant } from '../../domain/subscription/subscription-tenant-association.js';
+import {
+  beachheadPlanEntitlementSnapshot,
+  beachheadProfileCodeForFamily,
+  extractBeachheadPlanCode,
+} from '../../domain/commercial/beachhead-plan-entitlements.js';
+import {
+  resolveSubscriptionTenantRef,
+  syncBbTenantLifecycle,
+} from './subscription-bb-lifecycle.js';
+import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
+import {
+  assertActivationNotAfterFailedPaymentOnly,
+  assertBillingConfirmRequiresCollectedPayment,
+} from '../../domain/billing/payment-activation-guard.js';
 import {
   createBillingCoordinationConfirmedEvent,
   createBillingCoordinationRequestedEvent,
@@ -37,6 +63,7 @@ import {
   createSubscriptionCancelledEvent,
   createSubscriptionChangedEvent,
   createSubscriptionCreatedEvent,
+  createSubscriptionPastDueEvent,
   createSubscriptionReactivatedEvent,
   createSubscriptionRenewedEvent,
   createSubscriptionSubmittedEvent,
@@ -135,10 +162,14 @@ export class CreateSubscriptionFromHandoffUseCase {
     const existing = await this.subscriptions.getByCorrelationId(correlationId);
     if (existing) return existing;
 
-    const planId = (pkg.offerConfiguration as Record<string, unknown>)?.planId as string | undefined;
-    const packageId = (pkg.offerConfiguration as Record<string, unknown>)?.solutionPackageId as
-      | string
-      | undefined;
+    const offerConfiguration = (pkg.offerConfiguration as Record<string, unknown>) ?? {};
+    const planId = offerConfiguration.planId as string | undefined;
+    const packageId = offerConfiguration.solutionPackageId as string | undefined;
+    const planCode =
+      extractBeachheadPlanCode(offerConfiguration, pkg as Record<string, unknown>) ??
+      (typeof offerConfiguration.planCode === 'string' ? offerConfiguration.planCode : null);
+    const beachhead = beachheadPlanEntitlementSnapshot(planCode);
+    const profileCode = beachheadProfileCodeForFamily(beachhead?.productFamily);
 
     const sub = await this.subscriptions.createSubscription({
       accountId,
@@ -151,17 +182,29 @@ export class CreateSubscriptionFromHandoffUseCase {
       correlationId,
       commercialValidated: commercialTermsPresent,
       commercialSnapshot: pkg as Record<string, unknown>,
+      metadata: {
+        ...(typeof pkg.metadata === 'object' && pkg.metadata ? (pkg.metadata as object) : {}),
+        ...(planCode ? { planCode, productCode: beachhead?.productFamily } : {}),
+        ...(profileCode ? { profileCode } : {}),
+      },
       createdBy: input.actorId,
       status: SubscriptionStatus.DRAFT,
     });
 
-    if (planId || packageId) {
+    if (planId || packageId || beachhead) {
+      const snapshot: Record<string, unknown> = {
+        ...offerConfiguration,
+        ...(planCode ? { planCode } : {}),
+        ...(beachhead
+          ? { capabilities: beachhead.capabilities, productFamily: beachhead.productFamily }
+          : {}),
+      };
       await this.subscriptions.addItem({
         subscriptionId: sub.id,
-        itemType: packageId ? SubscriptionItemType.PACKAGE : SubscriptionItemType.PLAN,
+        itemType: packageId && !beachhead ? SubscriptionItemType.PACKAGE : SubscriptionItemType.PLAN,
         productId,
-        offerRef: planId ?? packageId ?? null,
-        snapshot: (pkg.offerConfiguration as Record<string, unknown>) ?? {},
+        offerRef: planCode ?? planId ?? packageId ?? null,
+        snapshot,
       });
     }
 
@@ -207,19 +250,53 @@ export class CreateSubscriptionUseCase {
     contractId?: string | null;
     planId?: string | null;
     packageId?: string | null;
+    /** Beachhead commercial plan code e.g. SYNTIX_LITE / OKAPI_REST_STARTER */
+    planCode?: string | null;
     currency?: string;
     billingFrequency?: string | null;
     correlationId?: string;
     enterpriseProfile?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
   }) {
     assertSingleProductSubscription({ productId: input.productId });
     const correlationId = input.correlationId ?? randomUUID();
+    const planCode =
+      input.planCode?.trim() ||
+      extractBeachheadPlanCode(input.metadata, input.enterpriseProfile) ||
+      null;
+    const beachhead = beachheadPlanEntitlementSnapshot(planCode);
+    const profileCode = beachheadProfileCodeForFamily(beachhead?.productFamily);
     const sub = await this.subscriptions.createSubscription({
-      ...input,
+      accountId: input.accountId,
+      productId: input.productId,
+      contractId: input.contractId,
+      planId: input.planId,
+      packageId: input.packageId,
+      currency: input.currency,
+      billingFrequency: input.billingFrequency,
+      enterpriseProfile: input.enterpriseProfile,
       correlationId,
       status: SubscriptionStatus.DRAFT,
       createdBy: input.actorId,
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(planCode ? { planCode, productCode: beachhead?.productFamily } : {}),
+        ...(profileCode ? { profileCode } : {}),
+      },
     });
+    if (beachhead) {
+      await this.subscriptions.addItem({
+        subscriptionId: sub.id,
+        itemType: SubscriptionItemType.PLAN,
+        productId: input.productId,
+        offerRef: beachhead.planCode,
+        snapshot: {
+          planCode: beachhead.planCode,
+          productFamily: beachhead.productFamily,
+          capabilities: beachhead.capabilities,
+        },
+      });
+    }
     await enqueueSubscription(
       this.outbox,
       createSubscriptionCreatedEvent({
@@ -252,17 +329,23 @@ export class ListSubscriptionsUseCase {
 }
 
 export class GetSubscriptionWorkspaceUseCase {
-  constructor(private readonly subscriptions: SubscriptionRepositoryPort) {}
+  constructor(
+    private readonly subscriptions: SubscriptionRepositoryPort,
+    private readonly associations?: SubscriptionTenantAssociationPort,
+  ) {}
   async execute(subscriptionId: string) {
     const sub = await this.subscriptions.getById(subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
-    const [items, periods, snapshot, statusHistory, lifecycle] = await Promise.all([
-      this.subscriptions.listItems(subscriptionId),
-      this.subscriptions.listPeriods(subscriptionId),
-      this.subscriptions.getLatestSnapshot(subscriptionId),
-      this.subscriptions.listStatusHistory(subscriptionId),
-      this.subscriptions.listLifecycleEvents(subscriptionId),
-    ]);
+    const [items, periods, snapshot, statusHistory, lifecycle, associationList, activeAssociation] =
+      await Promise.all([
+        this.subscriptions.listItems(subscriptionId),
+        this.subscriptions.listPeriods(subscriptionId),
+        this.subscriptions.getLatestSnapshot(subscriptionId),
+        this.subscriptions.listStatusHistory(subscriptionId),
+        this.subscriptions.listLifecycleEvents(subscriptionId),
+        this.associations?.listBySubscription(subscriptionId) ?? Promise.resolve([]),
+        this.associations?.getActiveBySubscription(subscriptionId) ?? Promise.resolve(null),
+      ]);
     return {
       subscription: sub,
       items,
@@ -270,6 +353,8 @@ export class GetSubscriptionWorkspaceUseCase {
       latestEntitlements: snapshot,
       timeline: lifecycle,
       statusHistory,
+      associations: associationList,
+      activeAssociation,
     };
   }
 }
@@ -443,6 +528,7 @@ export class ActivateSubscriptionUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly billing?: BillingRepositoryPort,
   ) {}
 
   async execute(input: { actorId: string; subscriptionId: string }) {
@@ -471,6 +557,19 @@ export class ActivateSubscriptionUseCase {
         billingRequired,
         billingConfirmed: sub.billingConfirmed,
       });
+      if (this.billing && billingRequired) {
+        const account = await this.billing.getBillingAccountForSubscription(sub.id);
+        const intents = account
+          ? await this.billing.listPaymentIntents({
+              billingAccountId: account.id,
+              limit: 100,
+            })
+          : [];
+        assertActivationNotAfterFailedPaymentOnly({
+          billingRequired,
+          paymentIntentStatuses: intents.map((i) => i.status),
+        });
+      }
     } catch (err) {
       if (
         err instanceof DomainError &&
@@ -516,13 +615,73 @@ export class ActivateSubscriptionUseCase {
   }
 }
 
-export class SuspendSubscriptionUseCase {
+/** RGOM-E7.6 — ACTIVE/TRIALING → PAST_DUE during billing grace. */
+export class MarkSubscriptionPastDueUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
   ) {}
 
-  async execute(input: { actorId: string; subscriptionId: string; reason: string }) {
+  async execute(input: {
+    actorId: string;
+    subscriptionId: string;
+    reason: string;
+    collectionCaseId?: string | null;
+    graceEndsAt?: Date | null;
+  }) {
+    const sub = await this.subscriptions.getById(input.subscriptionId);
+    if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
+    if (sub.status === SubscriptionStatus.PAST_DUE) return sub;
+    const correlationId = randomUUID();
+    const updated = await transitionSubscription(this.subscriptions, {
+      subscriptionId: sub.id,
+      from: sub.status,
+      to: SubscriptionStatus.PAST_DUE,
+      actorId: input.actorId,
+      correlationId,
+      reason: input.reason,
+    });
+    await this.subscriptions.appendLifecycleEvent({
+      subscriptionId: sub.id,
+      eventType: 'PAST_DUE',
+      payload: {
+        reason: input.reason,
+        collectionCaseId: input.collectionCaseId ?? null,
+        graceEndsAt: input.graceEndsAt?.toISOString() ?? null,
+      },
+      actorId: input.actorId,
+      correlationId,
+    });
+    await enqueueSubscription(
+      this.outbox,
+      createSubscriptionPastDueEvent({
+        actorId: input.actorId,
+        correlationId,
+        subscriptionId: sub.id,
+        reason: input.reason,
+        collectionCaseId: input.collectionCaseId,
+        graceEndsAt: input.graceEndsAt?.toISOString() ?? null,
+      }),
+    );
+    return updated;
+  }
+}
+
+export class SuspendSubscriptionUseCase {
+  constructor(
+    private readonly subscriptions: SubscriptionRepositoryPort,
+    private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly bbClient?: ControlV1BusinessBackendClient,
+    private readonly associations?: SubscriptionTenantAssociationPort,
+  ) {}
+
+  async execute(input: {
+    actorId: string;
+    subscriptionId: string;
+    reason: string;
+    /** Default true — sync BB tenant when configured. */
+    syncBb?: boolean;
+  }) {
     assertSuspensionReasonRequired({
       toStatus: SubscriptionStatus.SUSPENDED,
       reason: input.reason,
@@ -543,6 +702,25 @@ export class SuspendSubscriptionUseCase {
       reason: input.reason,
       requestedBy: input.actorId,
     });
+
+    if (input.syncBb !== false) {
+      const tenantRef = await resolveSubscriptionTenantRef({
+        subscriptions: this.subscriptions,
+        associations: this.associations,
+        subscriptionId: sub.id,
+        metadata: sub.metadata as Record<string, unknown> | undefined,
+      });
+      if (tenantRef) {
+        await syncBbTenantLifecycle({
+          bbClient: this.bbClient,
+          action: 'suspend',
+          tenantId: tenantRef,
+          reason: input.reason,
+          correlationId,
+        });
+      }
+    }
+
     await enqueueSubscription(
       this.outbox,
       createSubscriptionSuspendedEvent({
@@ -560,9 +738,23 @@ export class ReactivateSubscriptionUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly bbClient?: ControlV1BusinessBackendClient,
+    private readonly associations?: SubscriptionTenantAssociationPort,
+    private readonly publishEntitlements?: {
+      execute(input: {
+        actorId: string;
+        subscriptionId: string;
+        snapshotId?: string;
+      }): Promise<unknown>;
+    },
   ) {}
 
-  async execute(input: { actorId: string; subscriptionId: string }) {
+  async execute(input: {
+    actorId: string;
+    subscriptionId: string;
+    syncBb?: boolean;
+    republishEntitlements?: boolean;
+  }) {
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
     const correlationId = randomUUID();
@@ -581,6 +773,8 @@ export class ReactivateSubscriptionUseCase {
         correlationId,
       });
     }
+
+    // PAST_DUE → ACTIVE is allowed by transition map; SUSPENDED → ACTIVE too.
     const updated = await transitionSubscription(this.subscriptions, {
       subscriptionId: sub.id,
       from: sub.status,
@@ -588,6 +782,36 @@ export class ReactivateSubscriptionUseCase {
       actorId: input.actorId,
       correlationId,
     });
+
+    if (input.syncBb !== false) {
+      const tenantRef = await resolveSubscriptionTenantRef({
+        subscriptions: this.subscriptions,
+        associations: this.associations,
+        subscriptionId: sub.id,
+        metadata: sub.metadata as Record<string, unknown> | undefined,
+      });
+      if (tenantRef) {
+        await syncBbTenantLifecycle({
+          bbClient: this.bbClient,
+          action: 'resume',
+          tenantId: tenantRef,
+          reason: 'reactivation',
+          correlationId,
+        });
+      }
+    }
+
+    if (input.republishEntitlements !== false && this.publishEntitlements) {
+      const snapshot = await this.subscriptions.getLatestSnapshot(sub.id);
+      if (snapshot) {
+        await this.publishEntitlements.execute({
+          actorId: input.actorId,
+          subscriptionId: sub.id,
+          snapshotId: snapshot.id,
+        });
+      }
+    }
+
     await enqueueSubscription(
       this.outbox,
       createSubscriptionReactivatedEvent({
@@ -744,39 +968,9 @@ export class CalculateAndSnapshotEntitlementsUseCase {
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
     const items = await this.subscriptions.listItems(sub.id);
-    const sources: EntitlementSource[] = [];
-
-    for (const item of items) {
-      const caps = (item.snapshot.capabilities as EntitlementSource[] | undefined) ?? [];
-      for (const cap of caps) {
-        sources.push({
-          ...cap,
-          sourceType:
-            item.itemType === 'ADDON'
-              ? 'ADDON'
-              : item.itemType === 'PACKAGE'
-                ? 'PACKAGE'
-                : 'PLAN',
-          sourceRef: item.offerRef,
-        });
-      }
-      if (!caps.length && item.entitlementRef) {
-        sources.push({
-          sourceType: 'PLAN',
-          sourceRef: item.entitlementRef,
-          capabilityCode: item.entitlementRef,
-          kind: EntitlementCapabilityKind.FEATURE_FLAG,
-          enabled: true,
-        });
-      }
-    }
-
     const extensions =
       (sub.enterpriseProfile.contractualExtensions as EntitlementSource[] | undefined) ?? [];
-    for (const ext of extensions) {
-      sources.push({ ...ext, sourceType: 'CONTRACTUAL_EXTENSION' });
-    }
-
+    const sources = collectEntitlementSourcesFromItems(items, extensions);
     const resolved = resolveEffectiveEntitlements(sources);
     const correlationId = input.correlationId ?? randomUUID();
     const snapshot = await this.subscriptions.createEntitlementSnapshot({
@@ -814,6 +1008,7 @@ export class PublishEntitlementsUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly bbClient?: ControlV1BusinessBackendClient,
   ) {}
 
   async execute(input: { actorId: string; subscriptionId: string; snapshotId?: string }) {
@@ -825,6 +1020,20 @@ export class PublishEntitlementsUseCase {
     if (!snapshot) {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'No entitlement snapshot to publish');
     }
+
+    const resolved = resolvedFromSnapshotEntitlements(
+      snapshot.entitlements as Record<string, unknown>,
+    );
+    const projection = projectResolvedEntitlementsToBbControl(resolved);
+    const emptiness = assessEntitlementPayload(projection.entitlements, projection.grants);
+    if (emptiness.empty) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        `Cannot publish empty entitlements to BB (${emptiness.reason}). Calculate snapshot from plan/add-ons first (RGOM-E7).`,
+        [{ code: 'EMPTY_ENTITLEMENTS_FORBIDDEN', reason: emptiness.reason }],
+      );
+    }
+
     const correlationId = randomUUID();
     const publication = await this.subscriptions.createPublication({
       subscriptionId: sub.id,
@@ -832,10 +1041,63 @@ export class PublishEntitlementsUseCase {
       status: 'REQUESTED',
       correlationId,
     });
+
+    let externalAck = 'CONTROL_PLANE_RECORDED';
+    let status: 'PUBLISHED' | 'FAILED' = 'PUBLISHED';
+
+    if (this.bbClient?.isConfigured()) {
+      const existingReqs = await this.subscriptions.listProvisioningRequests(sub.id);
+      const tenantId =
+        existingReqs.map((r) => r.tenantRef).find((t): t is string => !!t?.trim()) ??
+        (typeof sub.metadata?.tenantRef === 'string' && sub.metadata.tenantRef.trim()
+          ? sub.metadata.tenantRef.trim()
+          : null) ??
+        (typeof sub.metadata?.tenantId === 'string' && sub.metadata.tenantId.trim()
+          ? sub.metadata.tenantId.trim()
+          : null);
+      if (!tenantId) {
+        throw new DomainError(
+          ErrorCode.VALIDATION_ERROR,
+          'Cannot publish entitlements to BB: tenantRef missing (provision first)',
+        );
+      }
+      const contentHash = createHash('sha256')
+        .update(JSON.stringify({ entitlements: projection.entitlements, grants: projection.grants }))
+        .digest('hex');
+      const res = await this.bbClient.putEntitlements(
+        tenantId,
+        {
+          entitlement_version: snapshot.version,
+          entitlements: {
+            ...projection.entitlements,
+            grants: [...projection.grants],
+            contentHash,
+          },
+          grants: [...projection.grants],
+          contentHash,
+        },
+        correlationId.slice(0, 128),
+      );
+      if (!res.ok) {
+        status = 'FAILED';
+        externalAck = `BB_HTTP_${res.status}`;
+        await this.subscriptions.updatePublication(publication.id, {
+          status,
+          externalAck,
+        });
+        throw new DomainError(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          `BB entitlements publish failed: HTTP ${res.status}`,
+          [{ status: res.status, body: res.body }],
+        );
+      }
+      externalAck = `BB_ACCEPTED_${res.status}`;
+    }
+
     const published = await this.subscriptions.updatePublication(publication.id, {
-      status: 'PUBLISHED',
+      status,
       publishedAt: new Date(),
-      externalAck: 'CONTROL_PLANE_RECORDED',
+      externalAck,
     });
     await enqueueSubscription(
       this.outbox,
@@ -875,9 +1137,17 @@ export class ExecuteChangeRequestUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly associations?: SubscriptionTenantAssociationPort,
+    private readonly publishEntitlements?: PublishEntitlementsUseCase,
   ) {}
 
-  async execute(input: { actorId: string; subscriptionId: string; changeId: string }) {
+  async execute(input: {
+    actorId: string;
+    subscriptionId: string;
+    changeId: string;
+    /** When false, skip BB publish after recalculate (default: publish when client configured). */
+    publishToBb?: boolean;
+  }) {
     const change =
       (await this.subscriptions.getChangeRequest(input.changeId)) ??
       (await this.subscriptions.listChangeRequests(input.subscriptionId)).find(
@@ -893,6 +1163,22 @@ export class ExecuteChangeRequestUseCase {
     await this.subscriptions.updateChangeRequest(change.id, {
       executionStatus: 'IN_PROGRESS',
     });
+
+    const activeAssociation = this.associations
+      ? await this.associations.getActiveBySubscription(input.subscriptionId)
+      : null;
+    const proposedTenantId =
+      typeof change.proposedConfig.productTenantId === 'string'
+        ? change.proposedConfig.productTenantId
+        : typeof change.proposedConfig.tenantId === 'string'
+          ? change.proposedConfig.tenantId
+          : null;
+    assertPlanChangeKeepsProductTenant({
+      changeType: change.changeType,
+      activeAssociation,
+      proposedProductTenantId: proposedTenantId,
+    });
+
     const patch = change.proposedConfig;
     const subPatch: Parameters<SubscriptionRepositoryPort['updateSubscription']>[1] = {};
     if (typeof patch.planId === 'string') subPatch.planId = patch.planId;
@@ -905,29 +1191,68 @@ export class ExecuteChangeRequestUseCase {
     }
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
-    if (
-      change.changeType === SubscriptionChangeType.ADDON_ADD ||
-      change.changeType === SubscriptionChangeType.PLAN_CHANGE
-    ) {
+
+    if (change.changeType === SubscriptionChangeType.PLAN_CHANGE) {
+      const items = await this.subscriptions.listItems(sub.id);
+      for (const item of items) {
+        if (
+          item.status === 'ACTIVE' &&
+          (item.itemType === SubscriptionItemType.PLAN ||
+            item.itemType === SubscriptionItemType.PACKAGE)
+        ) {
+          await this.subscriptions.updateItemStatus(item.id, 'REMOVED', new Date());
+        }
+      }
+      const planCode =
+        (typeof patch.planCode === 'string' && patch.planCode) ||
+        (typeof patch.offerRef === 'string' && patch.offerRef) ||
+        (typeof patch.planId === 'string' && patch.planId) ||
+        null;
+      const catalogSnapshot = planCode ? beachheadPlanEntitlementSnapshot(planCode) : null;
+      const capabilities =
+        (Array.isArray(patch.capabilities) ? patch.capabilities : null) ??
+        catalogSnapshot?.capabilities ??
+        [];
+      if (!capabilities.length) {
+        throw new DomainError(
+          ErrorCode.VALIDATION_ERROR,
+          'PLAN_CHANGE requires proposedConfig.capabilities or a known beachhead planCode (SYNTIX_* / OKAPI_REST_*)',
+          [{ code: 'PLAN_CHANGE_CAPABILITIES_REQUIRED' }],
+        );
+      }
       await this.subscriptions.addItem({
         subscriptionId: sub.id,
-        itemType:
-          change.changeType === SubscriptionChangeType.ADDON_ADD
-            ? SubscriptionItemType.ADDON
-            : patch.packageId
-              ? SubscriptionItemType.PACKAGE
-              : SubscriptionItemType.PLAN,
+        itemType: SubscriptionItemType.PLAN,
+        productId: sub.productId,
+        offerRef: planCode,
+        quantity: typeof patch.quantity === 'number' ? patch.quantity : undefined,
+        snapshot: {
+          ...patch,
+          planCode,
+          capabilities,
+        },
+      });
+    } else if (change.changeType === SubscriptionChangeType.ADDON_ADD) {
+      assertAddonCompatible({
+        addonProductId:
+          typeof patch.productId === 'string' ? patch.productId : sub.productId,
+        subscriptionProductId: sub.productId,
+        available: patch.available !== false,
+        eligible: patch.eligible !== false,
+      });
+      const capabilities = Array.isArray(patch.capabilities) ? patch.capabilities : [];
+      await this.subscriptions.addItem({
+        subscriptionId: sub.id,
+        itemType: SubscriptionItemType.ADDON,
         productId: sub.productId,
         offerRef:
           (patch.offerRef as string | undefined) ??
-          (patch.planId as string | undefined) ??
-          (patch.packageId as string | undefined) ??
+          (patch.addonCode as string | undefined) ??
           null,
         quantity: typeof patch.quantity === 'number' ? patch.quantity : undefined,
-        snapshot: patch,
+        snapshot: { ...patch, capabilities },
       });
-    }
-    if (change.changeType === SubscriptionChangeType.ADDON_REMOVE) {
+    } else if (change.changeType === SubscriptionChangeType.ADDON_REMOVE) {
       const itemId = typeof patch.itemId === 'string' ? patch.itemId : null;
       const offerRef = typeof patch.offerRef === 'string' ? patch.offerRef : null;
       const items = await this.subscriptions.listItems(sub.id);
@@ -947,13 +1272,27 @@ export class ExecuteChangeRequestUseCase {
       }
       await this.subscriptions.updateItemStatus(target.id, 'REMOVED', new Date());
     }
-    const snapshotter = new CalculateAndSnapshotEntitlementsUseCase(this.subscriptions, this.outbox);
-    await snapshotter.execute({
+
+    const snapshotter = new CalculateAndSnapshotEntitlementsUseCase(
+      this.subscriptions,
+      this.outbox,
+    );
+    const snapshot = await snapshotter.execute({
       actorId: input.actorId,
       subscriptionId: sub.id,
       reason: `change:${change.id}`,
       correlationId,
     });
+
+    let publication: unknown = null;
+    if (input.publishToBb !== false && this.publishEntitlements) {
+      publication = await this.publishEntitlements.execute({
+        actorId: input.actorId,
+        subscriptionId: sub.id,
+        snapshotId: snapshot.id,
+      });
+    }
+
     const scheduled = await this.subscriptions.listScheduledChanges(change.id);
     const pendingSchedule = scheduled.find((s) => s.status === 'SCHEDULED');
     if (pendingSchedule) {
@@ -972,7 +1311,14 @@ export class ExecuteChangeRequestUseCase {
         changeType: change.changeType,
       }),
     );
-    return updated;
+    return {
+      change: updated,
+      snapshot,
+      publication,
+      association: activeAssociation,
+      productTenantRetained: activeAssociation?.productTenantId ?? null,
+      note: 'Entitlements recalculated without creating a new product tenant',
+    };
   }
 }
 
@@ -1206,6 +1552,7 @@ export class ConfirmBillingCoordinationUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly billing?: BillingRepositoryPort,
   ) {}
 
   async execute(input: {
@@ -1213,12 +1560,30 @@ export class ConfirmBillingCoordinationUseCase {
     subscriptionId: string;
     coordinationId: string;
     externalRef?: string;
+    /** Ops override — default false (fail-closed when billingRequired). */
+    allowWithoutCollectedCash?: boolean;
   }) {
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
     const coords = await this.subscriptions.listBillingCoordination(sub.id);
     const coord = coords.find((c) => c.id === input.coordinationId);
     if (!coord) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Billing coordination not found');
+
+    if (this.billing && sub.billingRequired) {
+      const account = await this.billing.getBillingAccountForSubscription(sub.id);
+      const intents = account
+        ? await this.billing.listPaymentIntents({
+            billingAccountId: account.id,
+            limit: 100,
+          })
+        : [];
+      assertBillingConfirmRequiresCollectedPayment({
+        billingRequired: sub.billingRequired,
+        paymentIntentStatuses: intents.map((i) => i.status),
+        allowWithoutCollectedCash: input.allowWithoutCollectedCash === true,
+      });
+    }
+
     const updated = await this.subscriptions.updateBillingCoordination(coord.id, {
       outcome: 'CONFIRMED',
       externalRef: input.externalRef ?? coord.externalRef,
@@ -1238,7 +1603,9 @@ export class ConfirmBillingCoordinationUseCase {
     return {
       confirmed: true,
       coordination: updated,
-      note: 'Explicit API confirmation only — not payment collected',
+      note: sub.billingRequired
+        ? 'Billing confirmed with collected payment proof required (fail-closed)'
+        : 'Explicit API confirmation — billing not required on subscription',
     };
   }
 }
@@ -1272,8 +1639,82 @@ export class RequestProvisioningUseCase {
       tenantId: existingTenantRef ?? undefined,
       productId: sub.productId,
       subscriptionId: sub.id,
-      note: 'lab_bb_payload',
+      note: 'edge_provisioning_payload',
     };
+
+    const meta = (sub.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.productCode === 'string' && meta.productCode.trim()) {
+      payload.product_code = meta.productCode.trim();
+    } else if (typeof meta.product_code === 'string' && meta.product_code.trim()) {
+      payload.product_code = meta.product_code.trim();
+    }
+    if (typeof meta.profileCode === 'string' && meta.profileCode.trim()) {
+      payload.profile_code = meta.profileCode.trim();
+    } else if (typeof meta.profile_code === 'string' && meta.profile_code.trim()) {
+      payload.profile_code = meta.profile_code.trim();
+    }
+    if (typeof meta.adminEmail === 'string' && meta.adminEmail.trim()) {
+      payload.adminEmail = meta.adminEmail.trim();
+    }
+    if (typeof meta.adminName === 'string' && meta.adminName.trim()) {
+      payload.adminName = meta.adminName.trim();
+    }
+
+    // RGOM-E7 — attach real entitlement projection when subscription items resolve.
+    // Fallback: beachhead planCode on metadata / offerRef → Syntix Lite/Pro or Restaurant plans.
+    try {
+      let items = await this.subscriptions.listItems(sub.id);
+      const extensions =
+        (sub.enterpriseProfile?.contractualExtensions as EntitlementSource[] | undefined) ??
+        [];
+      let built = buildBbEntitlementProjectionFromItems({ items, contractualExtensions: extensions });
+      if (built.empty) {
+        const planCode =
+          extractBeachheadPlanCode(meta, sub.commercialSnapshot as Record<string, unknown>) ??
+          items.map((i) => i.offerRef).find((r) => !!beachheadPlanEntitlementSnapshot(r ?? '')) ??
+          null;
+        const beachhead = beachheadPlanEntitlementSnapshot(planCode);
+        if (beachhead) {
+          if (!payload.product_code) payload.product_code = beachhead.productFamily;
+          if (!payload.profile_code) {
+            payload.profile_code = beachheadProfileCodeForFamily(beachhead.productFamily);
+          }
+          built = buildBbEntitlementProjectionFromItems({
+            items: [
+              {
+                itemType: 'PLAN',
+                offerRef: beachhead.planCode,
+                snapshot: { capabilities: beachhead.capabilities },
+              },
+            ],
+            contractualExtensions: extensions,
+          });
+        }
+      }
+      if (built.empty) {
+        payload.entitlementProjection = {
+          empty: true,
+          reason: built.emptyReason,
+        };
+      } else {
+        payload.entitlements = {
+          ...built.projection.entitlements,
+          grants: built.projection.grants,
+        };
+        payload.grants = built.projection.grants;
+        payload.entitlement_version = 1;
+        payload.entitlementProjection = {
+          capabilityCount: built.resolved.length,
+          empty: false,
+        };
+      }
+    } catch (err) {
+      payload.entitlementProjection = {
+        empty: true,
+        reason: 'resolve_failed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
 
     let outcome = 'REQUESTED';
     let externalRef: string | null = null;
@@ -1321,6 +1762,8 @@ export class CompleteProvisioningUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly bindAssociation?: BindSubscriptionTenantAssociationUseCase,
+    private readonly provisioning?: SubscriptionProvisioningCoordinationPort,
   ) {}
 
   async execute(input: {
@@ -1329,12 +1772,40 @@ export class CompleteProvisioningUseCase {
     requestId: string;
     tenantRef?: string;
     externalRef?: string;
+    /** When true, skip BB ready poll (already verified by AdvanceProvisioningAfterPaid). */
+    skipReadyPoll?: boolean;
   }) {
     const sub = await this.subscriptions.getById(input.subscriptionId);
     if (!sub) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Subscription not found');
+
+    const tenantRef = input.tenantRef?.trim() || input.externalRef?.trim() || null;
+
+    if (!input.skipReadyPoll && this.provisioning && tenantRef) {
+      const poll = await this.provisioning.completeProvisioning({
+        subscriptionId: sub.id,
+        requestId: input.requestId,
+        tenantRef,
+        externalRef: input.externalRef,
+      });
+      if (poll.outcome === 'NOT_COMPLETE') {
+        throw new DomainError(
+          ErrorCode.VALIDATION_ERROR,
+          poll.failureMessage ?? 'BB tenant not ready yet',
+          [{ code: poll.failureCode ?? 'TENANT_NOT_READY' }],
+        );
+      }
+      if (poll.outcome === 'UNAVAILABLE') {
+        throw new DomainError(
+          ErrorCode.DEPENDENCY_UNAVAILABLE,
+          poll.failureMessage ?? 'Provisioning completion unavailable',
+          [{ code: poll.failureCode ?? 'PROVISIONING_COMPLETE_UNAVAILABLE' }],
+        );
+      }
+    }
+
     await this.subscriptions.updateProvisioningRequest(input.requestId, {
       outcome: 'COMPLETE',
-      tenantRef: input.tenantRef ?? null,
+      tenantRef: tenantRef,
       externalRef: input.externalRef ?? null,
       completedAt: new Date(),
     });
@@ -1349,9 +1820,23 @@ export class CompleteProvisioningUseCase {
         requestId: input.requestId,
       }),
     );
+
+    let association: unknown = null;
+    if (tenantRef && this.bindAssociation) {
+      association = await this.bindAssociation.execute({
+        actorId: input.actorId,
+        subscriptionId: sub.id,
+        productTenantRef: tenantRef,
+        supersedeExisting: true,
+        correlationId,
+      });
+    }
+
     return {
       completed: true,
-      note: 'Provisioning confirmed via explicit API — does not imply tenant runtime active',
+      association,
+      tenantRef,
+      note: 'Provisioning confirmed — BB ready polled when adapter supports it',
     };
   }
 }

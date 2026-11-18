@@ -27,11 +27,20 @@ import {
   ListPublicProductDiscoveryUseCase,
   RecordAnalyticsEventUseCase,
 } from '../../application/acquisition/acquisition.use-cases.js';
+import {
+  ListPublicSegmentPresentationsUseCase,
+  PublicCreateCheckoutUseCase,
+  PublicSubmitApplicationUseCase,
+} from '../../application/acquisition/public-acquire.use-cases.js';
+import { GetCommercialCatalogViewUseCase } from '../../application/commercial/commercial.use-cases.js';
 import { AcquisitionPublicRateLimiter } from '../../infrastructure/acquisition/acquisition-rate-limiter.js';
+import type { SubmittedConsent } from '../../domain/marketing/marketing-consent.js';
 import {
   AcquisitionListQueryDto,
   CaptureLeadDto,
+  PublicCreateCheckoutDto,
   PublicPlansQueryDto,
+  PublicSubmitApplicationDto,
   RecordAnalyticsDto,
 } from '../dto/acquisition.dto.js';
 
@@ -73,6 +82,10 @@ export class AcquisitionPublicController {
     private readonly captureLead: CaptureAcquisitionLeadUseCase,
     private readonly recordAnalytics: RecordAnalyticsEventUseCase,
     private readonly rateLimiter: AcquisitionPublicRateLimiter,
+    private readonly publicSubmitApplication: PublicSubmitApplicationUseCase,
+    private readonly publicCreateCheckout: PublicCreateCheckoutUseCase,
+    private readonly listPublicSegments: ListPublicSegmentPresentationsUseCase,
+    private readonly catalogView: GetCommercialCatalogViewUseCase,
   ) {}
 
   private async guard(
@@ -131,6 +144,43 @@ export class AcquisitionPublicController {
 
   @Public()
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('edge/acquisition/public/segments')
+  @ApiOperation({ summary: 'Public published segment presentations' })
+  async publicSegments(
+    @Query() query: AcquisitionListQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.guard(req, res, 'segments', 60);
+    return this.listPublicSegments.execute({
+      productId: query.productId,
+      limit: query.limit,
+      offset: query.offset,
+    });
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('edge/acquisition/public/catalog')
+  @ApiOperation({ summary: 'Public PUBLISHED commercial catalog (plans/packages/addons)' })
+  async publicCatalog(
+    @Query('productId') productId: string | undefined,
+    @Query('verticalId') verticalId: string | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.guard(req, res, 'catalog', 60);
+    return {
+      data: await this.catalogView.execute({
+        view: 'PUBLISHED',
+        productId: productId?.trim() || undefined,
+        verticalId: verticalId?.trim() || undefined,
+      }),
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Get('edge/acquisition/public/forms/:publicSlug')
   async publicForm(
     @Param('publicSlug') publicSlug: string,
@@ -152,6 +202,41 @@ export class AcquisitionPublicController {
   ) {
     await this.guard(req, res, 'checkout', 60);
     return this.getPublicCheckout.execute({ id });
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('edge/acquisition/public/checkout')
+  @ApiOperation({ summary: 'Create public checkout session (challenge + published plan)' })
+  async publicCreateCheckoutSession(
+    @Body() body: PublicCreateCheckoutDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.guard(req, res, 'checkout-create', 20);
+    return this.publicCreateCheckout.execute({
+      ...body,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('edge/acquisition/public/applications')
+  @ApiOperation({
+    summary: 'Public application: lead → prospect → draft/answers/submit (challenge required)',
+  })
+  async publicApplication(
+    @Body() body: PublicSubmitApplicationDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.guard(req, res, 'applications', 20);
+    return this.publicSubmitApplication.execute({
+      ...body,
+      consents: body.consents as SubmittedConsent[] | undefined,
+      correlationId: body.correlationId?.trim() || randomUUID(),
+    });
   }
 
   @Public()

@@ -51,3 +51,19 @@ jobs:
       - run: pnpm audit --audit-level=high
 
       - run: pnpm build
+
+  edge-route-alignment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Edge routes diff (informational)
+        run: python scripts/extract-edge-routes.py --diff
+
+      # Fail-closed: regenerate with `pnpm edge:routes:extract` then commit artifacts.
+      - name: Edge routes extract drift check (fail-closed)
+        run: python scripts/extract-edge-routes.py --check

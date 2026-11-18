@@ -32,6 +32,8 @@ import {
   assertMetricDefinitionPublishedForSnapshot,
   assertSeparationOfDuties,
 } from '../../domain/revenue-operations/revenue-policy.js';
+import { buildNamedForecastScenarios } from '../../domain/revenue-operations/forecast-calculator.js';
+import { assertCommissionCalcIsNotPayout } from '../../domain/revenue-operations/commission-payout-boundary.js';
 import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
 import {
   buildRevenueOutboxEvent,
@@ -770,6 +772,15 @@ export class CreateRevenueForecastUseCase {
   }
 }
 
+export class BuildNamedForecastScenariosUseCase {
+  execute(input: { actuals: number[] }) {
+    const actuals = Array.isArray(input.actuals)
+      ? input.actuals.filter((n) => n != null && Number.isFinite(Number(n))).map(Number)
+      : [];
+    return { data: buildNamedForecastScenarios(actuals) };
+  }
+}
+
 export class CreateForecastScenarioUseCase {
   constructor(
     private readonly repo: RevenueOperationsRepositoryPort,
@@ -1094,6 +1105,8 @@ export class CalculateCommissionUseCase {
     const ruleResults: Array<Record<string, unknown>> = [];
     const activeRules = rules.filter((r) => String(r.status).toUpperCase() === 'ACTIVE');
 
+    assertCommissionCalcIsNotPayout('CALCULATED');
+
     if (quality === 'UNAVAILABLE') {
       totalAmount = null;
     } else {
@@ -1279,6 +1292,7 @@ export class ApproveCommissionUseCase {
       );
     }
     assertSeparationOfDuties(current.calculatedBy, input.actorId);
+    assertCommissionCalcIsNotPayout('APPROVED');
 
     const correlationId = input.correlationId?.trim() || randomUUID();
     return withOutbox(this.outbox, async (client, enqueue) => {

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildNamedForecastScenarios,
   historicalTrendForecast,
   scenarioApplyAssumptions,
 } from './forecast-calculator.js';
+import {
+  assertCommissionCalcIsNotPayout,
+  evaluateCommissionPayoutGate,
+} from './commission-payout-boundary.js';
 
 describe('historicalTrendForecast', () => {
   it('projects next value from linear series', () => {
@@ -40,5 +45,37 @@ describe('scenarioApplyAssumptions', () => {
     const overridden = scenarioApplyAssumptions(base, { absoluteOverride: 999 });
     expect(overridden.scenarioValues).toEqual([999, 999]);
     expect(base).toEqual([50, 50]);
+  });
+});
+
+describe('named forecast scenarios', () => {
+  it('builds prudent / central / ambitieux without mutating actuals', () => {
+    const actuals = [100, 200];
+    const r = buildNamedForecastScenarios(actuals);
+    expect(actuals).toEqual([100, 200]);
+    expect(r.scenarios.PRUDENT.scenarioValues).toEqual([95, 190]);
+    expect(r.scenarios.CENTRAL.scenarioValues).toEqual([100, 200]);
+    expect(r.scenarios.AMBITIEUX.scenarioValues).toEqual([110, 220]);
+    expect(r.scenarios.PRUDENT.dataQuality).toBe('ESTIMATED');
+  });
+});
+
+describe('commission calc ≠ payout', () => {
+  it('forbids calc path from claiming paid stages', () => {
+    expect(() => assertCommissionCalcIsNotPayout('PAID')).toThrow(/not mark payout/i);
+    expect(() => assertCommissionCalcIsNotPayout('CALCULATED')).not.toThrow();
+  });
+
+  it('requires APPROVED + payout permission for payout gate', () => {
+    const blocked = evaluateCommissionPayoutGate({
+      stage: 'CALCULATED',
+      payoutPermissionGranted: true,
+    });
+    expect(blocked.mayInitiatePayout).toBe(false);
+    const ok = evaluateCommissionPayoutGate({
+      stage: 'APPROVED',
+      payoutPermissionGranted: true,
+    });
+    expect(ok.mayInitiatePayout).toBe(true);
   });
 });

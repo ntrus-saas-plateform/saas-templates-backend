@@ -72,6 +72,40 @@ describe('LabBbProvisioningAdapter', () => {
     expect(body.note).toBe('lab_bb');
     expect(body.initial_admin_contact?.email).toMatch(/@example\.invalid$/);
     expect(idem).toBe('corr-lab-bb-01');
+    // RGOM-E7.1 — lab no longer sends raw {}; minimal non-empty lab payload
+    expect((body as { entitlements?: Record<string, unknown> }).entitlements).toMatchObject({
+      modules: { identity: true },
+    });
+  });
+
+  it('forwards payload.entitlements when provided', async () => {
+    const provision = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      body: { status: 'accepted' },
+      text: '',
+    }));
+    const client = {
+      isConfigured: () => true,
+      provision,
+      getTenantReady: vi.fn(),
+    } as unknown as ControlV1BusinessBackendClient;
+
+    const adapter = new LabBbProvisioningAdapter(client);
+    await adapter.requestProvisioning({
+      ...baseInput,
+      payload: {
+        tenantId: 'tenant-ent-1',
+        entitlements: { modules: { pos: true, pharmacy: true } },
+        entitlementVersion: 3,
+      },
+    });
+
+    const call = provision.mock.calls[0] as unknown as
+      | [{ entitlements: Record<string, unknown>; entitlement_version: number }, string]
+      | undefined;
+    expect(call?.[0].entitlements).toEqual({ modules: { pos: true, pharmacy: true } });
+    expect(call?.[0].entitlement_version).toBe(3);
   });
 
   it('UNAVAILABLE on BB provision failure', async () => {

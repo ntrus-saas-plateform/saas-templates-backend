@@ -65,6 +65,7 @@ import {
   ListMarketingLandingPagesUseCase,
   ListMarketingMessageTemplatesUseCase,
   ListMarketingPerformanceSnapshotsUseCase,
+  ListMarketingSuppressionsUseCase,
   PublishMarketingContentUseCase,
   PublishMarketingLandingPageUseCase,
   RequestMarketingDeliveryUseCase,
@@ -138,6 +139,7 @@ export class EdgeMarketingController {
     private readonly createPerfSnapshot: CreateMarketingPerformanceSnapshotUseCase,
     private readonly listPerfSnapshots: ListMarketingPerformanceSnapshotsUseCase,
     private readonly summarizeAnalytics: SummarizeMarketingAnalyticsUseCase,
+    private readonly listSuppressions: ListMarketingSuppressionsUseCase,
     private readonly createSuppression: CreateMarketingSuppressionUseCase,
     private readonly resumeWaits: ResumeWaitingMarketingJourneysUseCase,
     private readonly assignLead: AssignMarketingLeadUseCase,
@@ -842,6 +844,19 @@ export class EdgeMarketingController {
     },
   ) {
     return { data: await this.createPerfSnapshot.execute(body) };
+  }
+
+  @Get('suppressions')
+  @RequireEdgePermissions('platform:marketing:lead:read')
+  async suppressions(@Query('activeOnly') activeOnly?: string) {
+    return {
+      data: await this.listSuppressions.execute({
+        activeOnly:
+          activeOnly === undefined
+            ? undefined
+            : activeOnly === 'true' || activeOnly === '1',
+      }),
+    };
   }
 
   @Post('suppressions')

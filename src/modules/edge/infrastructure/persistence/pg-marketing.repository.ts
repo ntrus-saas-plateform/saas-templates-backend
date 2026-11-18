@@ -1329,6 +1329,15 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     return rows.length > 0;
   }
 
+  async listSuppressions(opts?: { activeOnly?: boolean }) {
+    const rows = await this.q(
+      opts?.activeOnly
+        ? `SELECT * FROM edge_marketing_suppressions WHERE active = TRUE ORDER BY created_at DESC`
+        : `SELECT * FROM edge_marketing_suppressions ORDER BY created_at DESC`,
+    );
+    return rows.map((r) => this.mapSuppression(r));
+  }
+
   async createSuppression(input: {
     emailNormalized?: string | null;
     leadId?: string | null;
@@ -1338,10 +1347,23 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     const rows = await this.q(
       `INSERT INTO edge_marketing_suppressions (
          email_normalized, lead_id, channel, reason
-       ) VALUES ($1,$2,$3,$4) RETURNING id`,
+       ) VALUES ($1,$2,$3,$4) RETURNING *`,
       [input.emailNormalized ?? null, input.leadId ?? null, input.channel, input.reason],
     );
-    return { id: String(rows[0].id) };
+    return this.mapSuppression(rows[0]);
+  }
+
+  private mapSuppression(r: Record<string, unknown>) {
+    return {
+      id: String(r.id),
+      emailNormalized: (r.email_normalized as string | null) ?? null,
+      leadId: (r.lead_id as string | null) ?? null,
+      channel: String(r.channel),
+      reason: String(r.reason),
+      active: Boolean(r.active),
+      createdAt: new Date(String(r.created_at)),
+      deactivatedAt: r.deactivated_at ? new Date(String(r.deactivated_at)) : null,
+    };
   }
 
   async createJourney(input: {

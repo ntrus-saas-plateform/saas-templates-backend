@@ -26,6 +26,9 @@ import {
   AddPlanCapabilityUseCase,
   AddPriceBookEntryUseCase,
   ConfigureCommercialOfferUseCase,
+  EvaluateDiscountApprovalUseCase,
+  ListGeographicPricingUseCase,
+  RunSolutionWizardUseCase,
   CreateCommercialAddonUseCase,
   CreateCommercialMarketUseCase,
   CreateCommercialPlanUseCase,
@@ -119,6 +122,9 @@ export class EdgeCommercialController {
     private readonly evaluateReadiness: EvaluateCommercialPlanReadinessUseCase,
     private readonly publishPlan: PublishCommercialPlanUseCase,
     private readonly configureOffer: ConfigureCommercialOfferUseCase,
+    private readonly solutionWizard: RunSolutionWizardUseCase,
+    private readonly geoPricing: ListGeographicPricingUseCase,
+    private readonly discountApproval: EvaluateDiscountApprovalUseCase,
     private readonly createPersona: CreatePersonaUseCase,
     private readonly listPersonas: ListPersonasUseCase,
     private readonly createValueProp: CreateValuePropositionUseCase,
@@ -618,6 +624,43 @@ export class EdgeCommercialController {
     },
   ) {
     return { data: await this.configureOffer.execute(body) };
+  }
+
+  @Post('offers/wizard')
+  @RequireEdgePermissions('platform:commercial:catalog:read')
+  runWizard(
+    @Body()
+    body: {
+      productCode: 'SYNTIX_PHARMA' | 'OKAPI_RESTAURANT';
+      activityCodes?: string[];
+      profileCode?: string | null;
+      operatingModelCodes?: string[];
+      sites?: number | null;
+      users?: number | null;
+      needs?: string[];
+      mode?: 'MANUAL' | 'RULE_BASED' | 'GUIDED';
+      correctedProfileCode?: string | null;
+    },
+  ) {
+    return this.solutionWizard.execute(body);
+  }
+
+  @Get('pricing/geographic-rules')
+  @RequireEdgePermissions('platform:commercial:catalog:read')
+  listGeoPricing(@Query('country') country?: string) {
+    return this.geoPricing.execute(country);
+  }
+
+  @Post('discounts/evaluate-approval')
+  @RequireEdgePermissions('platform:commercial:catalog:read')
+  evaluateDiscount(
+    @Body()
+    body: {
+      discountPercent?: number | null;
+      actorTier: 'AE' | 'MANAGER' | 'DIRECTOR' | 'CFO';
+    },
+  ) {
+    return this.discountApproval.execute(body);
   }
 
   @Get('personas')

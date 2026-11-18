@@ -19,13 +19,15 @@ import type { EnvironmentConfig } from '../../../../shared/configuration/environ
 import { UnavailablePaymentProviderAdapter } from './unavailable-payment.adapter.js';
 import { HttpWebhookPaymentProviderAdapter } from './http-webhook-payment.adapter.js';
 import { SandboxPaymentProviderAdapter } from './sandbox-payment.adapter.js';
+import { HyperswitchPaymentProviderAdapter } from './hyperswitch-payment.adapter.js';
 
-type PaymentAdapterMode = 'unavailable' | 'http_webhook' | 'sandbox';
+type PaymentAdapterMode = 'unavailable' | 'http_webhook' | 'sandbox' | 'hyperswitch';
 
 /**
  * Routes payment calls by BILLING_PAYMENT_ADAPTER (or auto from webhook URL).
  * Default UNAVAILABLE — never invents success without provider.
  * Sandbox is never auto-selected; set BILLING_PAYMENT_ADAPTER=sandbox explicitly.
+ * Hyperswitch = orchestration only (never catalogue SoT).
  */
 @Injectable()
 export class ResolvingPaymentProviderAdapter implements PaymentProviderPort {
@@ -34,12 +36,14 @@ export class ResolvingPaymentProviderAdapter implements PaymentProviderPort {
     private readonly unavailable: UnavailablePaymentProviderAdapter,
     private readonly httpWebhook: HttpWebhookPaymentProviderAdapter,
     private readonly sandbox: SandboxPaymentProviderAdapter,
+    private readonly hyperswitch: HyperswitchPaymentProviderAdapter,
   ) {}
 
   private resolveMode(): PaymentAdapterMode {
     const configured = this.config.BILLING_PAYMENT_ADAPTER;
     if (configured === 'sandbox') return 'sandbox';
     if (configured === 'http_webhook') return 'http_webhook';
+    if (configured === 'hyperswitch') return 'hyperswitch';
     if (configured === 'auto') {
       // auto: http_webhook only when URL is set — never auto-select sandbox
       if (this.config.BILLING_PAYMENT_WEBHOOK_URL) return 'http_webhook';
@@ -52,6 +56,7 @@ export class ResolvingPaymentProviderAdapter implements PaymentProviderPort {
     const mode = this.resolveMode();
     if (mode === 'sandbox') return this.sandbox;
     if (mode === 'http_webhook') return this.httpWebhook;
+    if (mode === 'hyperswitch') return this.hyperswitch;
     return this.unavailable;
   }
 

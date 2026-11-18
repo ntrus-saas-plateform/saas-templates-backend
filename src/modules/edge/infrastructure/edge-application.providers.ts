@@ -133,6 +133,7 @@ import {
   ListMarketingLandingPagesUseCase,
   ListMarketingMessageTemplatesUseCase,
   ListMarketingPerformanceSnapshotsUseCase,
+  ListMarketingSuppressionsUseCase,
   PublishMarketingContentUseCase,
   PublishMarketingLandingPageUseCase,
   RequestMarketingDeliveryUseCase,
@@ -149,8 +150,15 @@ import { MARKETING_REPOSITORY_PORT } from '../domain/ports/marketing-repository.
 import { SALES_REPOSITORY_PORT } from '../domain/ports/sales-repository.port.js';
 import { SALES_COMMERCE_REPOSITORY_PORT } from '../domain/ports/sales-commerce-repository.port.js';
 import { SUBSCRIPTION_REPOSITORY_PORT } from '../domain/ports/subscription-repository.port.js';
+import { SUBSCRIPTION_TENANT_ASSOCIATION_PORT } from '../domain/ports/subscription-tenant-association.port.js';
 import { SUBSCRIPTION_BILLING_COORDINATION_PORT } from '../domain/subscription/billing-coordination.port.js';
 import { SUBSCRIPTION_PROVISIONING_COORDINATION_PORT } from '../domain/subscription/provisioning-coordination.port.js';
+import {
+  BindSubscriptionTenantAssociationUseCase,
+  CloseSubscriptionTenantAssociationUseCase,
+  GetActiveSubscriptionTenantAssociationUseCase,
+  ListSubscriptionTenantAssociationsUseCase,
+} from '../application/subscription/subscription-tenant-association.use-cases.js';
 import { UnavailableSubscriptionBillingAdapter } from './subscription/unavailable-billing.adapter.js';
 import { UnavailableSubscriptionProvisioningAdapter } from './subscription/unavailable-provisioning.adapter.js';
 import { PROVISIONING_REPOSITORY_PORT } from '../domain/provisioning/provisioning-repository.port.js';
@@ -459,6 +467,11 @@ import {
   TransitionProspectUseCase,
 } from '../application/acquisition/acquisition.use-cases.js';
 import {
+  ListPublicSegmentPresentationsUseCase,
+  PublicCreateCheckoutUseCase,
+  PublicSubmitApplicationUseCase,
+} from '../application/acquisition/public-acquire.use-cases.js';
+import {
   REVENUE_OPERATIONS_REPOSITORY_PORT,
   REVENUE_PROJECTION_INPUT_PORT,
 } from '../domain/revenue-operations/revenue-repository.port.js';
@@ -476,6 +489,7 @@ import {
   CreateBusinessAlertPolicyUseCase,
   CreateBusinessDecisionUseCase,
   CreateCommissionPlanUseCase,
+  BuildNamedForecastScenariosUseCase,
   CreateForecastScenarioUseCase,
   CreateLeakageCaseUseCase,
   CreateRevenueForecastUseCase,
@@ -650,9 +664,15 @@ import {
 import { P5_AUTHORIZATION_STATUS_PORT } from '../domain/provisioning/p5-authorization-status.port.js';
 import { FailClosedP5AuthorizationStatusAdapter } from './provisioning/fail-closed-p5-status.adapter.js';
 import { EdgeP5S2STokenClient } from './provisioning/edge-p5-s2s-token.client.js';
+import { BbControlProvisioningAdapter } from './provisioning/bb-control-provisioning.adapter.js';
 import { DurableSubscriptionProvisioningAdapter } from './provisioning/durable-provisioning.adapter.js';
 import { LabBbProvisioningAdapter } from './provisioning/lab-bb-provisioning.adapter.js';
+import { PgProvisioningJobRepository } from './provisioning/pg-provisioning-job.repository.js';
 import { ResolvingSubscriptionProvisioningAdapter } from './provisioning/resolving-provisioning.adapter.js';
+import { PROVISIONING_JOB_PORT } from '../domain/provisioning/provisioning-job.port.js';
+import { ProcessProvisioningJobsUseCase } from '../application/provisioning/process-provisioning-jobs.use-case.js';
+import { ControlPlaneDatabaseService } from '../../../shared/database/control-plane-database.service.js';
+import { EdgeMetricsService } from '../../../shared/observability/edge-metrics.service.js';
 import { loadProvisioningTrustMaterial } from './provisioning/trust-material.js';
 import {
   AcceptProvisioningAuthorizationUseCase,
@@ -689,6 +709,7 @@ import {
   ListSubscriptionItemsUseCase,
   ListSubscriptionsUseCase,
   ListTrialsUseCase,
+  MarkSubscriptionPastDueUseCase,
   PublishEntitlementsUseCase,
   ReactivateSubscriptionUseCase,
   RenewSubscriptionUseCase,
@@ -701,6 +722,13 @@ import {
   TerminateSubscriptionUseCase,
   ResolveSubscriptionIdempotencyUseCase,
 } from '../application/subscription/subscription.use-cases.js';
+import { AdvanceProvisioningAfterPaidUseCase } from '../application/subscription/advance-provisioning-after-paid.use-case.js';
+import {
+  ApplyDunningPolicyUseCase,
+  ProcessDunningBatchUseCase,
+} from '../application/subscription/subscription-billing-lifecycle.use-cases.js';
+import { GetBillingCashTruthUseCase } from '../application/billing/billing-cash-truth.use-cases.js';
+import { DispatchDunningNotificationUseCase } from '../application/billing/dunning-notification.use-cases.js';
 import {
   ApproveChangeRequestUseCase,
   GetCoordinationUseCase,
@@ -710,6 +738,7 @@ import {
   ListSubscriptionPublicationsUseCase,
   ListSubscriptionSuspensionsUseCase,
   ProcessDueScheduledChangesUseCase,
+  ProcessEntitlementDriftBatchUseCase,
   ProposeRenewalUseCase,
   ReconcileEntitlementsUseCase,
   RejectChangeRequestUseCase,
@@ -735,7 +764,25 @@ import { PAYMENT_PROVIDER_PORT } from '../domain/billing/payment-provider.port.j
 import { UnavailablePaymentProviderAdapter } from './billing/unavailable-payment.adapter.js';
 import { HttpWebhookPaymentProviderAdapter } from './billing/http-webhook-payment.adapter.js';
 import { SandboxPaymentProviderAdapter } from './billing/sandbox-payment.adapter.js';
+import { HyperswitchPaymentProviderAdapter } from './billing/hyperswitch-payment.adapter.js';
 import { ResolvingPaymentProviderAdapter } from './billing/resolving-payment.adapter.js';
+import { ConfigureBillingCadenceUseCase } from '../application/billing/configure-billing-cadence.use-case.js';
+import { ListGeoPaymentMethodsUseCase } from '../application/billing/geo-payment-methods.use-cases.js';
+import {
+  ComputeChurnRiskUseCase,
+  ComputeCustomerHealthScoreUseCase,
+  EvaluateExpansionSignalsUseCase,
+  IngestAdoptionEventUseCase,
+  ListAdoptionEventsUseCase,
+  ListAhaMomentsUseCase,
+} from '../application/customer-success/customer-success.use-cases.js';
+import { CUSTOMER_SUCCESS_REPOSITORY_PORT } from '../domain/ports/customer-success-repository.port.js';
+import {
+  ListPartnerOpportunitiesUseCase,
+  RegisterPartnerOpportunityUseCase,
+  TransitionPartnerOpportunityUseCase,
+} from '../application/partners/partner-opportunity.use-cases.js';
+import { PARTNER_OPPORTUNITY_REPOSITORY_PORT } from '../domain/ports/partner-opportunity-repository.port.js';
 import {
   AppendJournalEntryUseCase,
   ApproveInvoiceUseCase,
@@ -881,6 +928,11 @@ import {
   UpdateOpportunityUseCase,
 } from '../application/sales/sales-opportunity.use-cases.js';
 import {
+  EvaluateBantUseCase,
+  GetSalesEngineBeachheadUseCase,
+  ScoreLeadUseCase,
+} from '../application/sales/sales-engine-beachhead.use-cases.js';
+import {
   AcceptSalesHandoffUseCase,
   CompleteNeedsAssessmentUseCase,
   CompleteSalesActivityUseCase,
@@ -950,6 +1002,9 @@ import {
   ListPriceBooksUseCase,
   ListPricingUnitsUseCase,
   ConfigureCommercialOfferUseCase,
+  EvaluateDiscountApprovalUseCase,
+  ListGeographicPricingUseCase,
+  RunSolutionWizardUseCase,
   CreateDiscountPolicyUseCase,
   CreatePersonaUseCase,
   CreateValuePropositionUseCase,
@@ -1870,6 +1925,18 @@ export const edgeApplicationProviders: Provider[] = [
     ],
   },
   {
+    provide: RunSolutionWizardUseCase,
+    useFactory: () => new RunSolutionWizardUseCase(),
+  },
+  {
+    provide: ListGeographicPricingUseCase,
+    useFactory: () => new ListGeographicPricingUseCase(),
+  },
+  {
+    provide: EvaluateDiscountApprovalUseCase,
+    useFactory: () => new EvaluateDiscountApprovalUseCase(),
+  },
+  {
     provide: CreatePersonaUseCase,
     useFactory: (commercial) => new CreatePersonaUseCase(commercial),
     inject: [COMMERCIAL_REPOSITORY_PORT],
@@ -2370,6 +2437,11 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [MARKETING_REPOSITORY_PORT],
   },
   {
+    provide: ListMarketingSuppressionsUseCase,
+    useFactory: (marketing) => new ListMarketingSuppressionsUseCase(marketing),
+    inject: [MARKETING_REPOSITORY_PORT],
+  },
+  {
     provide: CreateMarketingSuppressionUseCase,
     useFactory: (marketing) => new CreateMarketingSuppressionUseCase(marketing),
     inject: [MARKETING_REPOSITORY_PORT],
@@ -2378,6 +2450,18 @@ export const edgeApplicationProviders: Provider[] = [
     provide: SalesOverviewUseCase,
     useFactory: (sales) => new SalesOverviewUseCase(sales),
     inject: [SALES_REPOSITORY_PORT],
+  },
+  {
+    provide: GetSalesEngineBeachheadUseCase,
+    useFactory: () => new GetSalesEngineBeachheadUseCase(),
+  },
+  {
+    provide: ScoreLeadUseCase,
+    useFactory: () => new ScoreLeadUseCase(),
+  },
+  {
+    provide: EvaluateBantUseCase,
+    useFactory: () => new EvaluateBantUseCase(),
   },
   {
     provide: CreateSalesTeamUseCase,
@@ -2965,19 +3049,49 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [CONTROL_V1_BB_CLIENT_PORT],
   },
   {
+    provide: BbControlProvisioningAdapter,
+    useFactory: (bb: ControlV1BusinessBackendClient, config: EnvironmentConfig) =>
+      new BbControlProvisioningAdapter(bb, config),
+    inject: [CONTROL_V1_BB_CLIENT_PORT, APP_CONFIG],
+  },
+  {
+    provide: PROVISIONING_JOB_PORT,
+    useFactory: (db: ControlPlaneDatabaseService) => new PgProvisioningJobRepository(db),
+    inject: [ControlPlaneDatabaseService],
+  },
+  {
+    provide: ProcessProvisioningJobsUseCase,
+    useFactory: (jobs, request, advance, metrics: EdgeMetricsService) =>
+      new ProcessProvisioningJobsUseCase(jobs, request, advance, metrics),
+    inject: [
+      PROVISIONING_JOB_PORT,
+      RequestProvisioningUseCase,
+      AdvanceProvisioningAfterPaidUseCase,
+      EdgeMetricsService,
+    ],
+  },
+  {
     provide: ResolvingSubscriptionProvisioningAdapter,
     useFactory: (
       config: EnvironmentConfig,
       unavailable: UnavailableSubscriptionProvisioningAdapter,
       durable: DurableSubscriptionProvisioningAdapter,
       labBb: LabBbProvisioningAdapter,
+      bbControl: BbControlProvisioningAdapter,
     ) =>
-      new ResolvingSubscriptionProvisioningAdapter(config, unavailable, durable, labBb),
+      new ResolvingSubscriptionProvisioningAdapter(
+        config,
+        unavailable,
+        durable,
+        labBb,
+        bbControl,
+      ),
     inject: [
       APP_CONFIG,
       UnavailableSubscriptionProvisioningAdapter,
       DurableSubscriptionProvisioningAdapter,
       LabBbProvisioningAdapter,
+      BbControlProvisioningAdapter,
     ],
   },
   {
@@ -3305,8 +3419,8 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: GetSubscriptionWorkspaceUseCase,
-    useFactory: (s) => new GetSubscriptionWorkspaceUseCase(s),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT],
+    useFactory: (s, assoc) => new GetSubscriptionWorkspaceUseCase(s, assoc),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, SUBSCRIPTION_TENANT_ASSOCIATION_PORT],
   },
   {
     provide: GetSubscriptionHistoryUseCase,
@@ -3350,18 +3464,69 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ActivateSubscriptionUseCase,
-    useFactory: (s, outbox) => new ActivateSubscriptionUseCase(s, outbox),
+    useFactory: (s, outbox, billing) =>
+      new ActivateSubscriptionUseCase(s, outbox, billing),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      BILLING_REPOSITORY_PORT,
+    ],
+  },
+  {
+    provide: MarkSubscriptionPastDueUseCase,
+    useFactory: (s, outbox) => new MarkSubscriptionPastDueUseCase(s, outbox),
     inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
   {
     provide: SuspendSubscriptionUseCase,
-    useFactory: (s, outbox) => new SuspendSubscriptionUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, bb, assoc) =>
+      new SuspendSubscriptionUseCase(s, outbox, bb, assoc),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      CONTROL_V1_BB_CLIENT_PORT,
+      SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
+    ],
   },
   {
     provide: ReactivateSubscriptionUseCase,
-    useFactory: (s, outbox) => new ReactivateSubscriptionUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, bb, assoc, publish) =>
+      new ReactivateSubscriptionUseCase(s, outbox, bb, assoc, publish),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      CONTROL_V1_BB_CLIENT_PORT,
+      SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
+      PublishEntitlementsUseCase,
+    ],
+  },
+  {
+    provide: ApplyDunningPolicyUseCase,
+    useFactory: (b, s, pastDue, suspend, reactivate) =>
+      new ApplyDunningPolicyUseCase(b, s, pastDue, suspend, reactivate),
+    inject: [
+      BILLING_REPOSITORY_PORT,
+      SUBSCRIPTION_REPOSITORY_PORT,
+      MarkSubscriptionPastDueUseCase,
+      SuspendSubscriptionUseCase,
+      ReactivateSubscriptionUseCase,
+    ],
+  },
+  {
+    provide: ProcessDunningBatchUseCase,
+    useFactory: (b, apply) => new ProcessDunningBatchUseCase(b, apply),
+    inject: [BILLING_REPOSITORY_PORT, ApplyDunningPolicyUseCase],
+  },
+  {
+    provide: GetBillingCashTruthUseCase,
+    useFactory: (b, s) => new GetBillingCashTruthUseCase(b, s),
+    inject: [BILLING_REPOSITORY_PORT, SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: DispatchDunningNotificationUseCase,
+    useFactory: (b, notifications) =>
+      new DispatchDunningNotificationUseCase(b, notifications),
+    inject: [BILLING_REPOSITORY_PORT, ACQUISITION_NOTIFICATION_PORT],
   },
   {
     provide: CancelSubscriptionUseCase,
@@ -3395,8 +3560,12 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: PublishEntitlementsUseCase,
-    useFactory: (s, outbox) => new PublishEntitlementsUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, bb) => new PublishEntitlementsUseCase(s, outbox, bb),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      CONTROL_V1_BB_CLIENT_PORT,
+    ],
   },
   {
     provide: CreateChangeRequestUseCase,
@@ -3410,8 +3579,14 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ExecuteChangeRequestUseCase,
-    useFactory: (s, outbox) => new ExecuteChangeRequestUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, assoc, publish) =>
+      new ExecuteChangeRequestUseCase(s, outbox, assoc, publish),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
+      PublishEntitlementsUseCase,
+    ],
   },
   {
     provide: RenewSubscriptionUseCase,
@@ -3454,8 +3629,13 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ConfirmBillingCoordinationUseCase,
-    useFactory: (s, outbox) => new ConfirmBillingCoordinationUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, billing) =>
+      new ConfirmBillingCoordinationUseCase(s, outbox, billing),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      BILLING_REPOSITORY_PORT,
+    ],
   },
   {
     provide: RequestProvisioningUseCase,
@@ -3468,8 +3648,47 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: CompleteProvisioningUseCase,
-    useFactory: (s, outbox) => new CompleteProvisioningUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, bind, provisioning) =>
+      new CompleteProvisioningUseCase(s, outbox, bind, provisioning),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      BindSubscriptionTenantAssociationUseCase,
+      SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
+    ],
+  },
+  {
+    provide: AdvanceProvisioningAfterPaidUseCase,
+    useFactory: (s, p, complete, calc, publish, activate) =>
+      new AdvanceProvisioningAfterPaidUseCase(s, p, complete, calc, publish, activate),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
+      CompleteProvisioningUseCase,
+      CalculateAndSnapshotEntitlementsUseCase,
+      PublishEntitlementsUseCase,
+      ActivateSubscriptionUseCase,
+    ],
+  },
+  {
+    provide: BindSubscriptionTenantAssociationUseCase,
+    useFactory: (s, a) => new BindSubscriptionTenantAssociationUseCase(s, a),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, SUBSCRIPTION_TENANT_ASSOCIATION_PORT],
+  },
+  {
+    provide: ListSubscriptionTenantAssociationsUseCase,
+    useFactory: (a) => new ListSubscriptionTenantAssociationsUseCase(a),
+    inject: [SUBSCRIPTION_TENANT_ASSOCIATION_PORT],
+  },
+  {
+    provide: GetActiveSubscriptionTenantAssociationUseCase,
+    useFactory: (a) => new GetActiveSubscriptionTenantAssociationUseCase(a),
+    inject: [SUBSCRIPTION_TENANT_ASSOCIATION_PORT],
+  },
+  {
+    provide: CloseSubscriptionTenantAssociationUseCase,
+    useFactory: (s, a) => new CloseSubscriptionTenantAssociationUseCase(s, a),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, SUBSCRIPTION_TENANT_ASSOCIATION_PORT],
   },
   {
     provide: ResolveSubscriptionIdempotencyUseCase,
@@ -3503,8 +3722,14 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ReconcileEntitlementsUseCase,
-    useFactory: (s, outbox) => new ReconcileEntitlementsUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, bb, assoc) =>
+      new ReconcileEntitlementsUseCase(s, outbox, bb, assoc),
+    inject: [
+      SUBSCRIPTION_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      CONTROL_V1_BB_CLIENT_PORT,
+      SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
+    ],
   },
   {
     provide: ListPoliciesUseCase,
@@ -3546,13 +3771,69 @@ export const edgeApplicationProviders: Provider[] = [
     useFactory: (s, exec) => new ProcessDueScheduledChangesUseCase(s, exec),
     inject: [SUBSCRIPTION_REPOSITORY_PORT, ExecuteChangeRequestUseCase],
   },
+  {
+    provide: ProcessEntitlementDriftBatchUseCase,
+    useFactory: (s, reconcile) => new ProcessEntitlementDriftBatchUseCase(s, reconcile),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ReconcileEntitlementsUseCase],
+  },
   UnavailablePaymentProviderAdapter,
   HttpWebhookPaymentProviderAdapter,
   SandboxPaymentProviderAdapter,
+  HyperswitchPaymentProviderAdapter,
   ResolvingPaymentProviderAdapter,
   {
     provide: PAYMENT_PROVIDER_PORT,
     useClass: ResolvingPaymentProviderAdapter,
+  },
+  {
+    provide: ConfigureBillingCadenceUseCase,
+    useFactory: (b, s) => new ConfigureBillingCadenceUseCase(b, s),
+    inject: [BILLING_REPOSITORY_PORT, SUBSCRIPTION_REPOSITORY_PORT],
+  },
+  {
+    provide: ListGeoPaymentMethodsUseCase,
+    useFactory: () => new ListGeoPaymentMethodsUseCase(),
+  },
+  {
+    provide: ListAhaMomentsUseCase,
+    useFactory: () => new ListAhaMomentsUseCase(),
+  },
+  {
+    provide: ComputeCustomerHealthScoreUseCase,
+    useFactory: () => new ComputeCustomerHealthScoreUseCase(),
+  },
+  {
+    provide: IngestAdoptionEventUseCase,
+    useFactory: (cs) => new IngestAdoptionEventUseCase(cs),
+    inject: [CUSTOMER_SUCCESS_REPOSITORY_PORT],
+  },
+  {
+    provide: ListAdoptionEventsUseCase,
+    useFactory: (cs) => new ListAdoptionEventsUseCase(cs),
+    inject: [CUSTOMER_SUCCESS_REPOSITORY_PORT],
+  },
+  {
+    provide: EvaluateExpansionSignalsUseCase,
+    useFactory: () => new EvaluateExpansionSignalsUseCase(),
+  },
+  {
+    provide: ComputeChurnRiskUseCase,
+    useFactory: () => new ComputeChurnRiskUseCase(),
+  },
+  {
+    provide: RegisterPartnerOpportunityUseCase,
+    useFactory: (repo) => new RegisterPartnerOpportunityUseCase(repo),
+    inject: [PARTNER_OPPORTUNITY_REPOSITORY_PORT],
+  },
+  {
+    provide: ListPartnerOpportunitiesUseCase,
+    useFactory: (repo) => new ListPartnerOpportunitiesUseCase(repo),
+    inject: [PARTNER_OPPORTUNITY_REPOSITORY_PORT],
+  },
+  {
+    provide: TransitionPartnerOpportunityUseCase,
+    useFactory: (repo) => new TransitionPartnerOpportunityUseCase(repo),
+    inject: [PARTNER_OPPORTUNITY_REPOSITORY_PORT],
   },
   {
     provide: CreateBillingAccountUseCase,
@@ -3616,13 +3897,22 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: MarkInvoicePaidIfSettledUseCase,
-    useFactory: (b, outbox, confirm, requestProvisioning) =>
-      new MarkInvoicePaidIfSettledUseCase(b, outbox, confirm, requestProvisioning),
+    useFactory: (b, outbox, confirm, requestProvisioning, advance, jobs) =>
+      new MarkInvoicePaidIfSettledUseCase(
+        b,
+        outbox,
+        confirm,
+        requestProvisioning,
+        advance,
+        jobs,
+      ),
     inject: [
       BILLING_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
       ConfirmBillingCoordinationUseCase,
       RequestProvisioningUseCase,
+      AdvanceProvisioningAfterPaidUseCase,
+      PROVISIONING_JOB_PORT,
     ],
   },
   {
@@ -3653,8 +3943,12 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: OpenCollectionCaseUseCase,
-    useFactory: (b, outbox) => new OpenCollectionCaseUseCase(b, outbox),
-    inject: [BILLING_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (b, outbox, apply) => new OpenCollectionCaseUseCase(b, outbox, apply),
+    inject: [
+      BILLING_REPOSITORY_PORT,
+      ControlPlaneOutboxTransactionService,
+      ApplyDunningPolicyUseCase,
+    ],
   },
   {
     provide: RecordDunningAttemptUseCase,
@@ -3753,13 +4047,13 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: EscalateCollectionCaseUseCase,
-    useFactory: (b) => new EscalateCollectionCaseUseCase(b),
-    inject: [BILLING_REPOSITORY_PORT],
+    useFactory: (b, apply) => new EscalateCollectionCaseUseCase(b, apply),
+    inject: [BILLING_REPOSITORY_PORT, ApplyDunningPolicyUseCase],
   },
   {
     provide: ResolveCollectionCaseUseCase,
-    useFactory: (b) => new ResolveCollectionCaseUseCase(b),
-    inject: [BILLING_REPOSITORY_PORT],
+    useFactory: (b, apply) => new ResolveCollectionCaseUseCase(b, apply),
+    inject: [BILLING_REPOSITORY_PORT, ApplyDunningPolicyUseCase],
   },
   {
     provide: ListBillingPoliciesUseCase,
@@ -6600,6 +6894,35 @@ export const edgeApplicationProviders: Provider[] = [
     inject: [ACQUISITION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
   },
   {
+    provide: PublicSubmitApplicationUseCase,
+    useFactory: (form, lead, promote, draft, answers, submit) =>
+      new PublicSubmitApplicationUseCase(form, lead, promote, draft, answers, submit),
+    inject: [
+      GetPublicFormBySlugUseCase,
+      CaptureAcquisitionLeadUseCase,
+      PromoteLeadUseCase,
+      CreateApplicationDraftUseCase,
+      SaveApplicationAnswersUseCase,
+      SubmitApplicationUseCase,
+    ],
+  },
+  {
+    provide: PublicCreateCheckoutUseCase,
+    useFactory: (repo, checkout, lead, promote) =>
+      new PublicCreateCheckoutUseCase(repo, checkout, lead, promote),
+    inject: [
+      ACQUISITION_REPOSITORY_PORT,
+      CreateCheckoutSessionUseCase,
+      CaptureAcquisitionLeadUseCase,
+      PromoteLeadUseCase,
+    ],
+  },
+  {
+    provide: ListPublicSegmentPresentationsUseCase,
+    useFactory: (repo) => new ListPublicSegmentPresentationsUseCase(repo),
+    inject: [ACQUISITION_REPOSITORY_PORT],
+  },
+  {
     provide: CreateFormSchemaUseCase,
     useFactory: (repo, outbox, products) => new CreateFormSchemaUseCase(repo, outbox, products),
     inject: [
@@ -6914,6 +7237,10 @@ export const edgeApplicationProviders: Provider[] = [
     provide: CreateForecastScenarioUseCase,
     useFactory: (repo, outbox) => new CreateForecastScenarioUseCase(repo, outbox),
     inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: BuildNamedForecastScenariosUseCase,
+    useFactory: () => new BuildNamedForecastScenariosUseCase(),
   },
   {
     provide: CreateLeakageCaseUseCase,

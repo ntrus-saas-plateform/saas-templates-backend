@@ -134,6 +134,29 @@ export function createSubscriptionActivationFailedEvent(params: {
   });
 }
 
+export function createSubscriptionPastDueEvent(params: {
+  actorId: string;
+  correlationId: string;
+  subscriptionId: string;
+  reason: string;
+  collectionCaseId?: string | null;
+  graceEndsAt?: string | null;
+}) {
+  return subscriptionEvent({
+    eventType: 'subscription.past_due.v1',
+    actorId: params.actorId,
+    correlationId: params.correlationId,
+    aggregateType: 'SUBSCRIPTION',
+    aggregateId: params.subscriptionId,
+    payload: {
+      subscriptionId: params.subscriptionId,
+      reason: params.reason,
+      collectionCaseId: params.collectionCaseId ?? null,
+      graceEndsAt: params.graceEndsAt ?? null,
+    },
+  });
+}
+
 export function createSubscriptionSuspendedEvent(params: {
   actorId: string;
   correlationId: string;

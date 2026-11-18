@@ -42,6 +42,36 @@ describe('ControlV1BusinessBackendClient', () => {
     expect(headers['X-Edge-Control-Token']).toBe('lab-token');
   });
 
+  it('PUT entitlements with idempotency key', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ status: 'applied' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const client = new ControlV1BusinessBackendClient({
+      baseUrl: 'https://bb.example',
+      token: 'tok',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const res = await client.putEntitlements(
+      'tenant-9',
+      {
+        entitlement_version: 2,
+        entitlements: { modules: { pos: true } },
+        grants: [{ code: 'pos', enabled: true }],
+      },
+      'idem-ent-1',
+    );
+    expect(res.ok).toBe(true);
+    const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit] | undefined;
+    expect(String(call?.[0])).toBe('https://bb.example/control/v1/tenants/tenant-9/entitlements');
+    expect(call?.[1]?.method).toBe('PUT');
+    const headers = call?.[1]?.headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBe('idem-ent-1');
+  });
+
   it('GET tenant ready and state', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (String(url).endsWith('/ready')) {

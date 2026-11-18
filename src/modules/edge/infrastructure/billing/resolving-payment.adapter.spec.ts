@@ -24,13 +24,21 @@ function makeAdapter(config: Partial<EnvironmentConfig>) {
       providerIntentRef: 'sandbox_1',
     })),
   };
+  const hyperswitch = {
+    createPaymentIntent: vi.fn(async () => ({
+      outcome: 'REQUESTED',
+      provider: 'hyperswitch',
+      providerIntentRef: 'hs_1',
+    })),
+  };
   const adapter = new ResolvingPaymentProviderAdapter(
     config as EnvironmentConfig,
     unavailable as never,
     httpWebhook as never,
     sandbox as never,
+    hyperswitch as never,
   );
-  return { adapter, unavailable, httpWebhook, sandbox };
+  return { adapter, unavailable, httpWebhook, sandbox, hyperswitch };
 }
 
 describe('ResolvingPaymentProviderAdapter multi-PSP routing', () => {
@@ -76,6 +84,15 @@ describe('ResolvingPaymentProviderAdapter multi-PSP routing', () => {
     });
     await adapter.createPaymentIntent(input);
     expect(httpWebhook.createPaymentIntent).toHaveBeenCalledOnce();
+    expect(sandbox.createPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it('routes hyperswitch orchestration adapter when configured', async () => {
+    const { adapter, hyperswitch, sandbox } = makeAdapter({
+      BILLING_PAYMENT_ADAPTER: 'hyperswitch',
+    });
+    await adapter.createPaymentIntent(input);
+    expect(hyperswitch.createPaymentIntent).toHaveBeenCalledOnce();
     expect(sandbox.createPaymentIntent).not.toHaveBeenCalled();
   });
 });

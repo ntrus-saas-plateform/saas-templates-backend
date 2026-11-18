@@ -15,6 +15,7 @@ import {
   CreateBusinessAlertPolicyUseCase,
   CreateBusinessDecisionUseCase,
   CreateCommissionPlanUseCase,
+  BuildNamedForecastScenariosUseCase,
   CreateForecastScenarioUseCase,
   CreateLeakageCaseUseCase,
   CreateRevenueForecastUseCase,
@@ -98,6 +99,7 @@ export class EdgeRevenueOperationsController {
     private readonly computeChurn: ComputeChurnRatesUseCase,
     private readonly createForecast: CreateRevenueForecastUseCase,
     private readonly createScenario: CreateForecastScenarioUseCase,
+    private readonly namedForecastScenarios: BuildNamedForecastScenariosUseCase,
     private readonly createLeakage: CreateLeakageCaseUseCase,
     private readonly transitionLeakage: TransitionLeakageCaseUseCase,
     private readonly createCommissionPlan: CreateCommissionPlanUseCase,
@@ -308,6 +310,16 @@ export class EdgeRevenueOperationsController {
       forecastId: id,
       ...body,
     });
+  }
+
+  @Post('edge/revenue/forecasts/named-scenarios')
+  @RequireEdgePermissions('platform:revenue:forecast')
+  @ApiOperation({
+    summary:
+      'Build PRUDENT / CENTRAL / AMBITIEUX scenario copies from actuals (ESTIMATED; never mutates MEASURED)',
+  })
+  buildNamedForecastScenarios(@Body() body: { actuals: number[] }) {
+    return this.namedForecastScenarios.execute({ actuals: body.actuals ?? [] });
   }
 
   // --- Leakage / assurance / reconcile ------------------------------------

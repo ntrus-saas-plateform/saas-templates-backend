@@ -202,6 +202,17 @@ export type MarketingMessageTemplate = {
   readonly version: number;
 };
 
+export type MarketingSuppression = {
+  readonly id: string;
+  readonly emailNormalized: string | null;
+  readonly leadId: string | null;
+  readonly channel: string;
+  readonly reason: string;
+  readonly active: boolean;
+  readonly createdAt: Date;
+  readonly deactivatedAt: Date | null;
+};
+
 export type MarketingDeliveryAttempt = {
   readonly id: string;
   readonly channelConfigId: string | null;
@@ -537,12 +548,13 @@ export interface MarketingRepositoryPort {
   ): Promise<{ id: string; deliveryAttemptId: string; receiptStatus: string } | null>;
 
   isSuppressed(emailNormalized: string | null, channel: string): Promise<boolean>;
+  listSuppressions(opts?: { activeOnly?: boolean }): Promise<MarketingSuppression[]>;
   createSuppression(input: {
     emailNormalized?: string | null;
     leadId?: string | null;
     channel: string;
     reason: string;
-  }): Promise<{ id: string }>;
+  }): Promise<MarketingSuppression>;
 
   createJourney(input: {
     code: string;

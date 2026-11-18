@@ -9,12 +9,16 @@ import type {
   SubscriptionProvisioningCoordinationPort,
 } from '../../domain/subscription/provisioning-coordination.port.js';
 import { UnavailableSubscriptionProvisioningAdapter } from '../subscription/unavailable-provisioning.adapter.js';
+import { BbControlProvisioningAdapter } from './bb-control-provisioning.adapter.js';
 import { DurableSubscriptionProvisioningAdapter } from './durable-provisioning.adapter.js';
 import { LabBbProvisioningAdapter } from './lab-bb-provisioning.adapter.js';
 
 /**
- * Default UNAVAILABLE (C-02). Enable with EDGE_P7_PROVISIONING_ADAPTER=durable|lab_bb.
- * Never permissive when misconfigured.
+ * Default UNAVAILABLE (C-02).
+ * Enable with EDGE_P7_PROVISIONING_ADAPTER=durable|bb_control|lab_bb.
+ * - bb_control: production BB `/control/v1/provision` (non-empty entitlements)
+ * - lab_bb: lab only — rejected at env parse in production
+ * - durable: P7 authorization accept (workflow completion separate)
  */
 @Injectable()
 export class ResolvingSubscriptionProvisioningAdapter
@@ -25,13 +29,21 @@ export class ResolvingSubscriptionProvisioningAdapter
     private readonly unavailable: UnavailableSubscriptionProvisioningAdapter,
     private readonly durable: DurableSubscriptionProvisioningAdapter,
     private readonly labBb: LabBbProvisioningAdapter,
+    private readonly bbControl: BbControlProvisioningAdapter,
   ) {}
 
   private adapter(): SubscriptionProvisioningCoordinationPort {
-    if (this.config.EDGE_P7_PROVISIONING_ADAPTER === 'durable') {
+    const mode = this.config.EDGE_P7_PROVISIONING_ADAPTER;
+    if (mode === 'durable') {
       return this.durable;
     }
-    if (this.config.EDGE_P7_PROVISIONING_ADAPTER === 'lab_bb') {
+    if (mode === 'bb_control') {
+      return this.bbControl;
+    }
+    if (mode === 'lab_bb') {
+      if (this.config.NODE_ENV === 'production') {
+        return this.unavailable;
+      }
       return this.labBb;
     }
     return this.unavailable;

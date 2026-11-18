@@ -396,6 +396,8 @@ export type PaymentMethodRecord = {
   methodType: string;
   brand?: string | null;
   last4?: string | null;
+  country?: string | null;
+  currency?: string | null;
   status: string;
   isDefault: boolean;
   createdAt: Date;
@@ -437,6 +439,7 @@ export interface BillingRepositoryPort {
     subscriptionId: string;
   }): Promise<{ id: string; subscriptionId: string; billingAccountId: string; status: string }>;
   getBillingAccountForSubscription(subscriptionId: string): Promise<BillingAccount | null>;
+  listSubscriptionIdsForBillingAccount(billingAccountId: string): Promise<string[]>;
 
   createBillingSchedule(input: {
     subscriptionId: string;
@@ -687,6 +690,8 @@ export interface BillingRepositoryPort {
     methodType: string;
     brand?: string | null;
     last4?: string | null;
+    country?: string | null;
+    currency?: string | null;
     isDefault?: boolean;
   }): Promise<PaymentMethodRecord>;
   revokePaymentMethod(id: string): Promise<PaymentMethodRecord>;

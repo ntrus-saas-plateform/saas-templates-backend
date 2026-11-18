@@ -328,6 +328,16 @@ export class PgBillingRepository implements BillingRepositoryPort {
     return rows[0] ? this.mapAccount(rows[0]) : null;
   }
 
+  async listSubscriptionIdsForBillingAccount(billingAccountId: string): Promise<string[]> {
+    const rows = await this.q<{ subscription_id: string }>(
+      `SELECT subscription_id FROM edge_billing_account_subscriptions
+       WHERE billing_account_id = $1 AND status = 'ACTIVE'
+       ORDER BY linked_at ASC`,
+      [billingAccountId],
+    );
+    return rows.map((r) => String(r.subscription_id));
+  }
+
   async createBillingSchedule(input: {
     subscriptionId: string;
     billingAccountId: string;
@@ -1610,6 +1620,8 @@ export class PgBillingRepository implements BillingRepositoryPort {
     methodType: string;
     brand?: string | null;
     last4?: string | null;
+    country?: string | null;
+    currency?: string | null;
     isDefault?: boolean;
   }): Promise<PaymentMethodRecord> {
     if (input.isDefault) {
@@ -1620,10 +1632,14 @@ export class PgBillingRepository implements BillingRepositoryPort {
     }
     const rows = await this.q<Record<string, unknown>>(
       `INSERT INTO edge_payment_methods
-        (billing_account_id, provider, provider_method_ref, method_type, brand, last4, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+        (billing_account_id, provider, provider_method_ref, method_type, brand, last4, country, currency, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (provider, provider_method_ref) DO UPDATE SET
-         status = 'ACTIVE', updated_at = NOW()
+         status = 'ACTIVE',
+         country = COALESCE(EXCLUDED.country, edge_payment_methods.country),
+         currency = COALESCE(EXCLUDED.currency, edge_payment_methods.currency),
+         brand = COALESCE(EXCLUDED.brand, edge_payment_methods.brand),
+         updated_at = NOW()
        RETURNING *`,
       [
         input.billingAccountId,
@@ -1632,6 +1648,8 @@ export class PgBillingRepository implements BillingRepositoryPort {
         input.methodType,
         input.brand ?? null,
         input.last4 ?? null,
+        input.country ?? null,
+        input.currency ?? null,
         input.isDefault ?? false,
       ],
     );
@@ -2344,6 +2362,8 @@ export class PgBillingRepository implements BillingRepositoryPort {
       methodType: String(r.method_type),
       brand: (r.brand as string | null) ?? null,
       last4: (r.last4 as string | null) ?? null,
+      country: (r.country as string | null) ?? null,
+      currency: (r.currency as string | null) ?? null,
       status: String(r.status),
       isDefault: Boolean(r.is_default),
       createdAt: new Date(String(r.created_at)),

@@ -561,7 +561,30 @@ export class GetPublicProductPageUseCase {
         ],
       );
     }
-    return { presentation, product };
+    const meta = (presentation.metadata ?? {}) as Record<string, unknown>;
+    const configuredSlug =
+      (typeof meta.defaultFormSlug === 'string' && meta.defaultFormSlug.trim()) ||
+      (typeof meta.publicFormSlug === 'string' && meta.publicFormSlug.trim()) ||
+      null;
+    let defaultFormSlug = configuredSlug;
+    if (!defaultFormSlug) {
+      const forms = await this.repo.listFormSchemas({
+        productId: presentation.productId,
+        limit: 5,
+      });
+      for (const schema of forms.items) {
+        const pubs = await this.repo.listFormPublications({
+          formSchemaId: schema.id,
+          status: 'ACTIVE',
+        });
+        const slug = pubs.find((p) => p.publicSlug?.trim())?.publicSlug?.trim();
+        if (slug) {
+          defaultFormSlug = slug;
+          break;
+        }
+      }
+    }
+    return { presentation, product, defaultFormSlug };
   }
 }
 

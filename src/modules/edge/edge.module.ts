@@ -8,6 +8,7 @@ import { SalesHandoffRequestedHandler } from './infrastructure/subscription/sale
 import { P10SubscriptionHandoffHandler } from './infrastructure/acquisition/p10-subscription-handoff.handler.js';
 import { BillingCoordinationRequestedHandler } from './infrastructure/billing/billing-coordination-requested.handler.js';
 import { BillingJobsBootstrap } from './infrastructure/billing/billing-jobs.bootstrap.js';
+import { ProvisioningJobsBootstrap } from './infrastructure/provisioning/provisioning-jobs.bootstrap.js';
 import { ReceiveSalesLeadUseCase } from './application/sales/sales.use-cases.js';
 import {
   EdgeAdministratorsController,
@@ -37,6 +38,7 @@ import { EdgeSalesPlatformController } from './presentation/controllers/sales-pl
 import { EdgeSubscriptionController } from './presentation/controllers/subscription.controller.js';
 import { EdgeBillingController } from './presentation/controllers/billing.controller.js';
 import { EdgeProvisioningController } from './presentation/controllers/provisioning.controller.js';
+import { EdgeProvisioningJobsController } from './presentation/controllers/provisioning-jobs.controller.js';
 import { EdgeP5ProvisioningIntegrationController } from './presentation/controllers/p5-provisioning-integration.controller.js';
 import { EdgeRegistryController } from './presentation/controllers/registry.controller.js';
 import {
@@ -65,6 +67,8 @@ import { AcquisitionController } from './presentation/controllers/acquisition.co
 import { AcquisitionPublicController } from './presentation/controllers/acquisition-public.controller.js';
 import { EdgeRevenueOperationsController } from './presentation/controllers/revenue-operations.controller.js';
 import { EdgeLiveCompleteController } from './presentation/controllers/live-complete.controller.js';
+import { EdgeCustomerSuccessController } from './presentation/controllers/customer-success.controller.js';
+import { EdgePartnerOpportunityController } from './presentation/controllers/partner-opportunity.controller.js';
 import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-worker.bootstrap.js';
 
 /**
@@ -99,6 +103,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     EdgeSubscriptionController,
     EdgeBillingController,
     EdgeProvisioningController,
+    EdgeProvisioningJobsController,
     EdgeP5ProvisioningIntegrationController,
     EdgeRegistryController,
     EdgePlacementController,
@@ -123,6 +128,8 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     AcquisitionPublicController,
     EdgeRevenueOperationsController,
     EdgeLiveCompleteController,
+    EdgeCustomerSuccessController,
+    EdgePartnerOpportunityController,
   ],
   providers: [
     ...edgeApplicationProviders,
@@ -131,6 +138,7 @@ import { WorkflowWorkerBootstrap } from './infrastructure/workflow/workflow-work
     P10SubscriptionHandoffHandler,
     BillingCoordinationRequestedHandler,
     BillingJobsBootstrap,
+    ProvisioningJobsBootstrap,
     WorkflowWorkerBootstrap,
     {
       provide: EXTRA_INTEGRATION_EVENT_HANDLERS,

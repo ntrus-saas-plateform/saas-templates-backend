@@ -41,5 +41,23 @@ describe.skipIf(process.env.LIVE_COMPLETE_E2E !== '1')(
       expect([200, 401, 403]).toContain(res.status);
       expect(res.status).not.toBe(404);
     });
+
+    it('POST /api/v1/edge/billing/collections/dunning-scan exists (never 404)', async () => {
+      const root = base();
+      expect(root, 'Set EDGE_API_URL when LIVE_COMPLETE_E2E=1').toBeTruthy();
+
+      const res = await fetch(`${root}/api/v1/edge/billing/collections/dunning-scan`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ limit: 1 }),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      expect([200, 401, 403]).toContain(res.status);
+      expect(res.status).not.toBe(404);
+    });
   },
 );

@@ -50,4 +50,20 @@ export class EdgeMetricsService {
   recordAuditPersistenceFailure(): void {
     this.metrics.edgeAuditPersistenceFailures.inc();
   }
+
+  recordProvisioningJob(result: 'SUCCEEDED' | 'RETRY' | 'FAILED' | 'DEAD_LETTER'): void {
+    this.metrics.edgeProvisioningJobsProcessed.inc({ result });
+  }
+
+  observeProvisioningJobDuration(jobType: string, seconds: number): void {
+    this.metrics.edgeProvisioningJobsDuration.observe({ job_type: jobType }, seconds);
+  }
+
+  setProvisioningJobsPending(count: number): void {
+    this.metrics.edgeProvisioningJobsPending.set(count);
+  }
+
+  setProvisioningJobsLagSeconds(seconds: number): void {
+    this.metrics.edgeProvisioningJobsLagSeconds.set(Math.max(0, seconds));
+  }
 }

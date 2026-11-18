@@ -8,9 +8,13 @@ import { SandboxPaymentProviderAdapter } from '../../infrastructure/billing/sand
 import { LabBbProvisioningAdapter } from '../../infrastructure/provisioning/lab-bb-provisioning.adapter.js';
 import type { ControlV1BusinessBackendClient } from '../../infrastructure/product-control/control-v1-business-backend.client.js';
 import { MarkInvoicePaidIfSettledUseCase } from '../billing/billing.use-cases.js';
-import { RequestProvisioningUseCase } from '../subscription/subscription.use-cases.js';
+import {
+  PublishEntitlementsUseCase,
+  RequestProvisioningUseCase,
+} from '../subscription/subscription.use-cases.js';
 import { GetCustomerPortalSnapshotUseCase } from '../acquisition/acquisition.use-cases.js';
 import type { TenantRuntimeStatusPort } from '../../domain/acquisition/tenant-runtime-status.port.js';
+import { EntitlementCapabilityKind } from '../../domain/subscription/subscription.entity.js';
 
 describe('live-complete orchestration PAID → lab_bb → portal ready', () => {
   it('sandbox intent confirms, PAID triggers provisioning, portal flips when BB ready', async () => {
@@ -58,6 +62,7 @@ describe('live-complete orchestration PAID → lab_bb → portal ready', () => {
       accountId: 'acc-1',
       productId: 'prod-pharmacy',
       metadata: {},
+      enterpriseProfile: {},
     };
     const createProvisioningRequest = vi.fn(async (input: Record<string, unknown>) => ({
       id: 'pr-1',
@@ -67,6 +72,14 @@ describe('live-complete orchestration PAID → lab_bb → portal ready', () => {
       getById: vi.fn(async () => sub),
       createProvisioningRequest,
       listProvisioningRequests: vi.fn(async () => []),
+      listItems: vi.fn(async () => [
+        {
+          itemType: 'PLAN',
+          offerRef: 'plan-lite',
+          entitlementRef: 'pharmacy',
+          snapshot: {},
+        },
+      ]),
     };
     const requestProvisioning = new RequestProvisioningUseCase(
       subscriptions as never,
@@ -139,6 +152,73 @@ describe('live-complete orchestration PAID → lab_bb → portal ready', () => {
     const portal = new GetCustomerPortalSnapshotUseCase(repo as never, runtime);
     const snap = await portal.execute({ prospectId: 'pros-1' });
     expect(snap.provisioningComplete).toBe(true);
+  });
+
+  it('publishes non-empty entitlements then fails closed when BB ready=false', async () => {
+    const putEntitlements = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { status: 'applied', entitlement_version: 1 },
+      text: '',
+    }));
+    const getTenantReady = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      body: { ready: false, reason: 'entitlements_not_applied' },
+      text: '',
+    }));
+    const bb = {
+      isConfigured: () => true,
+      putEntitlements,
+      getTenantReady,
+    } as unknown as ControlV1BusinessBackendClient;
+
+    const subscriptions = {
+      getById: vi.fn(async () => ({
+        id: 'sub-pub',
+        metadata: { tenantRef: 'tenant-pub-1' },
+      })),
+      getLatestSnapshot: vi.fn(async () => ({
+        id: 'snap-1',
+        version: 1,
+        entitlements: {
+          resolved: [
+            {
+              capabilityCode: 'pharmacy',
+              kind: EntitlementCapabilityKind.FEATURE_FLAG,
+              enabled: true,
+              numericLimit: null,
+              sources: ['PLAN:SYNTIX_LITE'],
+              conflictResolution: 'BOOLEAN_OR',
+            },
+          ],
+        },
+      })),
+      listSnapshots: vi.fn(),
+      createPublication: vi.fn(async (input: Record<string, unknown>) => ({
+        id: 'pub-1',
+        ...input,
+      })),
+      updatePublication: vi.fn(async (id: string, patch: Record<string, unknown>) => ({
+        id,
+        ...patch,
+      })),
+      listProvisioningRequests: vi.fn(async () => [
+        { tenantRef: 'tenant-pub-1' },
+      ]),
+    };
+
+    const published = await new PublishEntitlementsUseCase(
+      subscriptions as never,
+      undefined,
+      bb,
+    ).execute({ actorId: 'ops', subscriptionId: 'sub-pub' });
+    expect(published.status).toBe('PUBLISHED');
+    expect(putEntitlements).toHaveBeenCalledOnce();
+
+    const ready = await bb.getTenantReady('tenant-pub-1');
+    expect(ready.body.ready).toBe(false);
+    expect(ready.body.reason).toBe('entitlements_not_applied');
   });
 
   it('does not invent portal complete when runtime UNAVAILABLE', async () => {

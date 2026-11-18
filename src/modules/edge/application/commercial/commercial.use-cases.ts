@@ -31,6 +31,12 @@ import type { ProductRepositoryPort } from '../../domain/ports/product-repositor
 import type { VerticalRepositoryPort } from '../../domain/ports/vertical-repository.port.js';
 import type { CapabilityRepositoryPort } from '../../domain/ports/capability-repository.port.js';
 import type { ControlPlaneOutboxTransactionService } from '../../../../shared/messaging/control-plane-outbox-transaction.service.js';
+import { runSolutionWizard } from '../../domain/commercial/solution-wizard.js';
+import {
+  GEOGRAPHIC_PRICING_BEACHHEAD,
+  listGeographicPricingForCountry,
+} from '../../domain/commercial/geographic-pricing.js';
+import { evaluateDiscountApproval } from '../../domain/commercial/discount-policy.js';
 
 export class CreateCommercialMarketUseCase {
   constructor(
@@ -1193,5 +1199,44 @@ export class ListDiscountPoliciesUseCase {
   constructor(private readonly commercial: CommercialRepositoryPort) {}
   execute(productId?: string) {
     return this.commercial.listDiscountPolicies(productId);
+  }
+}
+
+export class RunSolutionWizardUseCase {
+  execute(input: {
+    productCode: 'SYNTIX_PHARMA' | 'OKAPI_RESTAURANT';
+    activityCodes?: string[];
+    profileCode?: string | null;
+    operatingModelCodes?: string[];
+    sites?: number | null;
+    users?: number | null;
+    needs?: string[];
+    mode?: 'MANUAL' | 'RULE_BASED' | 'GUIDED';
+    correctedProfileCode?: string | null;
+  }) {
+    return { data: runSolutionWizard(input) };
+  }
+}
+
+export class ListGeographicPricingUseCase {
+  execute(country?: string) {
+    const rules = country?.trim()
+      ? listGeographicPricingForCountry(country)
+      : [...GEOGRAPHIC_PRICING_BEACHHEAD];
+    return {
+      data: {
+        rules,
+        note: 'DRAFT books — amounts NEEDS_RESEARCH; never invent unit prices.',
+      },
+    };
+  }
+}
+
+export class EvaluateDiscountApprovalUseCase {
+  execute(input: {
+    discountPercent?: number | null;
+    actorTier: 'AE' | 'MANAGER' | 'DIRECTOR' | 'CFO';
+  }) {
+    return { data: evaluateDiscountApproval(input) };
   }
 }

@@ -7,6 +7,7 @@ import {
   parseMoneyAmount,
 } from '../../domain/commercial/pricing-math.js';
 import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
+import { assertPaymentMethodAllowedForGeo } from '../../domain/billing/geo-payment-methods.js';
 
 export class GetBillingProfileUseCase {
   constructor(private readonly billing: BillingRepositoryPort) {}
@@ -186,20 +187,46 @@ export class GetCollectionCaseUseCase {
 }
 
 export class EscalateCollectionCaseUseCase {
-  constructor(private readonly billing: BillingRepositoryPort) {}
-  async execute(input: { caseId: string }) {
+  constructor(
+    private readonly billing: BillingRepositoryPort,
+    private readonly applyDunningPolicy?: {
+      execute(input: { actorId: string; caseId: string }): Promise<unknown>;
+    },
+  ) {}
+  async execute(input: { caseId: string; actorId?: string }) {
     const c = await this.billing.getCollectionCase(input.caseId);
     if (!c) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Collection case not found');
-    return this.billing.updateCollectionCase(c.id, { status: 'ESCALATED' });
+    const updated = await this.billing.updateCollectionCase(c.id, { status: 'ESCALATED' });
+    let dunningApply: unknown = null;
+    if (this.applyDunningPolicy) {
+      dunningApply = await this.applyDunningPolicy.execute({
+        actorId: input.actorId ?? 'system:billing-ops',
+        caseId: updated.id,
+      });
+    }
+    return { ...updated, dunningApply };
   }
 }
 
 export class ResolveCollectionCaseUseCase {
-  constructor(private readonly billing: BillingRepositoryPort) {}
-  async execute(input: { caseId: string }) {
+  constructor(
+    private readonly billing: BillingRepositoryPort,
+    private readonly applyDunningPolicy?: {
+      execute(input: { actorId: string; caseId: string }): Promise<unknown>;
+    },
+  ) {}
+  async execute(input: { caseId: string; actorId?: string }) {
     const c = await this.billing.getCollectionCase(input.caseId);
     if (!c) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Collection case not found');
-    return this.billing.updateCollectionCase(c.id, { status: 'RESOLVED' });
+    const updated = await this.billing.updateCollectionCase(c.id, { status: 'RESOLVED' });
+    let dunningApply: unknown = null;
+    if (this.applyDunningPolicy) {
+      dunningApply = await this.applyDunningPolicy.execute({
+        actorId: input.actorId ?? 'system:billing-ops',
+        caseId: updated.id,
+      });
+    }
+    return { ...updated, dunningApply };
   }
 }
 
@@ -238,12 +265,30 @@ export class RegisterPaymentMethodUseCase {
     methodType: string;
     brand?: string | null;
     last4?: string | null;
+    country?: string | null;
+    currency?: string | null;
     isDefault?: boolean;
   }) {
     if (!input.providerMethodRef) {
       throw new DomainError(ErrorCode.VALIDATION_ERROR, 'providerMethodRef required (tokenized)');
     }
-    return this.billing.registerPaymentMethod(input);
+    const account = await this.billing.getBillingAccount(input.billingAccountId);
+    const currency =
+      input.currency?.trim().toUpperCase() || account?.currency?.toUpperCase() || null;
+    const offer = assertPaymentMethodAllowedForGeo({
+      methodType: input.methodType,
+      brand: input.brand,
+      country: input.country,
+      currency,
+      provider: input.provider,
+    });
+    const method = await this.billing.registerPaymentMethod({
+      ...input,
+      methodType: offer.methodType,
+      brand: input.brand ?? offer.brand,
+      currency,
+    });
+    return { ...method, geoOfferCode: offer.code, geoOfferStatus: offer.status };
   }
 }
 

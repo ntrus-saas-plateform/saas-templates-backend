@@ -57,6 +57,7 @@ import {
   TerminateSubscriptionUseCase,
   ResolveSubscriptionIdempotencyUseCase,
 } from '../../application/subscription/subscription.use-cases.js';
+import { AdvanceProvisioningAfterPaidUseCase } from '../../application/subscription/advance-provisioning-after-paid.use-case.js';
 import {
   ApproveChangeRequestUseCase,
   GetCoordinationUseCase,
@@ -66,6 +67,7 @@ import {
   ListSubscriptionPublicationsUseCase,
   ListSubscriptionSuspensionsUseCase,
   ProcessDueScheduledChangesUseCase,
+  ProcessEntitlementDriftBatchUseCase,
   ProposeRenewalUseCase,
   ReconcileEntitlementsUseCase,
   RejectChangeRequestUseCase,
@@ -73,6 +75,12 @@ import {
   UpdateSubscriptionUseCase,
   UpsertPolicyUseCase,
 } from '../../application/subscription/subscription-governance.use-cases.js';
+import {
+  BindSubscriptionTenantAssociationUseCase,
+  CloseSubscriptionTenantAssociationUseCase,
+  GetActiveSubscriptionTenantAssociationUseCase,
+  ListSubscriptionTenantAssociationsUseCase,
+} from '../../application/subscription/subscription-tenant-association.use-cases.js';
 
 @ApiTags('edge-subscriptions')
 @ApiBearerAuth()
@@ -115,6 +123,7 @@ export class EdgeSubscriptionController {
     private readonly confirmBilling: ConfirmBillingCoordinationUseCase,
     private readonly requestProvisioning: RequestProvisioningUseCase,
     private readonly completeProvisioningUseCase: CompleteProvisioningUseCase,
+    private readonly advanceProvisioningAfterPaid: AdvanceProvisioningAfterPaidUseCase,
     private readonly history: GetSubscriptionHistoryUseCase,
     private readonly updateSub: UpdateSubscriptionUseCase,
     private readonly approveChange: ApproveChangeRequestUseCase,
@@ -122,6 +131,10 @@ export class EdgeSubscriptionController {
     private readonly scheduleChange: ScheduleChangeUseCase,
     private readonly proposeRenewal: ProposeRenewalUseCase,
     private readonly reconcileEntitlements: ReconcileEntitlementsUseCase,
+    private readonly listAssociations: ListSubscriptionTenantAssociationsUseCase,
+    private readonly getActiveAssociation: GetActiveSubscriptionTenantAssociationUseCase,
+    private readonly bindAssociation: BindSubscriptionTenantAssociationUseCase,
+    private readonly closeAssociation: CloseSubscriptionTenantAssociationUseCase,
     private readonly listPolicies: ListPoliciesUseCase,
     private readonly upsertPolicy: UpsertPolicyUseCase,
     private readonly pendingApprovals: ListPendingApprovalsUseCase,
@@ -130,6 +143,7 @@ export class EdgeSubscriptionController {
     private readonly listCancellations: ListSubscriptionCancellationsUseCase,
     private readonly listPublications: ListSubscriptionPublicationsUseCase,
     private readonly processDueChanges: ProcessDueScheduledChangesUseCase,
+    private readonly driftBatch: ProcessEntitlementDriftBatchUseCase,
     private readonly idempotency: ResolveSubscriptionIdempotencyUseCase,
   ) {}
 
@@ -177,8 +191,24 @@ export class EdgeSubscriptionController {
 
   @Post('scheduled-changes/process-due')
   @RequireEdgePermissions('platform:subscriptions:change_plan')
-  processDueScheduledChanges() {
-    return this.processDueChanges.execute({ actorId: this.actorId() });
+  async processDueScheduledChanges() {
+    return { data: await this.processDueChanges.execute({ actorId: this.actorId() }) };
+  }
+
+  @Post('entitlements/drift-scan')
+  @RequireEdgePermissions('platform:subscriptions:reconcile_entitlements')
+  async driftScan(
+    @Body()
+    body?: { remediateBb?: boolean; limit?: number; status?: string },
+  ) {
+    return {
+      data: await this.driftBatch.execute({
+        actorId: this.actorId(),
+        remediateBb: body?.remediateBb === true,
+        limit: body?.limit,
+        status: body?.status,
+      }),
+    };
   }
 
   @Get('trials')
@@ -254,10 +284,13 @@ export class EdgeSubscriptionController {
       contractId?: string;
       planId?: string;
       packageId?: string;
+      /** Beachhead: SYNTIX_LITE|SYNTIX_PROFESSIONAL|… or OKAPI_REST_STARTER|… */
+      planCode?: string;
       currency?: string;
       billingFrequency?: string;
       correlationId?: string;
       enterpriseProfile?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
     },
   ) {
     return this.idempotency.execute({
@@ -300,14 +333,14 @@ export class EdgeSubscriptionController {
 
   @Get(':id/workspace')
   @RequireEdgePermissions('platform:subscriptions:read')
-  workspace(@Param('id', ParseUUIDPipe) id: string) {
-    return this.getWorkspace.execute(id);
+  async workspace(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.getWorkspace.execute(id) };
   }
 
   @Get(':id/history')
   @RequireEdgePermissions('platform:subscriptions:read')
-  subscriptionHistory(@Param('id', ParseUUIDPipe) id: string) {
-    return this.history.execute(id);
+  async subscriptionHistory(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.history.execute(id) };
   }
 
   @Patch(':id')
@@ -327,32 +360,34 @@ export class EdgeSubscriptionController {
 
   @Get(':id/suspensions')
   @RequireEdgePermissions('platform:subscriptions:read')
-  suspensions(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listSuspensions.execute(id);
+  async suspensions(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listSuspensions.execute(id) };
   }
 
   @Get(':id/cancellations')
   @RequireEdgePermissions('platform:subscriptions:read')
-  cancellations(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listCancellations.execute(id);
+  async cancellations(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listCancellations.execute(id) };
   }
 
   @Get(':id/billing-coordination')
   @RequireEdgePermissions('platform:subscriptions:manage_integrations')
-  billingCoordinationList(@Param('id', ParseUUIDPipe) id: string) {
-    return this.coordination.execute(id).then((r) => r.billing);
+  async billingCoordinationList(@Param('id', ParseUUIDPipe) id: string) {
+    const r = await this.coordination.execute(id);
+    return { data: r.billing };
   }
 
   @Get(':id/provisioning')
   @RequireEdgePermissions('platform:subscriptions:manage_integrations')
-  provisioningList(@Param('id', ParseUUIDPipe) id: string) {
-    return this.coordination.execute(id).then((r) => r.provisioning);
+  async provisioningList(@Param('id', ParseUUIDPipe) id: string) {
+    const r = await this.coordination.execute(id);
+    return { data: r.provisioning };
   }
 
   @Get(':id/publications')
   @RequireEdgePermissions('platform:subscriptions:read_entitlements')
-  publications(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listPublications.execute(id);
+  async publications(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listPublications.execute(id) };
   }
 
   @Post(':id/submit')
@@ -454,8 +489,8 @@ export class EdgeSubscriptionController {
 
   @Get(':id/items')
   @RequireEdgePermissions('platform:subscriptions:read')
-  items(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listItems.execute(id);
+  async items(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listItems.execute(id) };
   }
 
   @Post(':id/items')
@@ -491,8 +526,8 @@ export class EdgeSubscriptionController {
 
   @Get(':id/entitlements')
   @RequireEdgePermissions('platform:subscriptions:read_entitlements')
-  entitlements(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listEntitlements.execute(id);
+  async entitlements(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listEntitlements.execute(id) };
   }
 
   @Post(':id/entitlements/publish')
@@ -510,14 +545,77 @@ export class EdgeSubscriptionController {
 
   @Post(':id/entitlements/reconcile')
   @RequireEdgePermissions('platform:subscriptions:reconcile_entitlements')
-  reconcile(@Param('id', ParseUUIDPipe) id: string) {
-    return this.reconcileEntitlements.execute({ actorId: this.actorId(), subscriptionId: id });
+  async reconcile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body?: { remediateBb?: boolean },
+  ) {
+    return {
+      data: await this.reconcileEntitlements.execute({
+        actorId: this.actorId(),
+        subscriptionId: id,
+        remediateBb: body?.remediateBb === true,
+      }),
+    };
+  }
+
+  @Get(':id/associations')
+  @RequireEdgePermissions('platform:subscriptions:read_associations')
+  async listTenantAssociations(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listAssociations.execute(id) };
+  }
+
+  @Get(':id/associations/active')
+  @RequireEdgePermissions('platform:subscriptions:read_associations')
+  async getActiveTenantAssociation(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.getActiveAssociation.execute(id) };
+  }
+
+  @Post(':id/associations/bind')
+  @RequireEdgePermissions('platform:subscriptions:manage_associations')
+  async bindTenantAssociation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body()
+    body: {
+      productTenantRef: string;
+      productTenantId?: string;
+      associationType?: string;
+      environmentSlot?: string;
+      supersedeExisting?: boolean;
+    },
+  ) {
+    return {
+      data: await this.bindAssociation.execute({
+        actorId: this.actorId(),
+        subscriptionId: id,
+        productTenantRef: body.productTenantRef,
+        productTenantId: body.productTenantId,
+        associationType: body.associationType,
+        environmentSlot: body.environmentSlot,
+        supersedeExisting: body.supersedeExisting !== false,
+      }),
+    };
+  }
+
+  @Post(':id/associations/close')
+  @RequireEdgePermissions('platform:subscriptions:manage_associations')
+  async closeTenantAssociation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body?: { associationId?: string; reason?: string },
+  ) {
+    return {
+      data: await this.closeAssociation.execute({
+        actorId: this.actorId(),
+        subscriptionId: id,
+        associationId: body?.associationId,
+        reason: body?.reason,
+      }),
+    };
   }
 
   @Get(':id/changes')
   @RequireEdgePermissions('platform:subscriptions:change_plan')
-  changes(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listChanges.execute(id);
+  async changes(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listChanges.execute(id) };
   }
 
   @Post(':id/changes')
@@ -585,15 +683,17 @@ export class EdgeSubscriptionController {
 
   @Post(':id/changes/:changeId/execute')
   @RequireEdgePermissions('platform:subscriptions:change_plan')
-  runChange(
+  async runChange(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('changeId', ParseUUIDPipe) changeId: string,
   ) {
-    return this.executeChange.execute({
-      actorId: this.actorId(),
-      subscriptionId: id,
-      changeId,
-    });
+    return {
+      data: await this.executeChange.execute({
+        actorId: this.actorId(),
+        subscriptionId: id,
+        changeId,
+      }),
+    };
   }
 
   @Post(':id/renewals')
@@ -621,8 +721,8 @@ export class EdgeSubscriptionController {
 
   @Get(':id/renewals')
   @RequireEdgePermissions('platform:subscriptions:renew')
-  renewals(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listRenewals.execute(id);
+  async renewals(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.listRenewals.execute(id) };
   }
 
   @Post(':id/billing-coordination')
@@ -675,6 +775,15 @@ export class EdgeSubscriptionController {
       requestId: reqId,
       tenantRef: body.tenantRef,
       externalRef: body.externalRef,
+    });
+  }
+
+  @Post(':id/provisioning/advance-after-paid')
+  @RequireEdgePermissions('platform:subscriptions:manage_integrations')
+  advanceAfterPaid(@Param('id', ParseUUIDPipe) id: string) {
+    return this.advanceProvisioningAfterPaid.execute({
+      actorId: this.actorId(),
+      subscriptionId: id,
     });
   }
 }

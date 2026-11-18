@@ -95,6 +95,11 @@ import {
   TransitionSalesOrderUseCase,
   TransitionSalesQuoteUseCase,
 } from '../../application/sales/sales-commerce.use-cases.js';
+import {
+  EvaluateBantUseCase,
+  GetSalesEngineBeachheadUseCase,
+  ScoreLeadUseCase,
+} from '../../application/sales/sales-engine-beachhead.use-cases.js';
 
 @ApiTags('edge-sales')
 @ApiBearerAuth()
@@ -175,6 +180,9 @@ export class EdgeSalesController {
     private readonly listHandoffs: ListSalesHandoffsUseCase,
     private readonly getForecast: GetSalesForecastUseCase,
     private readonly getPerformance: GetSalesPerformanceUseCase,
+    private readonly salesEngineBeachhead: GetSalesEngineBeachheadUseCase,
+    private readonly scoreLead: ScoreLeadUseCase,
+    private readonly evaluateBant: EvaluateBantUseCase,
   ) {}
 
   private actorId(): string {
@@ -185,6 +193,40 @@ export class EdgeSalesController {
   @RequireEdgePermissions('platform:sales:analytics:read')
   getOverview() {
     return this.overview.execute();
+  }
+
+  @Get('engine/beachhead')
+  @RequireEdgePermissions('platform:sales:opportunities:read')
+  salesEngineBeachhead() {
+    return this.salesEngineBeachhead.execute();
+  }
+
+  @Post('engine/lead-score')
+  @RequireEdgePermissions('platform:sales:opportunities:read')
+  leadScore(
+    @Body()
+    body: {
+      fitScore?: number | null;
+      intentScore?: number | null;
+      engagementScore?: number | null;
+      readinessScore?: number | null;
+    },
+  ) {
+    return this.scoreLead.execute(body);
+  }
+
+  @Post('engine/bant')
+  @RequireEdgePermissions('platform:sales:opportunities:read')
+  evaluateBant(
+    @Body()
+    body: {
+      budget?: boolean | null;
+      authority?: boolean | null;
+      need?: boolean | null;
+      timeline?: boolean | null;
+    },
+  ) {
+    return this.evaluateBant.execute(body);
   }
 
   @Get('teams')

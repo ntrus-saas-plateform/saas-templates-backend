@@ -1298,3 +1298,164 @@ export class PublicPlansQueryDto {
   @Min(0)
   offset?: number;
 }
+
+export class PublicSubmitApplicationDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  publicFormSlug!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  email!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  answers?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  displayName?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  companyName?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  productId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  commercialPlanId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  planPresentationId?: string | null;
+
+  @ApiPropertyOptional({ type: [Object] })
+  @IsOptional()
+  @IsArray()
+  consents?: unknown[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  honeypot?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  submittedAtMs?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeToken?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeAnswer?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  submit?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}
+
+export class PublicCreateCheckoutDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  email!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  idempotencyKey!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  planPresentationId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  commercialPlanId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  applicationId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  prospectId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  quoteReferenceId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  honeypot?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  submittedAtMs?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeToken?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  challengeAnswer?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  correlationId?: string;
+}

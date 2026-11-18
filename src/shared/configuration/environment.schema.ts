@@ -276,7 +276,7 @@ export const environmentSchema = z.object({
 
   // Edge billing payment adapters (P6) — default UNAVAILABLE; never invent payment success
   BILLING_PAYMENT_ADAPTER: z
-    .enum(['unavailable', 'http_webhook', 'sandbox', 'auto'])
+    .enum(['unavailable', 'http_webhook', 'sandbox', 'hyperswitch', 'auto'])
     .default('unavailable'),
   BILLING_PAYMENT_WEBHOOK_URL: z.string().url().optional(),
   BILLING_PAYMENT_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
@@ -295,7 +295,20 @@ export const environmentSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
-  EDGE_BB_CONTROL_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  /** Align with BB SYNC_MONOLITH provision (doc ~180s). Prefer async enqueue for scale. */
+  EDGE_BB_CONTROL_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
+  /**
+   * After PAID: `inline` = request+advance in same request (beachhead).
+   * `deferred` = request only; advance via operator/job (backpressure-friendly).
+   */
+  EDGE_PROVISIONING_ADVANCE_MODE: z.enum(['inline', 'deferred']).default('inline'),
+  /** Worker tick for edge_provisioning_jobs (doc 39/40 H1). Default off until migrate 134. */
+  EDGE_PROVISIONING_JOBS_ENABLED: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+  EDGE_PROVISIONING_JOBS_INTERVAL_SECONDS: z.coerce.number().int().positive().default(15),
+  EDGE_PROVISIONING_JOBS_BATCH_SIZE: z.coerce.number().int().positive().max(50).default(5),
   BILLING_JOBS_ENABLED: z
     .string()
     .transform((v) => v === 'true')
@@ -303,9 +316,12 @@ export const environmentSchema = z.object({
   BILLING_PROCESS_DUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
   BILLING_OVERDUE_INTERVAL_SECONDS: z.coerce.number().int().positive().default(1800),
 
-  // P7.1 provisioning — default-off (C-02); lab_bb = honest BB control/v1 lab path
+  // P7.1 provisioning — default-off (C-02).
+  // bb_control = production BB /control/v1/provision (non-empty entitlements required).
+  // lab_bb = lab-only path (forbidden in production — see superRefine below).
+  // durable = P7 authorization accept (technical BB completion via bb_control or workflow).
   EDGE_P7_PROVISIONING_ADAPTER: z
-    .enum(['unavailable', 'durable', 'lab_bb'])
+    .enum(['unavailable', 'durable', 'bb_control', 'lab_bb'])
     .default('unavailable'),
   /** JSON array: [{ "keyId","algorithm","publicKeyPem" }] — never private keys */
   EDGE_P7_AUTHORIZATION_PUBLIC_KEYS_JSON: z.string().optional(),
@@ -471,6 +487,16 @@ export const environmentSchema = z.object({
       message:
         'SECRET_ENCRYPTION_KEY is required in production when SECRET_PROVIDER=env|local (do not rely on CONTROL_PLANE_DB_PASSWORD)',
       path: ['SECRET_ENCRYPTION_KEY'],
+    });
+  }
+
+  // RGOM-E7.1 / ADR-021 — lab_bb historically pushed entitlements:{} ; never in production.
+  if (data.NODE_ENV === 'production' && data.EDGE_P7_PROVISIONING_ADAPTER === 'lab_bb') {
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        'EDGE_P7_PROVISIONING_ADAPTER=lab_bb is forbidden in production (RGOM-E7.1). Use bb_control (non-empty entitlements) or durable+workflow.',
+      path: ['EDGE_P7_PROVISIONING_ADAPTER'],
     });
   }
 });

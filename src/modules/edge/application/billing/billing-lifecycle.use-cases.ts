@@ -2,29 +2,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import type { BillingRepositoryPort } from '../../domain/ports/billing-repository.port.js';
 import type { SubscriptionRepositoryPort } from '../../domain/ports/subscription-repository.port.js';
+import {
+  nextBillAtForFrequency,
+  normalizeBillingFrequency,
+} from '../../domain/billing/billing-cadence.js';
 import { CreateDraftInvoiceFromSubscriptionUseCase } from './billing.use-cases.js';
 
 function addFrequency(from: Date, frequency: string): Date {
-  const d = new Date(from);
-  switch (frequency) {
-    case 'MONTHLY':
-      d.setUTCMonth(d.getUTCMonth() + 1);
-      break;
-    case 'QUARTERLY':
-      d.setUTCMonth(d.getUTCMonth() + 3);
-      break;
-    case 'SEMI_ANNUAL':
-      d.setUTCMonth(d.getUTCMonth() + 6);
-      break;
-    case 'ANNUAL':
-      d.setUTCFullYear(d.getUTCFullYear() + 1);
-      break;
-    case 'ONE_TIME':
-      return from;
-    default:
-      d.setUTCMonth(d.getUTCMonth() + 1);
+  try {
+    const next = nextBillAtForFrequency(from, normalizeBillingFrequency(frequency));
+    return next ?? from;
+  } catch {
+    const d = new Date(from);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    return d;
   }
-  return d;
 }
 
 export class MarkOverdueInvoicesUseCase {

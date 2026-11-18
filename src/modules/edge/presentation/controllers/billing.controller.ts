@@ -89,6 +89,14 @@ import {
   ProcessDueBillingSchedulesUseCase,
   UpsertRevenuePolicyUseCase,
 } from '../../application/billing/billing-lifecycle.use-cases.js';
+import {
+  ApplyDunningPolicyUseCase,
+  ProcessDunningBatchUseCase,
+} from '../../application/subscription/subscription-billing-lifecycle.use-cases.js';
+import { GetBillingCashTruthUseCase } from '../../application/billing/billing-cash-truth.use-cases.js';
+import { DispatchDunningNotificationUseCase } from '../../application/billing/dunning-notification.use-cases.js';
+import { ConfigureBillingCadenceUseCase } from '../../application/billing/configure-billing-cadence.use-case.js';
+import { ListGeoPaymentMethodsUseCase } from '../../application/billing/geo-payment-methods.use-cases.js';
 
 @ApiTags('edge-billing')
 @ApiBearerAuth()
@@ -137,6 +145,12 @@ export class EdgeBillingController {
     private readonly escalateCollection: EscalateCollectionCaseUseCase,
     private readonly resolveCollection: ResolveCollectionCaseUseCase,
     private readonly recordDunning: RecordDunningAttemptUseCase,
+    private readonly applyDunningPolicy: ApplyDunningPolicyUseCase,
+    private readonly processDunningBatch: ProcessDunningBatchUseCase,
+    private readonly dispatchDunningNotification: DispatchDunningNotificationUseCase,
+    private readonly getCashTruth: GetBillingCashTruthUseCase,
+    private readonly configureCadence: ConfigureBillingCadenceUseCase,
+    private readonly listGeoPaymentMethods: ListGeoPaymentMethodsUseCase,
     private readonly listPolicies: ListBillingPoliciesUseCase,
     private readonly upsertPolicy: UpsertBillingPolicyUseCase,
     private readonly runReconciliation: RunReconciliationUseCase,
@@ -178,6 +192,16 @@ export class EdgeBillingController {
   @RequireEdgePermissions('platform:billing:reports:read')
   getAnalytics(@Query('currency') currency?: string) {
     return this.analytics.execute(currency);
+  }
+
+  @Get('cash-truth')
+  @RequireEdgePermissions('platform:billing:reports:read')
+  getCashTruthHandler(
+    @Query('currency') currency?: string,
+    @Query('periodStart') periodStart?: string,
+    @Query('periodEnd') periodEnd?: string,
+  ) {
+    return this.getCashTruth.execute({ currency, periodStart, periodEnd });
   }
 
   @Get('accounts')
@@ -270,6 +294,16 @@ export class EdgeBillingController {
     return this.upsertParty.execute({ billingAccountId: id, ...body });
   }
 
+  @Get('geo-payment-methods')
+  @RequireEdgePermissions('platform:billing:payments:read')
+  listGeoPaymentMethodsHandler(
+    @Query('country') country?: string,
+    @Query('currency') currency?: string,
+    @Query('methodType') methodType?: string,
+  ) {
+    return this.listGeoPaymentMethods.execute({ country, currency, methodType });
+  }
+
   @Get('accounts/:id/payment-methods')
   @RequireEdgePermissions('platform:billing:payments:read')
   listAccountPaymentMethods(@Param('id', ParseUUIDPipe) id: string) {
@@ -287,6 +321,8 @@ export class EdgeBillingController {
       methodType: string;
       brand?: string | null;
       last4?: string | null;
+      country?: string | null;
+      currency?: string | null;
       isDefault?: boolean;
     },
   ) {
@@ -322,6 +358,26 @@ export class EdgeBillingController {
     return this.createSchedule.execute({
       ...body,
       nextBillAt: body.nextBillAt ? new Date(body.nextBillAt) : null,
+    });
+  }
+
+  @Post('cadence')
+  @RequireEdgePermissions('platform:billing:schedules:manage')
+  configureCadenceHandler(
+    @Body()
+    body: {
+      subscriptionId: string;
+      billingFrequency: string;
+      setupFeeAmount?: string | number | null;
+      nextBillAt?: string | null;
+    },
+  ) {
+    return this.configureCadence.execute({
+      actorId: this.actorId(),
+      subscriptionId: body.subscriptionId,
+      billingFrequency: body.billingFrequency,
+      setupFeeAmount: body.setupFeeAmount,
+      nextBillAt: body.nextBillAt === undefined ? undefined : body.nextBillAt,
     });
   }
 
@@ -547,16 +603,33 @@ export class EdgeBillingController {
     return this.openCollection.execute({ actorId: this.actorId(), ...body });
   }
 
+  @Post('collections/dunning-scan')
+  @RequireEdgePermissions('platform:billing:collections:manage')
+  dunningScanHandler(@Body() body?: { limit?: number }) {
+    return this.processDunningBatch
+      .execute({
+        actorId: this.actorId(),
+        limit: body?.limit,
+      })
+      .then((data) => ({ data }));
+  }
+
   @Post('collections/:id/escalate')
   @RequireEdgePermissions('platform:billing:collections:manage')
   escalateCollectionHandler(@Param('id', ParseUUIDPipe) id: string) {
-    return this.escalateCollection.execute({ caseId: id });
+    return this.escalateCollection.execute({
+      caseId: id,
+      actorId: this.actorId(),
+    });
   }
 
   @Post('collections/:id/resolve')
   @RequireEdgePermissions('platform:billing:collections:manage')
   resolveCollectionHandler(@Param('id', ParseUUIDPipe) id: string) {
-    return this.resolveCollection.execute({ caseId: id });
+    return this.resolveCollection.execute({
+      caseId: id,
+      actorId: this.actorId(),
+    });
   }
 
   @Post('collections/:id/dunning')
@@ -566,6 +639,35 @@ export class EdgeBillingController {
     @Body() body: { channel: string; templateRef?: string | null },
   ) {
     return this.recordDunning.execute({ caseId: id, ...body });
+  }
+
+  @Post('collections/:id/apply-policy')
+  @RequireEdgePermissions('platform:billing:collections:manage')
+  applyDunningPolicyHandler(@Param('id', ParseUUIDPipe) id: string) {
+    return this.applyDunningPolicy.execute({
+      actorId: this.actorId(),
+      caseId: id,
+    }).then((data) => ({ data }));
+  }
+
+  @Post('collections/:id/notify')
+  @RequireEdgePermissions('platform:billing:collections:manage')
+  dispatchDunningNotifyHandler(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body()
+    body?: {
+      channel?: string;
+      templateRef?: string | null;
+      toEmail?: string | null;
+    },
+  ) {
+    return this.dispatchDunningNotification.execute({
+      actorId: this.actorId(),
+      caseId: id,
+      channel: body?.channel,
+      templateRef: body?.templateRef,
+      toEmail: body?.toEmail,
+    });
   }
 
   @Get('policies')
