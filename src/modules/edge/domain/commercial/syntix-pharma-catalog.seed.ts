@@ -192,6 +192,24 @@ export const SYNTIX_CAPABILITIES: readonly SeedCapabilityDef[] = [
     entitlementKind: EntitlementCapabilityKind.QUOTA,
     defaultLimit: 0,
   },
+  {
+    code: 'max_customers',
+    name: 'Max customers',
+    category: 'QUOTA',
+    technicalStatus: 'AVAILABLE',
+    commercialAvailability: 'AVAILABLE',
+    entitlementKind: EntitlementCapabilityKind.QUOTA,
+    defaultLimit: 500,
+  },
+  {
+    code: 'max_products',
+    name: 'Max products',
+    category: 'QUOTA',
+    technicalStatus: 'AVAILABLE',
+    commercialAvailability: 'AVAILABLE',
+    entitlementKind: EntitlementCapabilityKind.QUOTA,
+    defaultLimit: 2000,
+  },
 ] as const;
 
 export const SYNTIX_SEGMENTS = [
@@ -408,7 +426,13 @@ export const SYNTIX_PLANS: readonly SeedPlanDef[] = [
     planTier: 'LITE',
     packageCode: 'PKG_RETAIL_PHARMACY',
     capabilityCodes: [...CORE_RETAIL],
-    quotas: { max_organizations: 1, max_users: 5, max_warehouses: 0 },
+    quotas: {
+      max_organizations: 1,
+      max_users: 5,
+      max_warehouses: 0,
+      max_customers: 500,
+      max_products: 2000,
+    },
   },
   {
     code: 'SYNTIX_PROFESSIONAL',
@@ -416,7 +440,13 @@ export const SYNTIX_PLANS: readonly SeedPlanDef[] = [
     planTier: 'PROFESSIONAL',
     packageCode: 'PKG_RETAIL_PHARMACY',
     capabilityCodes: [...CORE_RETAIL, 'purchasing', 'stock_transfers', 'reporting'],
-    quotas: { max_organizations: 3, max_users: 25, max_warehouses: 1 },
+    quotas: {
+      max_organizations: 3,
+      max_users: 25,
+      max_warehouses: 1,
+      max_customers: 5000,
+      max_products: 10000,
+    },
   },
   {
     code: 'SYNTIX_BUSINESS',
@@ -433,7 +463,13 @@ export const SYNTIX_PLANS: readonly SeedPlanDef[] = [
       'api',
       'analytics',
     ],
-    quotas: { max_organizations: 15, max_users: 100, max_warehouses: 5 },
+    quotas: {
+      max_organizations: 15,
+      max_users: 100,
+      max_warehouses: 5,
+      max_customers: 25000,
+      max_products: 50000,
+    },
   },
   {
     code: 'SYNTIX_ENTERPRISE',
@@ -452,7 +488,13 @@ export const SYNTIX_PLANS: readonly SeedPlanDef[] = [
       'sso',
       'governance',
     ],
-    quotas: { max_organizations: 100, max_users: 1000, max_warehouses: 50 },
+    quotas: {
+      max_organizations: 100,
+      max_users: 1000,
+      max_warehouses: 50,
+      max_customers: 100000,
+      max_products: 200000,
+    },
   },
 ];
 

@@ -231,13 +231,18 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     return this.mapAudience(rows[0]);
   }
 
-  async listAudiences(opts?: { productId?: string }): Promise<MarketingAudience[]> {
+  async listAudiences(opts?: { productId?: string; verticalId?: string }): Promise<MarketingAudience[]> {
+    const clauses: string[] = [];
     const params: unknown[] = [];
-    let where = '';
     if (opts?.productId) {
       params.push(opts.productId);
-      where = `WHERE product_id = $1`;
+      clauses.push(`product_id = $${params.length}`);
     }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(`vertical_id = $${params.length}`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = await this.q(
       `SELECT * FROM edge_marketing_audiences ${where} ORDER BY created_at DESC`,
       params,
@@ -356,6 +361,7 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
   async listCampaigns(opts?: {
     productId?: string;
     status?: string;
+    verticalId?: string;
   }): Promise<MarketingCampaign[]> {
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -366,6 +372,10 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     if (opts?.status) {
       params.push(opts.status);
       clauses.push(`status = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(`vertical_id = $${params.length}`);
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = await this.q(
@@ -439,12 +449,13 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     campaignId?: string | null;
     fields?: unknown[];
     requiredConsents?: unknown[];
+    metadata?: Record<string, unknown>;
     createdBy?: string | null;
   }): Promise<MarketingFormDefinition> {
     const rows = await this.q(
       `INSERT INTO edge_marketing_form_definitions (
-         code, name, form_type, slug, product_id, campaign_id, fields, required_consents, created_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) RETURNING *`,
+         code, name, form_type, slug, product_id, campaign_id, fields, required_consents, metadata, created_by
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10) RETURNING *`,
       [
         input.code,
         input.name,
@@ -454,6 +465,7 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
         input.campaignId ?? null,
         JSON.stringify(input.fields ?? []),
         JSON.stringify(input.requiredConsents ?? []),
+        JSON.stringify(input.metadata ?? {}),
         input.createdBy ?? null,
       ],
     );
@@ -476,13 +488,20 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     return rows[0] ? this.mapForm(rows[0]) : null;
   }
 
-  async listForms(opts?: { productId?: string }): Promise<MarketingFormDefinition[]> {
+  async listForms(opts?: { productId?: string; verticalId?: string }): Promise<MarketingFormDefinition[]> {
+    const clauses: string[] = [];
     const params: unknown[] = [];
-    let where = '';
     if (opts?.productId) {
       params.push(opts.productId);
-      where = `WHERE product_id = $1`;
+      clauses.push(`product_id = $${params.length}`);
     }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(
+        `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length})`,
+      );
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = await this.q(
       `SELECT * FROM edge_marketing_form_definitions ${where} ORDER BY created_at DESC`,
       params,
@@ -591,6 +610,7 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
   async listLeads(opts?: {
     status?: string;
     productId?: string;
+    verticalId?: string;
     limit?: number;
   }): Promise<MarketingLead[]> {
     const clauses: string[] = ['duplicate_of_lead_id IS NULL'];
@@ -602,6 +622,10 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     if (opts?.productId) {
       params.push(opts.productId);
       clauses.push(`primary_product_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(`vertical_id = $${params.length}`);
     }
     params.push(opts?.limit ?? 100);
     const rows = await this.q(
@@ -1392,8 +1416,17 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     return this.mapJourney(rows[0]);
   }
 
-  async listJourneys() {
-    const rows = await this.q(`SELECT * FROM edge_marketing_journeys ORDER BY created_at DESC`);
+  async listJourneys(opts?: { verticalId?: string }) {
+    const params: unknown[] = [];
+    let where = '';
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where = `WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $1)`;
+    }
+    const rows = await this.q(
+      `SELECT * FROM edge_marketing_journeys ${where} ORDER BY created_at DESC`,
+      params,
+    );
     return rows.map((r) => this.mapJourney(r));
   }
 
@@ -1612,16 +1645,24 @@ export class PgMarketingRepository implements MarketingRepositoryPort {
     return { id: String(rows[0].id) };
   }
 
-  async listPerformanceSnapshots(opts?: { scopeType?: string }) {
+  async listPerformanceSnapshots(opts?: { scopeType?: string; verticalId?: string }) {
     const params: unknown[] = [];
-    let where = '';
+    const where: string[] = [];
     if (opts?.scopeType) {
       params.push(opts.scopeType);
-      where = 'WHERE scope_type = $1';
+      where.push(`scope_type = $${params.length}`);
     }
+    if (opts?.verticalId) {
+      // Workspace switch scope — snapshots produits appartenant à la verticale (sans filtre = plateforme).
+      params.push(opts.verticalId);
+      where.push(
+        `scope_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length})`,
+      );
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const rows = await this.q(
       `SELECT id, scope_type, period_start, period_end, metrics, metric_quality
-       FROM edge_marketing_performance_snapshots ${where}
+       FROM edge_marketing_performance_snapshots ${whereSql}
        ORDER BY created_at DESC LIMIT 100`,
       params,
     );

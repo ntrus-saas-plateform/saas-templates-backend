@@ -589,6 +589,12 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
       params.push(filter.productId);
       where.push(`product_id = $${params.length}`);
     }
+    if (filter.verticalId) {
+      params.push(filter.verticalId);
+      where.push(
+        `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length})`,
+      );
+    }
     if (filter.accountId) {
       params.push(filter.accountId);
       where.push(`account_id = $${params.length}`);
@@ -1782,10 +1788,15 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
     return { items: rows.map((r) => this.mapActivity(r)), total: num(countRows[0]?.c) };
   }
 
-  async portfolioMetrics(): Promise<TenantPortfolioMetrics> {
+  async portfolioMetrics(verticalId?: string): Promise<TenantPortfolioMetrics> {
     const computedAt = new Date().toISOString();
     const provisioningList = PROVISIONING_TECHNICAL_STATUSES.map((s) => `'${s}'`).join(', ');
     const openFindingList = OPEN_FINDING_STATUSES.map((s) => `'${s}'`).join(', ');
+    // Workspace switch scope — sans filtre = plateforme.
+    const tenantScope = verticalId
+      ? `WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = '${verticalId.replace(/'/g, "''")}')`
+      : '';
+    const tenantIdSub = `(SELECT id FROM edge_p8_tenants ${tenantScope})`;
 
     const summaryRows = await this.q<{
       total: number;
@@ -1804,38 +1815,44 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
            WHERE health_status IN ('DEGRADED','CRITICAL') OR technical_status = 'DEGRADED'
          )::int AS degraded,
          COUNT(*) FILTER (WHERE administrative_status = 'PENDING_REVIEW')::int AS pending_review
-       FROM edge_p8_tenants`,
+       FROM edge_p8_tenants ${tenantScope}`,
     );
 
+    const exceptionScope = verticalId ? ` AND tenant_registry_id IN ${tenantIdSub}` : '';
     const exceptionRows = await this.q<{ c: number }>(
-      `SELECT COUNT(*)::int AS c FROM edge_p8_exceptions WHERE status IN ('APPROVED','ACTIVE')`,
+      `SELECT COUNT(*)::int AS c FROM edge_p8_exceptions
+       WHERE status IN ('APPROVED','ACTIVE')${exceptionScope}`,
     );
     const findingRows = await this.q<{ c: number }>(
       `SELECT COUNT(*)::int AS c FROM edge_p8_reconciliation_findings
-       WHERE status IN (${openFindingList})`,
+       WHERE status IN (${openFindingList})${exceptionScope}`,
     );
 
     const byProduct = await this.q<{ product_id: string; product_code: string | null; count: number }>(
       `SELECT product_id, MAX(product_code) AS product_code, COUNT(*)::int AS count
        FROM edge_p8_tenants
+       ${tenantScope}
        GROUP BY product_id
        ORDER BY count DESC`,
     );
     const byRegion = await this.q<{ region: string; count: number }>(
       `SELECT COALESCE(region, 'UNKNOWN') AS region, COUNT(*)::int AS count
        FROM edge_p8_tenants
+       ${tenantScope}
        GROUP BY COALESCE(region, 'UNKNOWN')
        ORDER BY count DESC`,
     );
     const byClassification = await this.q<{ classification: string; count: number }>(
       `SELECT classification, COUNT(*)::int AS count
        FROM edge_p8_tenants
+       ${tenantScope}
        GROUP BY classification
        ORDER BY count DESC`,
     );
     const byAdministrativeStatus = await this.q<{ status: string; count: number }>(
       `SELECT administrative_status AS status, COUNT(*)::int AS count
        FROM edge_p8_tenants
+       ${tenantScope}
        GROUP BY administrative_status
        ORDER BY count DESC`,
     );
@@ -1960,6 +1977,12 @@ export class PgTenantManagementRepository implements TenantManagementRepositoryP
     if (filter.productId) {
       params.push(filter.productId);
       where.push(`product_id = $${params.length}`);
+    }
+    if (filter.verticalId) {
+      params.push(filter.verticalId);
+      where.push(
+        `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length})`,
+      );
     }
     if (filter.accountId) {
       params.push(filter.accountId);

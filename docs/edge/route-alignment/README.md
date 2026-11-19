@@ -10,7 +10,8 @@
 | [edge-frontend-routes.md](./edge-frontend-routes.md) | Pages App Router + BFF + méthodes `edgeApi` |
 | [edge-be-fe-alignment-plan.md](./edge-be-fe-alignment-plan.md) | Écarts + plan d’alignement avancé (anti-MVP) |
 | [ALIGNMENT-PROGRESS.md](./ALIGNMENT-PROGRESS.md) | Suivi d’exécution — vague routes **CLOSED** |
-| [ALIGNMENT-AUDIT-2026-11-18.md](./ALIGNMENT-AUDIT-2026-11-18.md) | Audit honnête couverture + MVP restant |
+| [ALIGNMENT-AUDIT-2026-11-18.md](./ALIGNMENT-AUDIT-2026-11-18.md) | Audit initial (historique) |
+| [ALIGNMENT-AUDIT-2026-11-18-repass.md](./ALIGNMENT-AUDIT-2026-11-18-repass.md) | **Repasse** couverture + profondeur (post-clôture) |
 | [edge-console-out-of-scope.md](./edge-console-out-of-scope.md) | Handlers Nest exclus de la console |
 | `edge-routes.extract.json` | Export machine (CI / diff) |
 
@@ -33,6 +34,8 @@ Job CI `edge-route-alignment` : `--diff` informatif + `--check` **fail-closed**.
 pnpm test:e2e:p0
 # Lab : EDGE_API_URL=http://localhost:3000 pnpm test:e2e:p0:lab
 
-# FE (Playwright) — gate sign-in + CSRF
+# FE (Playwright) — gate sign-in + CSRF + studio section deep-links
 cd ../saas-template-frontend && pnpm test:e2e:p0
+# Studio rails only : pnpm test:e2e:studio
+# Auth rails (opt-in) : EDGE_E2E_AUTH=1 pnpm test:e2e:studio:auth
 ```

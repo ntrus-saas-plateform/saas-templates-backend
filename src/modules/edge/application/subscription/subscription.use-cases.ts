@@ -35,10 +35,35 @@ import type { ControlV1BusinessBackendClient } from '../../infrastructure/produc
 import type { BindSubscriptionTenantAssociationUseCase } from './subscription-tenant-association.use-cases.js';
 import { assertPlanChangeKeepsProductTenant } from '../../domain/subscription/subscription-tenant-association.js';
 import {
-  beachheadPlanEntitlementSnapshot,
-  beachheadProfileCodeForFamily,
-  extractBeachheadPlanCode,
-} from '../../domain/commercial/beachhead-plan-entitlements.js';
+  commercialPlanEntitlementSnapshot,
+} from '../../domain/commercial/commercial-plan-entitlements.js';
+import {
+  extractCommercialPlanCode,
+  mergeSqlCapabilityRowsIntoCatalogCapabilities,
+  resolveCommercialCatalogEntitlements,
+  type SqlCapabilityEntitlementRow,
+} from '../../domain/commercial/resolve-commercial-catalog-entitlements.js';
+import type { CommercialRepositoryPort } from '../../domain/ports/commercial-repository.port.js';
+
+/** Charge les caps SQL d'un plan (config gestion) pour overlay sur snapshot TS. */
+async function loadSqlCapabilityRows(
+  commercial: CommercialRepositoryPort | undefined,
+  planCode: string | null | undefined,
+): Promise<readonly SqlCapabilityEntitlementRow[]> {
+  const code = planCode?.trim();
+  if (!commercial || !code) return [];
+  return commercial.listPlanCapabilityEntitlementRowsByPlanCode(code);
+}
+
+/** Charge les caps SQL d'un package (ex. PKG_REST_CAFE_CONTROLLED quotas). */
+async function loadSqlPackageCapabilityRows(
+  commercial: CommercialRepositoryPort | undefined,
+  packageCode: string | null | undefined,
+): Promise<readonly SqlCapabilityEntitlementRow[]> {
+  const code = packageCode?.trim();
+  if (!commercial || !code) return [];
+  return commercial.listPackageCapabilityEntitlementRowsByPackageCode(code);
+}
 import {
   resolveSubscriptionTenantRef,
   syncBbTenantLifecycle,
@@ -124,6 +149,7 @@ export class CreateSubscriptionFromHandoffUseCase {
     private readonly commerce?: SalesCommerceRepositoryPort,
     private readonly acceptHandoff?: AcceptSalesHandoffUseCase,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly commercial?: CommercialRepositoryPort,
   ) {}
 
   async execute(input: { actorId: string; handoffId: string; acceptHandoff?: boolean }) {
@@ -165,11 +191,25 @@ export class CreateSubscriptionFromHandoffUseCase {
     const offerConfiguration = (pkg.offerConfiguration as Record<string, unknown>) ?? {};
     const planId = offerConfiguration.planId as string | undefined;
     const packageId = offerConfiguration.solutionPackageId as string | undefined;
+    const packageCode =
+      typeof offerConfiguration.packageCode === 'string'
+        ? offerConfiguration.packageCode
+        : typeof offerConfiguration.solutionPackageCode === 'string'
+          ? offerConfiguration.solutionPackageCode
+          : null;
     const planCode =
-      extractBeachheadPlanCode(offerConfiguration, pkg as Record<string, unknown>) ??
+      extractCommercialPlanCode(offerConfiguration, pkg as Record<string, unknown>) ??
       (typeof offerConfiguration.planCode === 'string' ? offerConfiguration.planCode : null);
-    const beachhead = beachheadPlanEntitlementSnapshot(planCode);
-    const profileCode = beachheadProfileCodeForFamily(beachhead?.productFamily);
+    const catalog = planCode ? commercialPlanEntitlementSnapshot(planCode) : null;
+    const sqlRows = [
+      ...(await loadSqlCapabilityRows(this.commercial, planCode)),
+      ...(await loadSqlPackageCapabilityRows(this.commercial, packageCode)),
+    ];
+    const capabilities = mergeSqlCapabilityRowsIntoCatalogCapabilities(
+      resolveCommercialCatalogEntitlements({ planCode, packageCode }),
+      sqlRows,
+    );
+    const profileCode = catalog?.profileCode ?? null;
 
     const sub = await this.subscriptions.createSubscription({
       accountId,
@@ -184,24 +224,27 @@ export class CreateSubscriptionFromHandoffUseCase {
       commercialSnapshot: pkg as Record<string, unknown>,
       metadata: {
         ...(typeof pkg.metadata === 'object' && pkg.metadata ? (pkg.metadata as object) : {}),
-        ...(planCode ? { planCode, productCode: beachhead?.productFamily } : {}),
+        ...(planCode ? { planCode, productCode: catalog?.productFamily } : {}),
         ...(profileCode ? { profileCode } : {}),
       },
       createdBy: input.actorId,
       status: SubscriptionStatus.DRAFT,
     });
 
-    if (planId || packageId || beachhead) {
+    if (planId || packageId || catalog || capabilities.length) {
       const snapshot: Record<string, unknown> = {
         ...offerConfiguration,
         ...(planCode ? { planCode } : {}),
-        ...(beachhead
-          ? { capabilities: beachhead.capabilities, productFamily: beachhead.productFamily }
-          : {}),
+        ...(capabilities.length
+          ? { capabilities }
+          : catalog
+            ? { capabilities: catalog.capabilities, productFamily: catalog.productFamily }
+            : {}),
+        ...(catalog ? { productFamily: catalog.productFamily } : {}),
       };
       await this.subscriptions.addItem({
         subscriptionId: sub.id,
-        itemType: packageId && !beachhead ? SubscriptionItemType.PACKAGE : SubscriptionItemType.PLAN,
+        itemType: packageId && !catalog ? SubscriptionItemType.PACKAGE : SubscriptionItemType.PLAN,
         productId,
         offerRef: planCode ?? planId ?? packageId ?? null,
         snapshot,
@@ -241,6 +284,7 @@ export class CreateSubscriptionUseCase {
   constructor(
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly commercial?: CommercialRepositoryPort,
   ) {}
 
   async execute(input: {
@@ -250,7 +294,7 @@ export class CreateSubscriptionUseCase {
     contractId?: string | null;
     planId?: string | null;
     packageId?: string | null;
-    /** Beachhead commercial plan code e.g. SYNTIX_LITE / OKAPI_REST_STARTER */
+    /** Commercial plan code e.g. SYNTIX_LITE / OKAPI_REST_STARTER / OKAPI_REST_CAFE_CONTROLLED */
     planCode?: string | null;
     currency?: string;
     billingFrequency?: string | null;
@@ -262,10 +306,15 @@ export class CreateSubscriptionUseCase {
     const correlationId = input.correlationId ?? randomUUID();
     const planCode =
       input.planCode?.trim() ||
-      extractBeachheadPlanCode(input.metadata, input.enterpriseProfile) ||
+      extractCommercialPlanCode(input.metadata, input.enterpriseProfile) ||
       null;
-    const beachhead = beachheadPlanEntitlementSnapshot(planCode);
-    const profileCode = beachheadProfileCodeForFamily(beachhead?.productFamily);
+    const catalog = planCode ? commercialPlanEntitlementSnapshot(planCode) : null;
+    const sqlRows = await loadSqlCapabilityRows(this.commercial, planCode);
+    const capabilities = mergeSqlCapabilityRowsIntoCatalogCapabilities(
+      resolveCommercialCatalogEntitlements({ planCode }),
+      sqlRows,
+    );
+    const profileCode = catalog?.profileCode ?? null;
     const sub = await this.subscriptions.createSubscription({
       accountId: input.accountId,
       productId: input.productId,
@@ -280,20 +329,20 @@ export class CreateSubscriptionUseCase {
       createdBy: input.actorId,
       metadata: {
         ...(input.metadata ?? {}),
-        ...(planCode ? { planCode, productCode: beachhead?.productFamily } : {}),
+        ...(planCode ? { planCode, productCode: catalog?.productFamily } : {}),
         ...(profileCode ? { profileCode } : {}),
       },
     });
-    if (beachhead) {
+    if (catalog || capabilities.length) {
       await this.subscriptions.addItem({
         subscriptionId: sub.id,
         itemType: SubscriptionItemType.PLAN,
         productId: input.productId,
-        offerRef: beachhead.planCode,
+        offerRef: catalog?.planCode ?? planCode,
         snapshot: {
-          planCode: beachhead.planCode,
-          productFamily: beachhead.productFamily,
-          capabilities: beachhead.capabilities,
+          planCode: catalog?.planCode ?? planCode,
+          productFamily: catalog?.productFamily,
+          capabilities: capabilities.length ? capabilities : (catalog?.capabilities ?? []),
         },
       });
     }
@@ -1139,6 +1188,7 @@ export class ExecuteChangeRequestUseCase {
     private readonly outbox?: ControlPlaneOutboxTransactionService,
     private readonly associations?: SubscriptionTenantAssociationPort,
     private readonly publishEntitlements?: PublishEntitlementsUseCase,
+    private readonly commercial?: CommercialRepositoryPort,
   ) {}
 
   async execute(input: {
@@ -1208,15 +1258,19 @@ export class ExecuteChangeRequestUseCase {
         (typeof patch.offerRef === 'string' && patch.offerRef) ||
         (typeof patch.planId === 'string' && patch.planId) ||
         null;
-      const catalogSnapshot = planCode ? beachheadPlanEntitlementSnapshot(planCode) : null;
+      const sqlRows = await loadSqlCapabilityRows(this.commercial, planCode);
+      const catalogCapabilities = mergeSqlCapabilityRowsIntoCatalogCapabilities(
+        resolveCommercialCatalogEntitlements({ planCode }),
+        sqlRows,
+      );
       const capabilities =
         (Array.isArray(patch.capabilities) ? patch.capabilities : null) ??
-        catalogSnapshot?.capabilities ??
+        (catalogCapabilities.length ? catalogCapabilities : null) ??
         [];
       if (!capabilities.length) {
         throw new DomainError(
           ErrorCode.VALIDATION_ERROR,
-          'PLAN_CHANGE requires proposedConfig.capabilities or a known beachhead planCode (SYNTIX_* / OKAPI_REST_*)',
+          'PLAN_CHANGE requires proposedConfig.capabilities or a known commercial planCode (SYNTIX_* / OKAPI_*)',
           [{ code: 'PLAN_CHANGE_CAPABILITIES_REQUIRED' }],
         );
       }
@@ -1615,6 +1669,7 @@ export class RequestProvisioningUseCase {
     private readonly subscriptions: SubscriptionRepositoryPort,
     private readonly provisioning?: SubscriptionProvisioningCoordinationPort,
     private readonly outbox?: ControlPlaneOutboxTransactionService,
+    private readonly commercial?: CommercialRepositoryPort,
   ) {}
 
   async execute(input: { actorId: string; subscriptionId: string }) {
@@ -1661,7 +1716,7 @@ export class RequestProvisioningUseCase {
     }
 
     // RGOM-E7 — attach real entitlement projection when subscription items resolve.
-    // Fallback: beachhead planCode on metadata / offerRef → Syntix Lite/Pro or Restaurant plans.
+    // Fallback: commercial planCode (catalogue universel) → mêmes caps tous verticaux.
     try {
       let items = await this.subscriptions.listItems(sub.id);
       const extensions =
@@ -1670,21 +1725,26 @@ export class RequestProvisioningUseCase {
       let built = buildBbEntitlementProjectionFromItems({ items, contractualExtensions: extensions });
       if (built.empty) {
         const planCode =
-          extractBeachheadPlanCode(meta, sub.commercialSnapshot as Record<string, unknown>) ??
-          items.map((i) => i.offerRef).find((r) => !!beachheadPlanEntitlementSnapshot(r ?? '')) ??
+          extractCommercialPlanCode(meta, sub.commercialSnapshot as Record<string, unknown>) ??
+          items.map((i) => i.offerRef).find((r) => !!commercialPlanEntitlementSnapshot(r ?? '')) ??
           null;
-        const beachhead = beachheadPlanEntitlementSnapshot(planCode);
-        if (beachhead) {
-          if (!payload.product_code) payload.product_code = beachhead.productFamily;
-          if (!payload.profile_code) {
-            payload.profile_code = beachheadProfileCodeForFamily(beachhead.productFamily);
+        const catalog = planCode ? commercialPlanEntitlementSnapshot(planCode) : null;
+        const sqlRows = await loadSqlCapabilityRows(this.commercial, planCode);
+        const capabilities = mergeSqlCapabilityRowsIntoCatalogCapabilities(
+          resolveCommercialCatalogEntitlements({ planCode }),
+          sqlRows,
+        );
+        if (catalog || capabilities.length) {
+          if (!payload.product_code && catalog) payload.product_code = catalog.productFamily;
+          if (!payload.profile_code && catalog?.profileCode) {
+            payload.profile_code = catalog.profileCode;
           }
           built = buildBbEntitlementProjectionFromItems({
             items: [
               {
                 itemType: 'PLAN',
-                offerRef: beachhead.planCode,
-                snapshot: { capabilities: beachhead.capabilities },
+                offerRef: catalog?.planCode ?? planCode,
+                snapshot: { capabilities: capabilities.length ? capabilities : catalog?.capabilities ?? [] },
               },
             ],
             contractualExtensions: extensions,
@@ -1873,15 +1933,15 @@ export class ResolveSubscriptionIdempotencyUseCase {
 
 export class GetSubscriptionOverviewUseCase {
   constructor(private readonly subscriptions: SubscriptionRepositoryPort) {}
-  execute() {
-    return this.subscriptions.getOverviewStats();
+  execute(verticalId?: string) {
+    return this.subscriptions.getOverviewStats(verticalId);
   }
 }
 
 export class GetSubscriptionAnalyticsUseCase {
   constructor(private readonly subscriptions: SubscriptionRepositoryPort) {}
-  async execute() {
-    const stats = await this.subscriptions.getOverviewStats();
+  async execute(verticalId?: string) {
+    const stats = await this.subscriptions.getOverviewStats(verticalId);
     return {
       ...stats,
       recognizedRevenue: null,

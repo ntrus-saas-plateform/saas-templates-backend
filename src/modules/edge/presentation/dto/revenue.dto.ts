@@ -27,6 +27,13 @@ export class RevenueListQueryDto {
   @IsUUID()
   businessUnitId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Scope to a vertical — omit for platform-wide (dual-mode)',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
+
   @ApiPropertyOptional({ default: 50 })
   @IsOptional()
   @Type(() => Number)
@@ -152,6 +159,14 @@ export class RevenueOverviewQueryDto {
   @IsOptional()
   @IsDateString()
   asOf?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Workspace switch scope — when set, MRR metrics are live-computed from subscriptions of this vertical (ESTIMATED); stored snapshots carry no vertical link',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
 }
 
 export class MrrLineDto {
@@ -292,6 +307,13 @@ export class ComputeMrrMovementDto {
   @IsUUID()
   businessUnitId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Workspace switch scope — compute MRR from subscriptions of this vertical only',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
+
   @ApiPropertyOptional({ type: [MrrLineDto] })
   @IsOptional()
   @IsArray()
@@ -326,6 +348,13 @@ export class CreateRevenueForecastDto {
   @IsOptional()
   @IsUUID()
   businessUnitId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Vertical scope for this forecast — omit for platform-wide',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
 
   @ApiProperty()
   @IsDateString()
@@ -633,6 +662,13 @@ export class RetentionOverviewQueryDto {
   @IsOptional()
   @IsDateString()
   asOf?: string;
+
+  @ApiPropertyOptional({
+    description: 'Scope GRR/NRR to cohorts of this vertical — omit for platform-wide',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
 }
 
 export class RecordRetentionSnapshotDto {
@@ -890,6 +926,13 @@ export class RenewalIntelligenceQueryDto {
   @Min(1)
   @Max(500)
   limit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Scope renewals to subscriptions of this vertical — omit for platform-wide',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
 }
 
 export class CreateBusinessAlertPolicyDto {

@@ -1,6 +1,6 @@
 import { DomainError, ErrorCode } from '../../../../core/domain/errors/domain-error.js';
 import type { SubscriptionProvisioningCoordinationPort } from '../../domain/subscription/provisioning-coordination.port.js';
-import type { SubscriptionRepositoryPort } from '../../domain/subscription/subscription.repository.port.js';
+import type { SubscriptionRepositoryPort } from '../../domain/ports/subscription-repository.port.js';
 import { ActivateSubscriptionUseCase } from './subscription.use-cases.js';
 import { CalculateAndSnapshotEntitlementsUseCase } from './subscription.use-cases.js';
 import { CompleteProvisioningUseCase } from './subscription.use-cases.js';

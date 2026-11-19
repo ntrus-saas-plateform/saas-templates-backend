@@ -104,8 +104,20 @@ Copier [34](./34-g11-product-readiness-matrix.md) :
 
 - [x] `HOTEL_HOSPITALITY` dans `FAMILY_BY_PROFILE` BB → `OKAPI_HOSPITALITY`  
 - [x] Quotas Edge appliqués à CreateOrganization — BB lit `entitlements.quotas.max_organizations` (projection W4) ; absent / ≤0 = fail-closed `ORG_QUOTA_UNAVAILABLE`  
+- [x] Quotas Edge `max_users` — invitations / 1er membership fail-closed `USER_QUOTA_UNAVAILABLE`  
+- [x] Quotas Edge `max_customers` / `max_products` — CreateCustomer(+guest) / CreateProduct fail-closed ; seeds TS + mig **144** ; vitest `edge-entitlement-quotas` (+ beachhead projection) ; Nest `planFallback` seulement lab unfrozen sans projection  
+- [x] Acquisition : apply `file_upload` honnête (pas de faux upload) ; CONTACT/DEMO → `publicSubmitMode=LEAD`  
+- [x] Pack CAFE Controlled — caps + quotas SQL mig **145** (aligné seed TS)  
+- [x] Wizard SMB `offers/wizard` branché **console** Commercial/Configurator (pas public acquire)  
+
+- [x] **SoT universel entitlements** — attach via `resolveCommercialCatalogEntitlements` + `extractCommercialPlanCode` sur les 4 points (create, handoff, PLAN_CHANGE, provisioning publish) : un seul resolver pour TOUTES les familles (Syntix, Restaurant, Café, Retail, Hosp), aucune voie beachhead-only ; seule la config plan/package diffère  
+- [x] **Overlay SQL config sur snapshot TS** — `mergeSqlCapabilityRowsIntoCatalogCapabilities` applique `edge_commercial_plan_capabilities` / `edge_solution_package_capabilities` (`numericLimit`, `NOT_INCLUDED`, caps ajoutées ; quota SQL sans `numericLimit` → conserve TS, jamais 0) — injecté `COMMERCIAL_REPOSITORY_PORT` (`listPlanCapabilityEntitlementRowsByPlanCode` + variante package)  
+- [x] **Gestion quotas commerciale complète** — `addPlanCapability` / `addPackageCapability` / `addAddonCapability` écrivent `restrictions` JSONB (API `numericLimit` / `restrictions`) ; `listPlanCapabilities` / `listPackageCapabilities` / `listAddonCapabilities` retournent `capabilityId` + `capabilityCode` + `restrictions` (merge `||` existant conservé) — colonne add-on ajoutée mig **147** (plans/packages avaient déjà `restrictions` en 075) ; clients FE `edge.ts` alignés (`numericLimit` accepté sur les 3 POST)  
+- [x] **Plan Café en base** — mig **146** `OKAPI_REST_CAFE_CONTROLLED` (status `DRAFT`, `commercialAvailability CONTROLLED_ROLLOUT`, quotas alignés pack ; **jamais** AVAILABLE/PUBLISHED) — même mécanisme plan→capabilities que Retail/Hosp  
+- [x] **Hygiène typecheck** — `tsc --noEmit` **0 erreur** (baseline HEAD 28 → 0 : import port cassé, doublons `sales.controller`, compares TS2367 PLANNED, contrats specs retail/hosp reformulés honnêtement en *« PLANNED quotas roadmap uniquement »* — plus de claim fausse `NoPlannedCaps` alors que `max_customers`/`max_products` stubs sont PLANNED)  
 - [x] Matrice caps commerciales ↔ `capability_definitions` — `commercialPlanCapabilityMatrix` + `assertPlanCapsAlignCapabilityCatalog` + `EDGE_FAMILY_BY_PROFILE` (`commercial-plan-entitlements.ts` / vitest)  
 - [x] Contract tests control/v1 par famille — `control-v1-family-contract.spec.ts` (offline PASS ; lab `describe.skipIf` sans `EDGE_BB_CONTROL_*`)  
+- [x] Acquisition public profondeur — `/acquire/[slug]/apply` → `POST …/applications` (fail-closed `applicationId`) ; `/configure` plans→apply/checkout PUBLISHED only
 
 ### W5 — FE / console
 
@@ -113,6 +125,8 @@ Copier [34](./34-g11-product-readiness-matrix.md) :
 - [x] Operator console : readiness G11 badge par produit  
 - [x] `edge.ts` clients `advance-after-paid` + `provisioning-jobs`  
 - [x] Alignement routes BE↔FE console — **CLOSED** (`uncoveredConsole: 0`, inventaire fail-closed, anti-MVP `ListOrUuidField`, e2e P0 + lab golden/44)  
+- [x] **Réserve 1 close — Configurator pilotage quotas** : champ `numericLimit` + select `inclusionType` ajoutés au formulaire « Link capability » (1 seul formulaire pour plans/packages/addons) et envoyés aux 3 POST `.../capabilities` ; bloc **« Linked capabilities & quotas »** affiche `capabilityCode · inclusionType · badge quota ≤ N` depuis le détail de l'offre (invalidation après link) — `GET /commercial/addons/:id` **ajouté** (use case `GetCommercialAddonUseCase` + provider + route : parity lecture addons vs plans/packages)  
+- [x] **Réserve 2 close — gérable ≠ vendable (preuves code)** : publish plan passe par `EvaluateCommercialPlanReadiness` (`requireProductPublished: true` → Retail/Hosp `CONFIGURING` ⇒ blocker `product_not_published` ; caps `PLANNED` ⇒ `capability_not_includable`) + `assertPublicationAllowed` fail-closed ; catalogue public filtre `isCommerciallyPresentable` (AVAILABLE only) ; **price book gate G11#3 ajouté** : entry `conditions.priceSource` (`MEASURED`/`ESTIMATED`/`NEEDS_RESEARCH`, **défaut honnête NEEDS_RESEARCH**) + `PublishPriceBookUseCase` refuse tout publish tant qu'une entry reste NEEDS_RESEARCH (vitest `commercial.use-cases.spec` : 10 tests) ; console Pricing affiche select « Price source » + liste **« Entries & price sources »** (badge rouge NEEDS_RESEARCH) — gate jamais contourné, DRAFT/NEEDS_RESEARCH volontaire jusqu’à research signé  
 
 ---
 
@@ -142,7 +156,7 @@ Copier [34](./34-g11-product-readiness-matrix.md) :
 7. [x] CAFE Controlled pack seed (mig **135**) — Phase B amorcée  
 
 **Phase A exit :** ATTEINT.  
-**Phase B :** CAFE (135) + P10 **REVIEW** (139) — PUBLISH bloqué [43](./43-legal-publish-gate.md).  
+**Phase B :** CAFE (135) + P10 **REVIEW** (139) + plan Café BDD **146** (DRAFT / CONTROLLED_ROLLOUT) — PUBLISH bloqué [43](./43-legal-publish-gate.md).  
 **Phase C/D :** catalogues Lite→Ent + mig **138** + playbooks 41/42 — G11 **PARTIAL** (pas AVAILABLE).  
 **Phase E (instrumenté) :** `edge_provisioning_jobs_*` + lag ; dashboard/alertes prêts — import Grafana **manuel**.  
 **Phase F (H2 scaffold) :** warm pool + métriques BB allocate/pool ; flag OFF ; vitest mock **PASS**.  

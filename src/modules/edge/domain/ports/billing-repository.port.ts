@@ -483,7 +483,13 @@ export interface BillingRepositoryPort {
   ): Promise<InvoiceLine[]>;
 
   getInvoice(id: string): Promise<Invoice | null>;
-  listInvoices(input?: { billingAccountId?: string; status?: string; limit?: number }): Promise<Invoice[]>;
+  listInvoices(input?: {
+    billingAccountId?: string;
+    status?: string;
+    /** Workspace switch scope — invoices of subscriptions in this vertical. */
+    verticalId?: string;
+    limit?: number;
+  }): Promise<Invoice[]>;
   listOverdueCandidates(asOf?: Date, limit?: number): Promise<Invoice[]>;
   updateInvoice(
     id: string,
@@ -592,8 +598,8 @@ export interface BillingRepositoryPort {
     patch: Partial<Pick<PaymentWebhookEvent, 'processingStatus' | 'processedAt'>>,
   ): Promise<PaymentWebhookEvent>;
 
-  getBillingOverview(): Promise<BillingOverview>;
-  getBillingAnalytics(currency?: string): Promise<BillingAnalytics>;
+  getBillingOverview(verticalId?: string): Promise<BillingOverview>;
+  getBillingAnalytics(currency?: string, verticalId?: string): Promise<BillingAnalytics>;
 
   resolveIdempotency(
     idempotencyKey: string,
@@ -821,10 +827,12 @@ export interface BillingRepositoryPort {
     currency?: string;
     periodStart?: Date | null;
     periodEnd?: Date | null;
+    verticalId?: string;
   }): Promise<Invoice[]>;
   listPaymentIntentsForExport(input: {
     currency?: string;
     periodStart?: Date | null;
     periodEnd?: Date | null;
+    verticalId?: string;
   }): Promise<PaymentIntent[]>;
 }

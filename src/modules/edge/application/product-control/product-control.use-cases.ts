@@ -1258,6 +1258,7 @@ export class ListProductControlResourcesUseCase {
     productId?: string;
     platformId?: string;
     status?: ProductControlEndpointStatus;
+    q?: string;
     limit?: number;
     offset?: number;
   }) {
@@ -1271,6 +1272,7 @@ export class ListProductControlResourcesUseCase {
   listExchanges(filter: {
     endpointId?: string;
     status?: ControlExchangeStatus;
+    q?: string;
     limit?: number;
     offset?: number;
   }) {
@@ -1283,5 +1285,27 @@ export class ListProductControlResourcesUseCase {
 
   listCapabilities(endpointId: string) {
     return this.repo.listCapabilities(endpointId);
+  }
+
+  listContracts(endpointId: string) {
+    return this.repo.listNegotiatedContracts(endpointId);
+  }
+
+  listHealthChecks(filter: { endpointId: string; limit?: number; offset?: number }) {
+    return this.repo.listHealthChecks(filter);
+  }
+
+  listCredentials(filter: {
+    endpointId?: string;
+    status?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.repo.listCredentialBindings(filter);
+  }
+
+  listEndpointHistory(endpointId: string, filter: { limit?: number; offset?: number }) {
+    return this.repo.listEndpointHistory(endpointId, filter);
   }
 }

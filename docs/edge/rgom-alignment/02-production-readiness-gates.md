@@ -41,7 +41,7 @@ Légende : `[ ]` à faire · cocher seulement avec **preuve**.
 - [x] Recommandation plan/package/add-ons explicable
 - [x] `grantsEntitlements: false` garanti (tests)
 - [x] Snapshot lié Quote / Opportunity / Acquisition
-- [x] FE public wizard + FE sales console (API client + P10 acquire shell)
+- [x] FE public acquire shell (`/acquire`…`/configure` plans→apply) + FE sales/commercial console (wizard API client branché console ; wizard SMB **non** public — auth)
 - [x] Correction de profil par prospect
 - [x] Cas Wholesale 3 WH / 45 users golden test (unit ; PW live EX-E12-PW)
 

@@ -295,3 +295,16 @@ export type CredentialBindingRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type ProductControlHistoryRecord = {
+  id: string;
+  resourceType: string;
+  resourceId: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  action: string;
+  reason: string | null;
+  actorId: string;
+  details: Record<string, unknown>;
+  createdAt: Date;
+};

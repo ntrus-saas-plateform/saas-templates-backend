@@ -49,6 +49,7 @@ import type {
   RetentionOverview,
   RenewalIntelligenceOverview,
   RevenueOverview,
+  RevenueOverviewMetric,
 } from '../../domain/revenue-operations/revenue.types.js';
 import {
   computeCac,
@@ -345,22 +346,126 @@ export class RecordMetricSnapshotUseCase {
 }
 
 export class GetRevenueOverviewUseCase {
-  constructor(private readonly repo: RevenueOperationsRepositoryPort) {}
+  constructor(
+    private readonly repo: RevenueOperationsRepositoryPort,
+    private readonly projection?: RevenueProjectionInputPort,
+  ) {}
 
   /**
    * Reads stored snapshots only — never fabricates financial amounts.
    * Missing metrics surface as UNAVAILABLE.
+   *
+   * Workspace switch scope: with `verticalId`, stored snapshots are unusable (they carry no
+   * vertical link), so MRR/ARR metrics are live-computed from that vertical's subscriptions
+   * with dataQuality ESTIMATED + provenance lineCount — never as MEASURED cash. Other
+   * snapshot-only metrics surface as UNAVAILABLE for the vertical (not fabricated).
    */
   async execute(input?: {
     businessUnitId?: string | null;
     metricCodes?: string[];
     asOf?: Date | string;
+    verticalId?: string;
   }): Promise<RevenueOverview> {
-    return this.repo.getRevenueOverview({
-      businessUnitId: input?.businessUnitId ?? null,
-      metricCodes: input?.metricCodes ?? [...CANONICAL_METRIC_CODES],
-      asOf: input?.asOf ? new Date(input.asOf) : undefined,
+    const codes = input?.metricCodes?.length
+      ? input.metricCodes
+      : [...CANONICAL_METRIC_CODES];
+    if (!input?.verticalId || !this.projection) {
+      return this.repo.getRevenueOverview({
+        businessUnitId: input?.businessUnitId ?? null,
+        metricCodes: codes,
+        asOf: input?.asOf ? new Date(input.asOf) : undefined,
+      });
+    }
+    return this.computeVerticalOverview(input.verticalId, codes, input.asOf);
+  }
+
+  private async computeVerticalOverview(
+    verticalId: string,
+    codes: string[],
+    asOf?: Date | string,
+  ): Promise<RevenueOverview> {
+    const asOfDate = asOf ? new Date(asOf) : new Date();
+    const periodStart = new Date(asOfDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const lines = await this.projection!.loadNormalizedSubscriptionRevenueLines({
+      periodStart,
+      periodEnd: asOfDate,
+      verticalId,
     });
+    const result = computeMrrMovements(lines, {});
+    const bucketFor = (code: string) => {
+      switch (code) {
+        case 'MRR_ENDING':
+          return result.mrrEnding;
+        case 'MRR_NEW':
+          return result.mrrNew;
+        case 'MRR_EXPANSION':
+          return result.mrrExpansion;
+        case 'MRR_CONTRACTION':
+          return result.mrrContraction;
+        case 'MRR_CHURNED':
+          return result.mrrChurned;
+        case 'MRR_REACTIVATION':
+          return result.mrrReactivation;
+        case 'MRR_NET_NEW':
+          return result.mrrNetNew;
+        case 'ARR_ENDING':
+          return result.arrEnding;
+        default:
+          return null;
+      }
+    };
+    const metrics: RevenueOverviewMetric[] = codes.map((code) => {
+      const bucket = bucketFor(code);
+      if (!bucket) {
+        return {
+          metricCode: code,
+          value: null,
+          currency: null,
+          dataQuality: 'UNAVAILABLE',
+          definitionVersion: null,
+          asOf: null,
+          periodStart: null,
+          periodEnd: null,
+          sourceProvenance: null,
+          note: 'Stored snapshots carry no vertical link — not fabricated for vertical scope',
+        };
+      }
+      const provenance = {
+        calculator: 'mrr-calculator',
+        scope: 'vertical',
+        verticalId,
+        lineCount: bucket.lineCount,
+        skippedLineCount: result.skippedLineCount,
+        note: 'Live-computed from vertical subscriptions — stored snapshots carry no vertical link',
+      };
+      return {
+        metricCode: code,
+        value: bucket.amount,
+        currency: result.currency,
+        dataQuality: bucket.dataQuality as RevenueOverviewMetric['dataQuality'],
+        definitionVersion: null,
+        asOf: asOfDate.toISOString(),
+        periodStart: periodStart.toISOString(),
+        periodEnd: asOfDate.toISOString(),
+        sourceProvenance: provenance,
+        note:
+          bucket.amount == null
+            ? 'No lines for this vertical — not fabricated as zero'
+            : 'Live-computed from vertical subscriptions (not a stored snapshot)',
+      };
+    });
+    const measured = metrics.filter((m) => m.dataQuality !== 'UNAVAILABLE').length;
+    const availability =
+      measured === 0 ? 'UNAVAILABLE' : measured === metrics.length ? 'AVAILABLE' : 'PARTIAL';
+    return {
+      availability,
+      asOf: asOfDate.toISOString(),
+      metrics,
+      note:
+        availability === 'UNAVAILABLE'
+          ? 'No vertical-scoped MRR computable — values not invented'
+          : 'Vertical scope: MRR live-computed (ESTIMATED); snapshot-only metrics unavailable',
+    };
   }
 }
 
@@ -377,6 +482,7 @@ export class ComputeMrrMovementUseCase {
     periodEnd: Date | string;
     currency?: string;
     businessUnitId?: string | null;
+    verticalId?: string;
     lines?: NormalizedSubscriptionRevenueLine[];
     excludeFreeTrials?: boolean;
     persistSnapshots?: boolean;
@@ -391,6 +497,7 @@ export class ComputeMrrMovementUseCase {
         periodEnd,
         currency: input.currency,
         businessUnitId: input.businessUnitId,
+        verticalId: input.verticalId,
       });
     }
     const result = computeMrrMovements(lines, {
@@ -720,6 +827,7 @@ export class CreateRevenueForecastUseCase {
     code: string;
     name: string;
     businessUnitId?: string | null;
+    verticalId?: string | null;
     horizonStart: Date | string;
     horizonEnd: Date | string;
     currency: string;
@@ -737,6 +845,7 @@ export class CreateRevenueForecastUseCase {
           code: input.code.trim(),
           name: input.name.trim(),
           businessUnitId: input.businessUnitId ?? null,
+          verticalId: input.verticalId ?? null,
           horizonStart: new Date(input.horizonStart),
           horizonEnd: new Date(input.horizonEnd),
           currency: input.currency.trim().toUpperCase(),
@@ -1473,11 +1582,21 @@ export class GetRetentionOverviewUseCase {
   execute(input?: {
     cohortId?: string | null;
     asOf?: Date | string;
+    verticalId?: string;
   }): Promise<RetentionOverview> {
     return this.repo.getRetentionOverview({
       cohortId: input?.cohortId ?? null,
       asOf: input?.asOf ? new Date(input.asOf) : undefined,
+      verticalId: input?.verticalId,
     });
+  }
+}
+
+export class ListRevenueForecastsUseCase {
+  constructor(private readonly repo: RevenueOperationsRepositoryPort) {}
+
+  execute(opts?: { verticalId?: string; status?: string; limit?: number }) {
+    return this.repo.listRevenueForecasts(opts);
   }
 }
 
@@ -1953,6 +2072,7 @@ export class GetRenewalIntelligenceOverviewUseCase {
   async execute(input?: {
     withinDays?: number;
     limit?: number;
+    verticalId?: string;
   }): Promise<RenewalIntelligenceOverview> {
     const asOf = new Date();
     if (!this.subscriptions) {
@@ -1968,6 +2088,7 @@ export class GetRenewalIntelligenceOverviewUseCase {
     const limit = input?.limit ?? 100;
     const { items: subs } = await this.subscriptions.listSubscriptions({
       status: 'ACTIVE',
+      verticalId: input?.verticalId,
       limit: Math.min(limit, 500),
       offset: 0,
     });
@@ -2351,6 +2472,7 @@ export class ListRevenueTargetsUseCase {
     status?: string;
     businessUnitId?: string;
     metricCode?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }) {

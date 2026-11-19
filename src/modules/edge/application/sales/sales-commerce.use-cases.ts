@@ -1311,6 +1311,7 @@ export class GetSalesForecastUseCase {
     ownerAdministratorId?: string | null;
     teamId?: string | null;
     productId?: string | null;
+    verticalId?: string | null;
     labelAsRecognizedRevenue?: boolean;
   }) {
     assertForecastIsNotRecognizedRevenue({
@@ -1321,14 +1322,15 @@ export class GetSalesForecastUseCase {
       ownerAdministratorId: input.ownerAdministratorId,
       teamId: input.teamId,
       productId: input.productId,
+      verticalId: input.verticalId,
     });
   }
 }
 
 export class GetSalesPerformanceUseCase {
   constructor(private readonly commerce: SalesCommerceRepositoryPort) {}
-  async execute() {
-    const summary = await this.commerce.salesPerformanceSummary();
+  async execute(verticalId?: string) {
+    const summary = await this.commerce.salesPerformanceSummary(verticalId);
     return {
       ...summary,
       disclaimer:

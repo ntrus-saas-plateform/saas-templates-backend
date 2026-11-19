@@ -29,6 +29,7 @@ import {
   ListBusinessAlertsUseCase,
   ListBusinessReportsUseCase,
   ListMetricDefinitionsUseCase,
+  ListRevenueForecastsUseCase,
   ListRevenueTargetsUseCase,
   PublishMetricDefinitionUseCase,
   RecordMetricSnapshotUseCase,
@@ -98,6 +99,7 @@ export class EdgeRevenueOperationsController {
     private readonly computeCash: ComputeCashRevenueUseCase,
     private readonly computeChurn: ComputeChurnRatesUseCase,
     private readonly createForecast: CreateRevenueForecastUseCase,
+    private readonly listForecasts: ListRevenueForecastsUseCase,
     private readonly createScenario: CreateForecastScenarioUseCase,
     private readonly namedForecastScenarios: BuildNamedForecastScenariosUseCase,
     private readonly createLeakage: CreateLeakageCaseUseCase,
@@ -168,6 +170,7 @@ export class EdgeRevenueOperationsController {
     return this.overview.execute({
       businessUnitId: query.businessUnitId,
       asOf: query.asOf,
+      verticalId: query.verticalId,
     });
   }
 
@@ -208,6 +211,7 @@ export class EdgeRevenueOperationsController {
     return this.getRetentionOverview.execute({
       cohortId: query.cohortId,
       asOf: query.asOf,
+      verticalId: query.verticalId,
     });
   }
 
@@ -267,6 +271,7 @@ export class EdgeRevenueOperationsController {
     return this.renewalIntelligence.execute({
       withinDays: query.withinDays,
       limit: query.limit,
+      verticalId: query.verticalId,
     });
   }
 
@@ -289,6 +294,18 @@ export class EdgeRevenueOperationsController {
   }
 
   // --- Forecasts ----------------------------------------------------------
+
+  @Get('edge/revenue/forecasts')
+  @RequireEdgePermissions('platform:revenue:read')
+  @ApiOperation({
+    summary: 'List revenue forecasts (dual-mode: verticalId scopes, omit = platform-wide)',
+  })
+  listRevenueForecasts(
+    @Query('verticalId') verticalId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.listForecasts.execute({ verticalId, status });
+  }
 
   @Post('edge/revenue/forecasts')
   @RequireEdgePermissions('platform:revenue:forecast')
@@ -516,6 +533,7 @@ export class EdgeRevenueOperationsController {
     return this.overview.execute({
       businessUnitId: query.businessUnitId,
       asOf: query.asOf,
+      verticalId: query.verticalId,
     });
   }
 }

@@ -54,7 +54,7 @@ function recommendRestaurant(input: SolutionWizardInput): SolutionWizardResult {
   const users = input.users ?? null;
   const explanations: WizardExplanation[] = [];
 
-  let plan = RESTAURANT_PLANS[0];
+  let plan: (typeof RESTAURANT_PLANS)[number] = RESTAURANT_PLANS[0];
   if (sites != null && sites >= 15) {
     plan = RESTAURANT_PLANS.find((p) => p.code === 'OKAPI_REST_ENTERPRISE') ?? plan;
     explanations.push({
@@ -102,14 +102,14 @@ function recommendRestaurant(input: SolutionWizardInput): SolutionWizardResult {
   }
 
   const addons: string[] = [];
-  if (input.needs?.includes('delivery') && !plan.caps.includes('delivery')) {
+  if (input.needs?.includes('delivery') && !(plan.caps as readonly string[]).includes('delivery')) {
     explanations.push({
       code: 'optional.delivery',
       kind: 'optional',
       message: 'Delivery requested — available on Multi/Enterprise or as expansion quote.',
     });
   }
-  if (input.needs?.includes('analytics') && !plan.caps.includes('analytics')) {
+  if (input.needs?.includes('analytics') && !(plan.caps as readonly string[]).includes('analytics')) {
     addons.push('ADDON_ADVANCED_ANALYTICS');
     explanations.push({
       code: 'optional.analytics',

@@ -30,6 +30,7 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
     periodEnd: Date;
     currency?: string;
     businessUnitId?: string | null;
+    verticalId?: string;
   }): Promise<
     Array<{
       subscriptionRefId: string;
@@ -55,6 +56,7 @@ export class LiveRevenueProjectionAdapter implements RevenueProjectionInputPort 
       status: 'ACTIVE',
       limit: 500,
       offset: 0,
+      verticalId: input.verticalId,
     });
 
     const notes: string[] = [];

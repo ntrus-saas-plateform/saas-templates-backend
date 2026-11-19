@@ -280,6 +280,7 @@ export interface SalesCommerceRepositoryPort {
     opportunityId?: string;
     accountId?: string;
     status?: string;
+    verticalId?: string;
     limit?: number;
   }): Promise<SalesQuote[]>;
   transitionQuoteStatus(id: string, status: string): Promise<SalesQuote>;
@@ -399,6 +400,7 @@ export interface SalesCommerceRepositoryPort {
     accountId?: string;
     opportunityId?: string;
     status?: string;
+    verticalId?: string;
   }): Promise<SalesContract[]>;
   transitionContractStatus(input: {
     id: string;
@@ -484,13 +486,14 @@ export interface SalesCommerceRepositoryPort {
     ownerAdministratorId?: string | null;
     teamId?: string | null;
     productId?: string | null;
+    verticalId?: string | null;
   }): Promise<{
     currency: string;
     amount: number;
     opportunityCount: number;
     assumptions: Record<string, unknown>;
   }>;
-  salesPerformanceSummary(): Promise<{
+  salesPerformanceSummary(verticalId?: string): Promise<{
     openOpportunities: number;
     wonOpportunities: number;
     lostOpportunities: number;

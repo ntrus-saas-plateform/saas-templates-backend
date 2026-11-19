@@ -232,29 +232,77 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
     packageId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void> {
     await this.pool.query(
       `INSERT INTO edge_solution_package_capabilities (
-         id, package_id, capability_id, inclusion_type
-       ) VALUES ($1,$2,$3,$4)
+         id, package_id, capability_id, inclusion_type, restrictions
+       ) VALUES ($1,$2,$3,$4, COALESCE($5::jsonb, '{}'::jsonb))
        ON CONFLICT (package_id, capability_id)
-       DO UPDATE SET inclusion_type = EXCLUDED.inclusion_type`,
-      [randomUUID(), input.packageId, input.capabilityId, input.inclusionType],
+       DO UPDATE SET
+         inclusion_type = EXCLUDED.inclusion_type,
+         restrictions = CASE
+           WHEN $5::jsonb IS NULL OR $5::jsonb = '{}'::jsonb
+             THEN edge_solution_package_capabilities.restrictions
+           ELSE edge_solution_package_capabilities.restrictions || EXCLUDED.restrictions
+         END`,
+      [
+        randomUUID(),
+        input.packageId,
+        input.capabilityId,
+        input.inclusionType,
+        input.restrictions ? JSON.stringify(input.restrictions) : null,
+      ],
     );
   }
 
   async listPackageCapabilities(
     packageId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]> {
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  > {
     const result = await this.pool.query(
-      `SELECT capability_id, inclusion_type
-       FROM edge_solution_package_capabilities
-       WHERE package_id = $1`,
+      `SELECT pc.capability_id, c.code AS capability_code, pc.inclusion_type, pc.restrictions
+       FROM edge_solution_package_capabilities pc
+       JOIN edge_technical_capabilities c ON c.id = pc.capability_id
+       WHERE pc.package_id = $1
+       ORDER BY c.code`,
       [packageId],
     );
     return result.rows.map((r) => ({
       capabilityId: r.capability_id as string,
+      capabilityCode: r.capability_code as string,
       inclusionType: r.inclusion_type as string,
+      restrictions: (r.restrictions as Record<string, unknown> | null) ?? {},
+    }));
+  }
+
+  async listPackageCapabilityEntitlementRowsByPackageCode(
+    packageCode: string,
+  ): Promise<
+    readonly {
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  > {
+    const result = await this.pool.query(
+      `SELECT c.code AS capability_code, pc.inclusion_type, pc.restrictions
+       FROM edge_solution_packages p
+       JOIN edge_solution_package_capabilities pc ON pc.package_id = p.id
+       JOIN edge_technical_capabilities c ON c.id = pc.capability_id
+       WHERE p.code = $1`,
+      [packageCode],
+    );
+    return result.rows.map((r) => ({
+      capabilityCode: r.capability_code as string,
+      inclusionType: r.inclusion_type as string,
+      restrictions: (r.restrictions as Record<string, unknown> | null) ?? {},
     }));
   }
 
@@ -327,29 +375,77 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
     planId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void> {
     await this.pool.query(
       `INSERT INTO edge_commercial_plan_capabilities (
-         id, plan_id, capability_id, inclusion_type
-       ) VALUES ($1,$2,$3,$4)
+         id, plan_id, capability_id, inclusion_type, restrictions
+       ) VALUES ($1,$2,$3,$4, COALESCE($5::jsonb, '{}'::jsonb))
        ON CONFLICT (plan_id, capability_id)
-       DO UPDATE SET inclusion_type = EXCLUDED.inclusion_type`,
-      [randomUUID(), input.planId, input.capabilityId, input.inclusionType],
+       DO UPDATE SET
+         inclusion_type = EXCLUDED.inclusion_type,
+         restrictions = CASE
+           WHEN $5::jsonb IS NULL OR $5::jsonb = '{}'::jsonb
+             THEN edge_commercial_plan_capabilities.restrictions
+           ELSE edge_commercial_plan_capabilities.restrictions || EXCLUDED.restrictions
+         END`,
+      [
+        randomUUID(),
+        input.planId,
+        input.capabilityId,
+        input.inclusionType,
+        input.restrictions ? JSON.stringify(input.restrictions) : null,
+      ],
     );
   }
 
   async listPlanCapabilities(
     planId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]> {
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  > {
     const result = await this.pool.query(
-      `SELECT capability_id, inclusion_type
-       FROM edge_commercial_plan_capabilities
-       WHERE plan_id = $1`,
+      `SELECT pc.capability_id, c.code AS capability_code, pc.inclusion_type, pc.restrictions
+       FROM edge_commercial_plan_capabilities pc
+       JOIN edge_technical_capabilities c ON c.id = pc.capability_id
+       WHERE pc.plan_id = $1
+       ORDER BY c.code`,
       [planId],
     );
     return result.rows.map((r) => ({
       capabilityId: r.capability_id as string,
+      capabilityCode: r.capability_code as string,
       inclusionType: r.inclusion_type as string,
+      restrictions: (r.restrictions as Record<string, unknown> | null) ?? {},
+    }));
+  }
+
+  async listPlanCapabilityEntitlementRowsByPlanCode(
+    planCode: string,
+  ): Promise<
+    readonly {
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  > {
+    const result = await this.pool.query(
+      `SELECT c.code AS capability_code, pc.inclusion_type, pc.restrictions
+       FROM edge_commercial_plans p
+       JOIN edge_commercial_plan_capabilities pc ON pc.plan_id = p.id
+       JOIN edge_technical_capabilities c ON c.id = pc.capability_id
+       WHERE p.code = $1`,
+      [planCode],
+    );
+    return result.rows.map((r) => ({
+      capabilityCode: r.capability_code as string,
+      inclusionType: r.inclusion_type as string,
+      restrictions: (r.restrictions as Record<string, unknown> | null) ?? {},
     }));
   }
 
@@ -406,29 +502,53 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
     addonId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void> {
     await this.pool.query(
       `INSERT INTO edge_commercial_addon_capabilities (
-         id, addon_id, capability_id, inclusion_type
-       ) VALUES ($1,$2,$3,$4)
+         id, addon_id, capability_id, inclusion_type, restrictions
+       ) VALUES ($1,$2,$3,$4, COALESCE($5::jsonb, '{}'::jsonb))
        ON CONFLICT (addon_id, capability_id)
-       DO UPDATE SET inclusion_type = EXCLUDED.inclusion_type`,
-      [randomUUID(), input.addonId, input.capabilityId, input.inclusionType],
+       DO UPDATE SET
+         inclusion_type = EXCLUDED.inclusion_type,
+         restrictions = CASE
+           WHEN $5::jsonb IS NULL OR $5::jsonb = '{}'::jsonb
+             THEN edge_commercial_addon_capabilities.restrictions
+           ELSE edge_commercial_addon_capabilities.restrictions || EXCLUDED.restrictions
+         END`,
+      [
+        randomUUID(),
+        input.addonId,
+        input.capabilityId,
+        input.inclusionType,
+        input.restrictions ? JSON.stringify(input.restrictions) : null,
+      ],
     );
   }
 
   async listAddonCapabilities(
     addonId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]> {
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  > {
     const result = await this.pool.query(
-      `SELECT capability_id, inclusion_type
-       FROM edge_commercial_addon_capabilities
-       WHERE addon_id = $1`,
+      `SELECT pc.capability_id, c.code AS capability_code, pc.inclusion_type, pc.restrictions
+       FROM edge_commercial_addon_capabilities pc
+       JOIN edge_technical_capabilities c ON c.id = pc.capability_id
+       WHERE pc.addon_id = $1
+       ORDER BY c.code`,
       [addonId],
     );
     return result.rows.map((r) => ({
       capabilityId: r.capability_id as string,
+      capabilityCode: r.capability_code as string,
       inclusionType: r.inclusion_type as string,
+      restrictions: (r.restrictions as Record<string, unknown> | null) ?? {},
     }));
   }
 
@@ -539,13 +659,14 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
     currency: string;
     amount: string;
     billingFrequency?: string | null;
+    conditions?: Record<string, unknown> | null;
   }): Promise<PriceBookEntry> {
     const id = randomUUID();
     const result = await this.pool.query(
       `INSERT INTO edge_price_book_entries (
          id, price_book_id, commercial_item_type, commercial_item_id,
-         currency, amount, billing_frequency
-       ) VALUES ($1,$2,$3,$4,$5,$6::numeric,$7)
+         currency, amount, billing_frequency, conditions
+       ) VALUES ($1,$2,$3,$4,$5,$6::numeric,$7, COALESCE($8::jsonb, '{}'::jsonb))
        RETURNING *`,
       [
         id,
@@ -555,6 +676,7 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
         input.currency,
         input.amount,
         input.billingFrequency ?? null,
+        input.conditions ? JSON.stringify(input.conditions) : null,
       ],
     );
     return this.mapPriceEntry(result.rows[0]);
@@ -748,6 +870,7 @@ export class PgCommercialRepository implements CommercialRepositoryPort {
       currency: row.currency as string,
       amount: String(row.amount),
       billingFrequency: (row.billing_frequency as string | null) ?? null,
+      conditions: (row.conditions as Record<string, unknown> | null) ?? {},
     };
   }
 

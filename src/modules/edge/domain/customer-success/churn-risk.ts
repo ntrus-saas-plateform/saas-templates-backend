@@ -7,8 +7,8 @@ import type { CustomerHealthScoreResult } from './customer-health-score.js';
 export type ChurnRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'UNKNOWN';
 
 export type ChurnRiskInput = {
-  readonly healthBand: CustomerHealthScoreResult['band'] | null | undefined;
-  readonly healthScore: number | null | undefined;
+  readonly healthBand?: CustomerHealthScoreResult['band'] | null | undefined;
+  readonly healthScore?: number | null | undefined;
   readonly delinquent?: boolean | null;
   readonly suspended?: boolean | null;
   readonly daysToRenewal?: number | null;

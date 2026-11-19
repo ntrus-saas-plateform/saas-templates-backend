@@ -2409,33 +2409,48 @@ export class PgOperationsRepository implements ServiceOperationsRepositoryPort {
     return { items: rows.map((r) => this.mapRelease(r)), total: num(countRows[0]?.c) };
   }
 
-  async getOperationsAnalytics(): Promise<OperationsOverviewAggregate> {
+  async getOperationsAnalytics(opts?: { verticalId?: string }): Promise<OperationsOverviewAggregate> {
+    const verticalId = opts?.verticalId ?? null;
+    const scopeSql = `($1::uuid IS NULL OR service_id IN
+       (SELECT id FROM edge_p9_services WHERE vertical_id = $1))`;
     const [services, alerts, incidents, changes, maintenance, sources] = await Promise.all([
-      this.q(`SELECT COUNT(*)::int AS c FROM edge_p9_services`),
+      this.q(
+        `SELECT COUNT(*)::int AS c FROM edge_p9_services
+         WHERE ($1::uuid IS NULL OR vertical_id = $1)`,
+        [verticalId],
+      ),
       this.q(
         `SELECT
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE status IN ('RECEIVED','NORMALIZED','CORRELATED','ACTIVE','ACKNOWLEDGED'))::int AS active
-         FROM edge_p9_alerts`,
+         FROM edge_p9_alerts
+         WHERE ${scopeSql}`,
+        [verticalId],
       ),
       this.q(
         `SELECT
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE status NOT IN ('CLOSED','RESOLVED'))::int AS open,
            COUNT(*) FILTER (WHERE is_major AND status NOT IN ('CLOSED','RESOLVED'))::int AS major
-         FROM edge_p9_incidents`,
+         FROM edge_p9_incidents
+         WHERE ${scopeSql}`,
+        [verticalId],
       ),
       this.q(
         `SELECT
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE status NOT IN ('COMPLETED','FAILED','ROLLED_BACK','REJECTED','CANCELLED'))::int AS open
-         FROM edge_p9_changes`,
+         FROM edge_p9_changes
+         WHERE ${scopeSql}`,
+        [verticalId],
       ),
       this.q(
         `SELECT
            COUNT(*)::int AS total,
            COUNT(*) FILTER (WHERE status IN ('SCHEDULED','ACTIVE'))::int AS scheduled
-         FROM edge_p9_maintenance_windows`,
+         FROM edge_p9_maintenance_windows
+         WHERE ${scopeSql}`,
+        [verticalId],
       ),
       this.listMonitoringSources(),
     ]);

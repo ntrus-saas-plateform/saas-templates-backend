@@ -61,6 +61,12 @@ export class ProductControlPaginationQueryDto {
   @IsOptional()
   @IsUUID('4')
   endpointId?: string;
+
+  @ApiPropertyOptional({ description: 'Free-text search (ILIKE on listable columns)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  q?: string;
 }
 
 export class RegisterProductControlEndpointDto {

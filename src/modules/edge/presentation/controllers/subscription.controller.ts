@@ -153,14 +153,14 @@ export class EdgeSubscriptionController {
 
   @Get('overview')
   @RequireEdgePermissions('platform:subscriptions:read_analytics')
-  overviewDashboard() {
-    return this.overview.execute();
+  overviewDashboard(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute(verticalId);
   }
 
   @Get('analytics')
   @RequireEdgePermissions('platform:subscriptions:read_analytics')
-  analyticsDashboard() {
-    return this.analytics.execute();
+  analyticsDashboard(@Query('verticalId') verticalId?: string) {
+    return this.analytics.execute(verticalId);
   }
 
   @Get('policies')
@@ -260,6 +260,7 @@ export class EdgeSubscriptionController {
   list(
     @Query('accountId') accountId?: string,
     @Query('productId') productId?: string,
+    @Query('verticalId') verticalId?: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -267,6 +268,7 @@ export class EdgeSubscriptionController {
     return this.listSubs.execute({
       accountId,
       productId,
+      verticalId,
       status,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,

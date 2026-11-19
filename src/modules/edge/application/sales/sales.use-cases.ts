@@ -830,17 +830,20 @@ export class CompleteSalesTaskUseCase {
 
 export class SalesOverviewUseCase {
   constructor(private readonly sales: SalesRepositoryPort) {}
-  async execute() {
+  async execute(verticalId?: string) {
+    const scope = verticalId ? { verticalId } : {};
     const [accounts, leads, tasks] = await Promise.all([
-      this.sales.listAccounts({ limit: 1 }),
-      this.sales.listSalesLeads({ limit: 1 }),
-      this.sales.listTasks({ status: 'OPEN' }),
+      this.sales.listAccounts({ ...scope, limit: 1 }),
+      this.sales.listSalesLeads({ ...scope, limit: 1 }),
+      this.sales.listTasks({ ...scope, status: 'OPEN' }),
     ]);
     const pending = await this.sales.listSalesLeads({
+      ...scope,
       status: SalesLeadStatus.RECEIVED,
       limit: 1,
     });
     const pendingReview = await this.sales.listSalesLeads({
+      ...scope,
       status: SalesLeadStatus.PENDING_REVIEW,
       limit: 1,
     });

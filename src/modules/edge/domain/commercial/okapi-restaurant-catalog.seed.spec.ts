@@ -23,6 +23,6 @@ describe('okapi restaurant catalog seed', () => {
 
   it('never seeds Planned capabilities into beachhead catalog', () => {
     expect(restaurantPlanHasNoPlannedCaps()).toBe(true);
-    expect(RESTAURANT_CAPABILITIES.every((c) => c.status !== 'PLANNED')).toBe(true);
+    expect(RESTAURANT_CAPABILITIES.every((c) => String(c.status) !== 'PLANNED')).toBe(true);
   });
 });

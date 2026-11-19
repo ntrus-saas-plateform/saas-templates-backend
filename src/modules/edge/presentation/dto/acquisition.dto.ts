@@ -1268,6 +1268,13 @@ export class FunnelQueryDto {
   @IsUUID()
   prospectId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Workspace switch scope — funnel from prospects of this vertical only',
+  })
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
+
   @ApiPropertyOptional({ default: 5000 })
   @IsOptional()
   @Type(() => Number)

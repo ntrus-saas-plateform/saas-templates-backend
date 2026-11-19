@@ -42,6 +42,7 @@ export interface RevenueProjectionInputPort {
     periodEnd: Date;
     currency?: string;
     businessUnitId?: string | null;
+    verticalId?: string;
   }): Promise<
     Array<{
       subscriptionRefId: string;
@@ -135,6 +136,7 @@ export interface RevenueOperationsRepositoryPort {
       code: string;
       name: string;
       businessUnitId?: string | null;
+      verticalId?: string | null;
       horizonStart: Date;
       horizonEnd: Date;
       currency: string;
@@ -144,6 +146,12 @@ export interface RevenueOperationsRepositoryPort {
     },
     client?: unknown,
   ): Promise<RevenueForecast>;
+
+  listRevenueForecasts(opts?: {
+    verticalId?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<RevenueForecast[]>;
 
   getRevenueForecast(id: string): Promise<RevenueForecast | null>;
 
@@ -265,6 +273,7 @@ export interface RevenueOperationsRepositoryPort {
       name: string;
       cohortMonth: Date | string;
       businessUnitId?: string | null;
+      verticalId?: string | null;
       definition?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
       createdBy: string;
@@ -295,6 +304,7 @@ export interface RevenueOperationsRepositoryPort {
   listRetentionSnapshots(filter?: {
     cohortId?: string;
     metricCode?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: RetentionSnapshot[]; total: number }>;
@@ -302,6 +312,7 @@ export interface RevenueOperationsRepositoryPort {
   getRetentionOverview(opts?: {
     cohortId?: string | null;
     asOf?: Date;
+    verticalId?: string;
   }): Promise<RetentionOverview>;
 
   // --- Product profitability ----------------------------------------------

@@ -1,0 +1,7 @@
+﻿{
+  "beOnly": 10,
+  "feOnly": 10,
+  "uncoveredConsole": 0,
+  "outOfScopePatterns": 7,
+  "sampleUncovered": []
+}

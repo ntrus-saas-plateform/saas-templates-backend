@@ -906,7 +906,12 @@ export class AppendJournalEntryUseCase {
 
 export class ListInvoicesUseCase {
   constructor(private readonly billing: BillingRepositoryPort) {}
-  execute(input?: { billingAccountId?: string; status?: string; limit?: number }) {
+  execute(input?: {
+    billingAccountId?: string;
+    status?: string;
+    verticalId?: string;
+    limit?: number;
+  }) {
     return this.billing.listInvoices(input);
   }
 }
@@ -927,15 +932,15 @@ export class GetInvoiceUseCase {
 
 export class GetBillingOverviewUseCase {
   constructor(private readonly billing: BillingRepositoryPort) {}
-  execute() {
-    return this.billing.getBillingOverview();
+  execute(verticalId?: string) {
+    return this.billing.getBillingOverview(verticalId);
   }
 }
 
 export class GetBillingAnalyticsUseCase {
   constructor(private readonly billing: BillingRepositoryPort) {}
-  execute(currency?: string) {
-    return this.billing.getBillingAnalytics(currency);
+  execute(currency?: string, verticalId?: string) {
+    return this.billing.getBillingAnalytics(currency, verticalId);
   }
 }
 

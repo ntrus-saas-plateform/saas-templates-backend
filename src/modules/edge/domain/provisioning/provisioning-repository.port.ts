@@ -72,6 +72,8 @@ export type ListProvisioningRequestsFilter = {
   status?: string;
   accountId?: string;
   productId?: string;
+  /** Workspace switch scope — only requests of products in this vertical. */
+  verticalId?: string;
   subscriptionId?: string;
   environmentSlot?: string;
   from?: Date;

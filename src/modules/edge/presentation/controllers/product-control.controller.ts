@@ -80,6 +80,7 @@ export class EdgeProductControlController {
       productId: query.productId,
       platformId: query.platformId,
       status: query.status as ProductControlEndpointStatus | undefined,
+      q: query.q,
     });
   }
 
@@ -212,6 +213,40 @@ export class EdgeProductControlController {
     });
   }
 
+  @Get('endpoints/:id/contracts')
+  @RequireEdgePermissions('platform:product_control:read')
+  @ApiOperation({ summary: 'List negotiated contracts for an endpoint' })
+  listEndpointContracts(@Param('id') id: string) {
+    return this.lists.listContracts(id);
+  }
+
+  @Get('endpoints/:id/health-checks')
+  @RequireEdgePermissions('platform:product_control:read')
+  @ApiOperation({ summary: 'List health check history for an endpoint' })
+  listEndpointHealthChecks(
+    @Param('id') id: string,
+    @Query() query: ProductControlPaginationQueryDto,
+  ) {
+    return this.lists.listHealthChecks({
+      endpointId: id,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+    });
+  }
+
+  @Get('endpoints/:id/history')
+  @RequireEdgePermissions('platform:product_control:history:read')
+  @ApiOperation({ summary: 'List status/action history for an endpoint' })
+  listEndpointHistory(
+    @Param('id') id: string,
+    @Query() query: ProductControlPaginationQueryDto,
+  ) {
+    return this.lists.listEndpointHistory(id, {
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+    });
+  }
+
   @Get('endpoints/:id/exchanges')
   @RequireEdgePermissions('platform:product_control:read')
   listEndpointExchanges(
@@ -223,6 +258,7 @@ export class EdgeProductControlController {
       limit: query.limit ?? 20,
       offset: query.offset ?? 0,
       status: query.status as ControlExchangeStatus | undefined,
+      q: query.q,
     });
   }
 
@@ -230,6 +266,34 @@ export class EdgeProductControlController {
   @RequireEdgePermissions('platform:product_control:read')
   listCapabilities(@Param('id') id: string) {
     return this.lists.listCapabilities(id);
+  }
+
+  @Get('exchanges')
+  @RequireEdgePermissions('platform:product_control:read')
+  @ApiOperation({ summary: 'List Product Control exchanges across endpoints' })
+  listExchanges(@Query() query: ProductControlPaginationQueryDto) {
+    return this.lists.listExchanges({
+      endpointId: query.endpointId,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status as ControlExchangeStatus | undefined,
+      q: query.q,
+    });
+  }
+
+  @Get('credentials')
+  @RequireEdgePermissions('platform:product_control:read')
+  @ApiOperation({
+    summary: 'List credential bindings (opaque refs only — never secrets)',
+  })
+  listCredentials(@Query() query: ProductControlPaginationQueryDto) {
+    return this.lists.listCredentials({
+      endpointId: query.endpointId,
+      limit: query.limit ?? 20,
+      offset: query.offset ?? 0,
+      status: query.status,
+      q: query.q,
+    });
   }
 
   @Get('exchanges/:id')

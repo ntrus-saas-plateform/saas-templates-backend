@@ -2104,6 +2104,16 @@
       "file": "commercial.controller.ts",
       "class": "EdgeCommercialController",
       "controller": "edge/commercial",
+      "method": "GET",
+      "path": "addons/:id",
+      "full_relative": "/edge/commercial/addons/:id",
+      "runtime": "/api/v1/edge/commercial/addons/:id",
+      "handler": "getAddonEndpoint"
+    },
+    {
+      "file": "commercial.controller.ts",
+      "class": "EdgeCommercialController",
+      "controller": "edge/commercial",
       "method": "POST",
       "path": "addons",
       "full_relative": "/edge/commercial/addons",
@@ -5205,6 +5215,36 @@
       "class": "EdgeProductControlController",
       "controller": "edge/product-controls",
       "method": "GET",
+      "path": "endpoints/:id/contracts",
+      "full_relative": "/edge/product-controls/endpoints/:id/contracts",
+      "runtime": "/api/v1/edge/product-controls/endpoints/:id/contracts",
+      "handler": "listEndpointContracts"
+    },
+    {
+      "file": "product-control.controller.ts",
+      "class": "EdgeProductControlController",
+      "controller": "edge/product-controls",
+      "method": "GET",
+      "path": "endpoints/:id/health-checks",
+      "full_relative": "/edge/product-controls/endpoints/:id/health-checks",
+      "runtime": "/api/v1/edge/product-controls/endpoints/:id/health-checks",
+      "handler": "listEndpointHealthChecks"
+    },
+    {
+      "file": "product-control.controller.ts",
+      "class": "EdgeProductControlController",
+      "controller": "edge/product-controls",
+      "method": "GET",
+      "path": "endpoints/:id/history",
+      "full_relative": "/edge/product-controls/endpoints/:id/history",
+      "runtime": "/api/v1/edge/product-controls/endpoints/:id/history",
+      "handler": "listEndpointHistory"
+    },
+    {
+      "file": "product-control.controller.ts",
+      "class": "EdgeProductControlController",
+      "controller": "edge/product-controls",
+      "method": "GET",
       "path": "endpoints/:id/exchanges",
       "full_relative": "/edge/product-controls/endpoints/:id/exchanges",
       "runtime": "/api/v1/edge/product-controls/endpoints/:id/exchanges",
@@ -5219,6 +5259,26 @@
       "full_relative": "/edge/product-controls/endpoints/:id/capabilities",
       "runtime": "/api/v1/edge/product-controls/endpoints/:id/capabilities",
       "handler": "listCapabilities"
+    },
+    {
+      "file": "product-control.controller.ts",
+      "class": "EdgeProductControlController",
+      "controller": "edge/product-controls",
+      "method": "GET",
+      "path": "exchanges",
+      "full_relative": "/edge/product-controls/exchanges",
+      "runtime": "/api/v1/edge/product-controls/exchanges",
+      "handler": "listExchanges"
+    },
+    {
+      "file": "product-control.controller.ts",
+      "class": "EdgeProductControlController",
+      "controller": "edge/product-controls",
+      "method": "GET",
+      "path": "credentials",
+      "full_relative": "/edge/product-controls/credentials",
+      "runtime": "/api/v1/edge/product-controls/credentials",
+      "handler": "bindings"
     },
     {
       "file": "product-control.controller.ts",
@@ -10037,13 +10097,6 @@
       ]
     },
     {
-      "name": "addPriceBookEntry",
-      "http": "POST",
-      "paths": [
-        "/api/edge-backend/commercial/price-books/${priceBookId}/entries"
-      ]
-    },
-    {
       "name": "listPricingUnits",
       "http": "GET",
       "paths": [
@@ -10279,6 +10332,13 @@
       "http": "GET",
       "paths": [
         "/api/edge-backend/commercial/packages/${id}"
+      ]
+    },
+    {
+      "name": "getCommercialAddon",
+      "http": "GET",
+      "paths": [
+        "/api/edge-backend/commercial/addons/${id}"
       ]
     },
     {
@@ -11370,7 +11430,7 @@
       "name": "listSubscriptions",
       "http": "GET",
       "paths": [
-        "/api/edge-backend/subscriptions${toQuery({\n        accountId: opts?.accountId,\n        productId: opts?.productId,\n        status: opts?.status,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
+        "/api/edge-backend/subscriptions${toQuery({\n        accountId: opts?.accountId,\n        productId: opts?.productId,\n        verticalId: opts?.verticalId,\n        status: opts?.status,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
       ]
     },
     {
@@ -11853,7 +11913,7 @@
       "name": "listBillingInvoices",
       "http": "GET",
       "paths": [
-        "/api/edge-backend/billing/invoices${toQuery({\n        billingAccountId: params?.billingAccountId,\n        status: params?.status,\n        limit: params?.limit,\n      })}"
+        "/api/edge-backend/billing/invoices${toQuery({\n        billingAccountId: params?.billingAccountId,\n        status: params?.status,\n        verticalId: params?.verticalId,\n        limit: params?.limit,\n      })}"
       ]
     },
     {
@@ -12217,7 +12277,7 @@
       "name": "listProvisioningRequests",
       "http": "GET",
       "paths": [
-        "/api/edge-backend/provisioning-requests${toQuery({\n        status: opts?.status,\n        accountId: opts?.accountId,\n        productId: opts?.productId,\n        subscriptionId: opts?.subscriptionId,\n        environmentSlot: opts?.environmentSlot,\n        from: opts?.from,\n        to: opts?.to,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
+        "/api/edge-backend/provisioning-requests${toQuery({\n        status: opts?.status,\n        accountId: opts?.accountId,\n        productId: opts?.productId,\n        verticalId: opts?.verticalId,\n        subscriptionId: opts?.subscriptionId,\n        environmentSlot: opts?.environmentSlot,\n        from: opts?.from,\n        to: opts?.to,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
       ]
     },
     {
@@ -13072,13 +13132,6 @@
       "http": "POST",
       "paths": [
         "/api/edge-backend/resources/${id}/backups"
-      ]
-    },
-    {
-      "name": "restoreResourceBackup",
-      "http": "POST",
-      "paths": [
-        "/api/edge-backend/resources/${id}/restore"
       ]
     },
     {
@@ -13995,7 +14048,7 @@
       "name": "listTenants",
       "http": "GET",
       "paths": [
-        "/api/edge-backend/tenants${toQuery({\n        q: opts?.q,\n        productId: opts?.productId,\n        accountId: opts?.accountId,\n        subscriptionId: opts?.subscriptionId,\n        region: opts?.region,\n        classification: opts?.classification,\n        administrativeStatus: opts?.administrativeStatus,\n        technicalStatus: opts?.technicalStatus,\n        governanceStatus: opts?.governanceStatus,\n        healthStatus: opts?.healthStatus,\n        riskLevel: opts?.riskLevel,\n        tagKey: opts?.tagKey,\n        tagValue: opts?.tagValue,\n        sortBy: opts?.sortBy,\n        sortDir: opts?.sortDir,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
+        "/api/edge-backend/tenants${toQuery({\n        q: opts?.q,\n        productId: opts?.productId,\n        verticalId: opts?.verticalId,\n        accountId: opts?.accountId,\n        subscriptionId: opts?.subscriptionId,\n        region: opts?.region,\n        classification: opts?.classification,\n        administrativeStatus: opts?.administrativeStatus,\n        technicalStatus: opts?.technicalStatus,\n        governanceStatus: opts?.governanceStatus,\n        healthStatus: opts?.healthStatus,\n        riskLevel: opts?.riskLevel,\n        tagKey: opts?.tagKey,\n        tagValue: opts?.tagValue,\n        sortBy: opts?.sortBy,\n        sortDir: opts?.sortDir,\n        limit: opts?.limit,\n        offset: opts?.offset,\n      })}"
       ]
     },
     {
@@ -15490,13 +15543,6 @@
       ]
     },
     {
-      "name": "createCommissionPlanAlias",
-      "http": "POST",
-      "paths": [
-        "/api/edge-backend/commission/plans"
-      ]
-    },
-    {
       "name": "calculateCommission",
       "http": "POST",
       "paths": [
@@ -15504,10 +15550,10 @@
       ]
     },
     {
-      "name": "calculateCommissionAlias",
+      "name": "approveCommissionCalculation",
       "http": "POST",
       "paths": [
-        "/api/edge-backend/commission/calculations"
+        "/api/edge-backend/commission/calculations/${encodeURIComponent(id)}/approve"
       ]
     },
     {
@@ -15515,13 +15561,6 @@
       "http": "GET",
       "paths": [
         "/api/edge-backend/revenue/commission/plans"
-      ]
-    },
-    {
-      "name": "listCommissionPlansAlias",
-      "http": "GET",
-      "paths": [
-        "/api/edge-backend/commission/plans"
       ]
     },
     {
@@ -15866,6 +15905,11 @@
     {
       "file": "app/(acquisition-public)/acquire/[slug]/apply/page.tsx",
       "url": "/acquire/[slug]/apply",
+      "group": "(acquisition-public)"
+    },
+    {
+      "file": "app/(acquisition-public)/acquire/[slug]/configure/page.tsx",
+      "url": "/acquire/[slug]/configure",
       "group": "(acquisition-public)"
     },
     {

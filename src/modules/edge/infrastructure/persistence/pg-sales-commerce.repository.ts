@@ -554,6 +554,7 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
     opportunityId?: string;
     accountId?: string;
     status?: string;
+    verticalId?: string;
     limit?: number;
   }): Promise<SalesQuote[]> {
     const rows = await this.q(
@@ -561,12 +562,15 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
        WHERE ($1::uuid IS NULL OR opportunity_id = $1)
          AND ($2::uuid IS NULL OR account_id = $2)
          AND ($3::text IS NULL OR status = $3)
+         AND ($4::uuid IS NULL OR account_id IN
+              (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $4))
        ORDER BY created_at DESC
-       LIMIT $4`,
+       LIMIT $5`,
       [
         opts?.opportunityId ?? null,
         opts?.accountId ?? null,
         opts?.status ?? null,
+        opts?.verticalId ?? null,
         opts?.limit ?? 100,
       ],
     );
@@ -1014,14 +1018,22 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
     accountId?: string;
     opportunityId?: string;
     status?: string;
+    verticalId?: string;
   }): Promise<SalesContract[]> {
     const rows = await this.q(
       `SELECT * FROM edge_sales_contracts
        WHERE ($1::uuid IS NULL OR account_id = $1)
          AND ($2::uuid IS NULL OR opportunity_id = $2)
          AND ($3::text IS NULL OR status = $3)
+         AND ($4::uuid IS NULL OR account_id IN
+              (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $4))
        ORDER BY created_at DESC`,
-      [opts?.accountId ?? null, opts?.opportunityId ?? null, opts?.status ?? null],
+      [
+        opts?.accountId ?? null,
+        opts?.opportunityId ?? null,
+        opts?.status ?? null,
+        opts?.verticalId ?? null,
+      ],
     );
     return rows.map((r) => this.mapContract(r));
   }
@@ -1323,6 +1335,7 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
     ownerAdministratorId?: string | null;
     teamId?: string | null;
     productId?: string | null;
+    verticalId?: string | null;
   }): Promise<{
     currency: string;
     amount: number;
@@ -1354,6 +1367,8 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
          AND ($2::uuid IS NULL OR owner_administrator_id = $2)
          AND ($3::uuid IS NULL OR team_id = $3)
          AND ($4::uuid IS NULL OR product_id = $4)
+         AND ($5::uuid IS NULL OR account_id IN
+              (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $5))
        GROUP BY currency
        ORDER BY amount DESC
        LIMIT 1`,
@@ -1362,6 +1377,7 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
         input.ownerAdministratorId ?? null,
         input.teamId ?? null,
         input.productId ?? null,
+        input.verticalId ?? null,
       ],
     );
     return {
@@ -1375,12 +1391,13 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
           ownerAdministratorId: input.ownerAdministratorId ?? null,
           teamId: input.teamId ?? null,
           productId: input.productId ?? null,
+          verticalId: input.verticalId ?? null,
         },
       },
     };
   }
 
-  async salesPerformanceSummary(): Promise<{
+  async salesPerformanceSummary(verticalId?: string): Promise<{
     openOpportunities: number;
     wonOpportunities: number;
     lostOpportunities: number;
@@ -1391,6 +1408,13 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
     handoffsPending: number;
     handoffsConfirmed: number;
   }> {
+    // Workspace switch scope — opportunités par vertical_id direct, autres objets via compte.
+    const vAcct = verticalId
+      ? `account_id IN (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = '${verticalId.replace(/'/g, "''")}')`
+      : null;
+    const vOpp = verticalId
+      ? `(vertical_id = '${verticalId.replace(/'/g, "''")}' OR ${vAcct})`
+      : null;
     const [opp, quotes, contracts, handoffs] = await Promise.all([
       this.q<{
         open_c: string;
@@ -1405,19 +1429,23 @@ export class PgSalesCommerceRepository implements SalesCommerceRepositoryPort {
            COUNT(*) FILTER (WHERE status = 'LOST')::text AS lost_c,
            COALESCE(SUM(estimated_value) FILTER (WHERE status IN ('OPEN','REOPENED')),0)::text AS pipeline,
            COALESCE(SUM(estimated_value * COALESCE(probability,0)) FILTER (WHERE status IN ('OPEN','REOPENED')),0)::text AS weighted
-         FROM edge_sales_opportunities`,
+         FROM edge_sales_opportunities${verticalId ? ` WHERE ${vOpp}` : ''}`,
       ),
       this.q<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM edge_sales_quotes WHERE status = 'ACCEPTED'`,
+        `SELECT COUNT(*)::text AS c FROM edge_sales_quotes WHERE status = 'ACCEPTED'${
+          verticalId ? ` AND ${vAcct}` : ''
+        }`,
       ),
       this.q<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM edge_sales_contracts WHERE status IN ('EXECUTED','ACTIVE')`,
+        `SELECT COUNT(*)::text AS c FROM edge_sales_contracts WHERE status IN ('EXECUTED','ACTIVE')${
+          verticalId ? ` AND ${vAcct}` : ''
+        }`,
       ),
       this.q<{ pending: string; confirmed: string }>(
         `SELECT
            COUNT(*) FILTER (WHERE status IN ('REQUESTED','ACCEPTED','IN_PROGRESS','PROVISIONING_PENDING'))::text AS pending,
            COUNT(*) FILTER (WHERE status = 'PROVISIONING_CONFIRMED')::text AS confirmed
-         FROM edge_sales_handoffs`,
+         FROM edge_sales_handoffs${verticalId ? ` WHERE ${vAcct}` : ''}`,
       ),
     ]);
     return {

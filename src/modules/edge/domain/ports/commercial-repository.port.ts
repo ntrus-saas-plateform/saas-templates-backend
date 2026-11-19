@@ -37,6 +37,14 @@ export type CommercialPlan = {
   readonly updatedAt: Date;
 };
 
+/** Inclusion plan/package avec quotas (restrictions.numericLimit). */
+export type CommercialCapabilityInclusion = {
+  readonly capabilityId: string;
+  readonly capabilityCode?: string;
+  readonly inclusionType: string;
+  readonly restrictions: Record<string, unknown>;
+};
+
 export type SolutionPackage = {
   readonly id: string;
   readonly code: string;
@@ -101,6 +109,12 @@ export type PriceBookEntry = {
   readonly currency: string;
   readonly amount: string;
   readonly billingFrequency: string | null;
+  /**
+   * `conditions.priceSource` : 'MEASURED' | 'ESTIMATED' | 'NEEDS_RESEARCH'.
+   * Défaut honnête à la création = NEEDS_RESEARCH (aucun prix inventé) ;
+   * publish price book fail-closed tant que NEEDS_RESEARCH (doc 39 G11#3).
+   */
+  readonly conditions?: Record<string, unknown> | null;
 };
 
 export type CommercialReadinessEvaluation = {
@@ -163,10 +177,32 @@ export interface CommercialRepositoryPort {
     packageId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** JSONB restrictions — ex. `{ numericLimit: 5000 }` pour quotas. */
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void>;
   listPackageCapabilities(
     packageId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]>;
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  >;
+  /**
+   * Lignes caps d'un package par code (config SQL = merge possible au publish).
+   * Ex. PKG_REST_CAFE_CONTROLLED quotas numericLimit.
+   */
+  listPackageCapabilityEntitlementRowsByPackageCode(
+    packageCode: string,
+  ): Promise<
+    readonly {
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  >;
 
   createPlan(input: {
     code: string;
@@ -185,10 +221,32 @@ export interface CommercialRepositoryPort {
     planId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** JSONB restrictions — ex. `{ numericLimit: 500 }` pour quotas. */
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void>;
   listPlanCapabilities(
     planId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]>;
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  >;
+  /**
+   * Lignes caps d'un plan par code (config SQL = merge possible au publish).
+   * Usage : overlay `edge_commercial_plan_capabilities` sur snapshot TS.
+   */
+  listPlanCapabilityEntitlementRowsByPlanCode(
+    planCode: string,
+  ): Promise<
+    readonly {
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  >;
 
   createAddon(input: {
     code: string;
@@ -204,10 +262,19 @@ export interface CommercialRepositoryPort {
     addonId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** JSONB restrictions — ex. `{ numericLimit: 10000 }` pour quotas add-on. */
+    restrictions?: Record<string, unknown> | null;
   }): Promise<void>;
   listAddonCapabilities(
     addonId: string,
-  ): Promise<readonly { capabilityId: string; inclusionType: string }[]>;
+  ): Promise<
+    readonly {
+      capabilityId: string;
+      capabilityCode: string;
+      inclusionType: string;
+      restrictions: Record<string, unknown>;
+    }[]
+  >;
   linkAddonToPlan(input: {
     addonId: string;
     planId: string;
@@ -239,6 +306,7 @@ export interface CommercialRepositoryPort {
     currency: string;
     amount: string;
     billingFrequency?: string | null;
+    conditions?: Record<string, unknown> | null;
   }): Promise<PriceBookEntry>;
   listPriceBookEntries(priceBookId: string): Promise<readonly PriceBookEntry[]>;
 

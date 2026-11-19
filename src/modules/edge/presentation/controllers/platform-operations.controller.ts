@@ -285,23 +285,26 @@ export class EdgePlatformOperationsController {
 
   @Get('edge/operations/overview')
   @RequireEdgePermissions('platform:operations:overview:read')
-  @ApiOperation({ summary: 'Operations overview — real DB counts; monitoring UNAVAILABLE if not configured' })
-  async operationsOverview() {
-    return this.overview.execute();
+  @ApiOperation({
+    summary:
+      'Operations overview — dual-mode (omit verticalId = platform-wide, set = scoped to vertical services)',
+  })
+  async operationsOverview(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute({ verticalId });
   }
 
   /** Mandate alias — health surface = honest overview (no fabricated green). */
   @Get('edge/operations/health')
   @RequireEdgePermissions('platform:operations:overview:read')
   @ApiOperation({ summary: 'Alias of overview (honest health; UNKNOWN≠HEALTHY)' })
-  async operationsHealth() {
-    return this.overview.execute();
+  async operationsHealth(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute({ verticalId });
   }
 
   @Get('edge/operations/analytics')
   @RequireEdgePermissions('platform:operations:analytics:read')
-  async operationsAnalytics() {
-    return this.overview.execute();
+  async operationsAnalytics(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute({ verticalId });
   }
 
   // --- Health / Alerts ---------------------------------------------------------

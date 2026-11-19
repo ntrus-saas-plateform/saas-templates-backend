@@ -1994,8 +1994,8 @@ export class CreateAutomationUseCase {
 export class GetOperationsOverviewUseCase {
   constructor(private readonly repo: ServiceOperationsRepositoryPort) {}
 
-  async execute(): Promise<OperationsOverviewAggregate> {
-    const agg = await this.repo.getOperationsAnalytics();
+  async execute(opts?: { verticalId?: string }): Promise<OperationsOverviewAggregate> {
+    const agg = await this.repo.getOperationsAnalytics({ verticalId: opts?.verticalId });
     const integrations = agg.monitoringIntegrations.map((i) => {
       if (i.status === 'NOT_CONFIGURED' || i.availability === 'NOT_CONFIGURED') {
         return { ...i, availability: 'UNAVAILABLE' as const, status: i.status || 'NOT_CONFIGURED' };

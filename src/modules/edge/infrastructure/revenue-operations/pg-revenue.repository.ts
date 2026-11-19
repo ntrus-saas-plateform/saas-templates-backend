@@ -166,6 +166,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
       code: str(row.code),
       name: str(row.name),
       businessUnitId: strOrNull(row.business_unit_id),
+      verticalId: strOrNull(row.vertical_id),
       horizonStart: asDate(row.horizon_start),
       horizonEnd: asDate(row.horizon_end),
       currency: str(row.currency),
@@ -318,6 +319,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
       name: str(row.name),
       cohortMonth: cohortMonthStr,
       businessUnitId: strOrNull(row.business_unit_id),
+      verticalId: strOrNull(row.vertical_id),
       definition: asJson(row.definition, {}),
       status: str(row.status),
       metadata: asJson(row.metadata, {}),
@@ -669,6 +671,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
       code: string;
       name: string;
       businessUnitId?: string | null;
+      verticalId?: string | null;
       horizonStart: Date;
       horizonEnd: Date;
       currency: string;
@@ -680,13 +683,14 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
   ): Promise<RevenueForecast> {
     const rows = await this.q(
       `INSERT INTO edge_p11_revenue_forecasts
-        (code, name, business_unit_id, horizon_start, horizon_end, currency, assumptions, metadata, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
+        (code, name, business_unit_id, vertical_id, horizon_start, horizon_end, currency, assumptions, metadata, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10)
        RETURNING *`,
       [
         input.code,
         input.name,
         input.businessUnitId ?? null,
+        input.verticalId ?? null,
         input.horizonStart,
         input.horizonEnd,
         input.currency,
@@ -697,6 +701,31 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
       client,
     );
     return this.mapForecast(rows[0]!);
+  }
+
+  async listRevenueForecasts(opts?: {
+    verticalId?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<RevenueForecast[]> {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(`vertical_id = $${params.length}`);
+    }
+    if (opts?.status) {
+      params.push(opts.status);
+      clauses.push(`status = $${params.length}`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    params.push(opts?.limit ?? 50);
+    const rows = await this.q(
+      `SELECT * FROM edge_p11_revenue_forecasts ${where}
+       ORDER BY created_at DESC LIMIT $${params.length}`,
+      params,
+    );
+    return rows.map((r) => this.mapForecast(r));
   }
 
   async getRevenueForecast(id: string): Promise<RevenueForecast | null> {
@@ -1022,6 +1051,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
       name: string;
       cohortMonth: Date | string;
       businessUnitId?: string | null;
+      verticalId?: string | null;
       definition?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
       createdBy: string;
@@ -1034,14 +1064,15 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
         : String(input.cohortMonth).slice(0, 10);
     const rows = await this.q(
       `INSERT INTO edge_p11_revenue_cohorts
-        (code, name, cohort_month, business_unit_id, definition, metadata, created_by)
-       VALUES ($1,$2,$3::date,$4,$5::jsonb,$6::jsonb,$7)
+        (code, name, cohort_month, business_unit_id, vertical_id, definition, metadata, created_by)
+       VALUES ($1,$2,$3::date,$4,$5,$6::jsonb,$7::jsonb,$8)
        RETURNING *`,
       [
         input.code,
         input.name,
         month,
         input.businessUnitId ?? null,
+        input.verticalId ?? null,
         JSON.stringify(input.definition ?? {}),
         JSON.stringify(input.metadata ?? {}),
         input.createdBy,
@@ -1101,6 +1132,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
   async listRetentionSnapshots(filter?: {
     cohortId?: string;
     metricCode?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: RetentionSnapshot[]; total: number }> {
@@ -1113,6 +1145,12 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
     if (filter?.metricCode) {
       params.push(filter.metricCode);
       clauses.push(`metric_code = $${params.length}`);
+    }
+    if (filter?.verticalId) {
+      params.push(filter.verticalId);
+      clauses.push(
+        `cohort_id IN (SELECT id FROM edge_p11_revenue_cohorts WHERE vertical_id = $${params.length})`,
+      );
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const countRows = await this.q(
@@ -1134,6 +1172,7 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
   async getRetentionOverview(opts?: {
     cohortId?: string | null;
     asOf?: Date;
+    verticalId?: string;
   }): Promise<RetentionOverview> {
     const codes = ['GRR', 'NRR'];
     const params: unknown[] = [codes];
@@ -1145,6 +1184,10 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
     if (opts?.asOf) {
       params.push(opts.asOf);
       clauses += ` AND as_of <= $${params.length}`;
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses += ` AND cohort_id IN (SELECT id FROM edge_p11_revenue_cohorts WHERE vertical_id = $${params.length})`;
     }
     const rows = await this.q(
       `SELECT DISTINCT ON (metric_code) *
@@ -1574,6 +1617,13 @@ export class PgRevenueRepository implements RevenueOperationsRepositoryPort {
     if (filter?.metricCode) {
       params.push(filter.metricCode);
       clauses.push(`metric_code = $${params.length}`);
+    }
+    if (filter?.verticalId) {
+      params.push(filter.verticalId);
+      clauses.push(
+        `revenue_stream_id IN (SELECT id FROM edge_p11_revenue_streams
+           WHERE product_ref_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length}))`,
+      );
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const countRows = await this.q(

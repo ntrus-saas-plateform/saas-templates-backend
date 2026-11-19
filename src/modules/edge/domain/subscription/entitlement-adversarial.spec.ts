@@ -44,7 +44,10 @@ describe('entitlement adversarial (no silent expansion beyond grant)', () => {
     ]);
     expect(projection.entitlements.modules['pharmacy.batch']).toBeUndefined();
     expect(projection.entitlements.modules.pharmacy).toBeUndefined();
-    expect(projection.entitlements.capabilities['pharmacy.batch']).toBe(true);
+    // Dual-write UPPER_SNAKE (BB @RequiresCapability) — dotted code reste une
+    // capability, jamais un module ; la clé publiée est PHARMACY_BATCH.
+    expect(projection.entitlements.capabilities['PHARMACY_BATCH']).toBe(true);
+    expect(projection.entitlements.capabilities['pharmacy.batch']).toBeUndefined();
   });
 
   it('OR of feature flags cannot enable a code that was never sourced', () => {

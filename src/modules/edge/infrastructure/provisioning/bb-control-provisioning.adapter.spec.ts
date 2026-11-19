@@ -21,7 +21,10 @@ describe('BbControlProvisioningAdapter', () => {
       payload: { entitlements: {}, grants: [] },
     });
     expect(result.outcome).toBe('UNAVAILABLE');
-    expect(result.failureCode).toBe('EMPTY_ENTITLEMENTS_FORBIDDEN');
+    expect(result).toMatchObject({
+      outcome: 'UNAVAILABLE',
+      failureCode: 'EMPTY_ENTITLEMENTS_FORBIDDEN',
+    });
     expect(client.provision).not.toHaveBeenCalled();
   });
 

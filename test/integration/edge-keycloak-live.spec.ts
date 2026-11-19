@@ -372,7 +372,6 @@ describe.skipIf(!runTestcontainers)('P7.7 Keycloak live adapter (Testcontainers)
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
       launchUC,
     );
   }, 300_000);

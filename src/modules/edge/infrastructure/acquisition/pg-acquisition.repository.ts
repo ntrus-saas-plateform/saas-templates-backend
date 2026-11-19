@@ -2792,6 +2792,7 @@ export class PgAcquisitionRepository implements AcquisitionRepositoryPort {
   async listAnalyticsEvents(filter?: {
     eventName?: string;
     prospectId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: AnalyticsEvent[]; total: number }> {
@@ -2807,6 +2808,13 @@ export class PgAcquisitionRepository implements AcquisitionRepositoryPort {
       params.push(filter.prospectId);
       where.push(`prospect_id = $${params.length}`);
     }
+    if (filter?.verticalId) {
+      // Workspace switch scope — événements des prospects de la verticale (produit → verticale).
+      params.push(filter.verticalId);
+      where.push(
+        `prospect_id IN (SELECT id FROM edge_p10_prospects WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length}))`,
+      );
+    }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const countRows = await this.q(
       `SELECT COUNT(*)::int AS c FROM edge_p10_analytics_events ${clause}`,
@@ -2821,7 +2829,7 @@ export class PgAcquisitionRepository implements AcquisitionRepositoryPort {
     return { items: rows.map((r) => this.mapAnalyticsEvent(r)), total: num(countRows[0]?.c) };
   }
 
-  async getAcquisitionOverviewCounts(): Promise<{
+  async getAcquisitionOverviewCounts(verticalId?: string): Promise<{
     presentationsPublished: number;
     prospectsActive: number;
     leadsCaptured: number;
@@ -2829,27 +2837,39 @@ export class PgAcquisitionRepository implements AcquisitionRepositoryPort {
     checkoutsPending: number;
     handoffsRequested: number;
   }> {
+    // Workspace switch scope — sans filtre = plateforme.
+    const vProsp = verticalId
+      ? `product_id IN (SELECT id FROM edge_products WHERE vertical_id = '${verticalId.replace(/'/g, "''")}')`
+      : null;
+    const vViaProsp = verticalId ? `prospect_id IN (SELECT id FROM edge_p10_prospects WHERE ${vProsp})` : null;
     const [presentations, prospects, leads, applications, checkouts, handoffs] = await Promise.all([
       this.q(
-        `SELECT COUNT(*)::int AS c FROM edge_p10_product_presentations WHERE status = 'PUBLISHED'`,
+        `SELECT COUNT(*)::int AS c FROM edge_p10_product_presentations
+         WHERE status = 'PUBLISHED'${verticalId ? ` AND ${vProsp}` : ''}`,
       ),
       this.q(
         `SELECT COUNT(*)::int AS c FROM edge_p10_prospects
-         WHERE status NOT IN ('CONVERTED','DISQUALIFIED','ARCHIVED')`,
+         WHERE status NOT IN ('CONVERTED','DISQUALIFIED','ARCHIVED')${verticalId ? ` AND ${vProsp}` : ''}`,
       ),
       this.q(
-        `SELECT COUNT(*)::int AS c FROM edge_p10_acquisition_leads WHERE status = 'CAPTURED'`,
+        `SELECT COUNT(*)::int AS c FROM edge_p10_acquisition_leads
+         WHERE status = 'CAPTURED'${verticalId ? ` AND ${vViaProsp}` : ''}`,
       ),
       this.q(
         `SELECT COUNT(*)::int AS c FROM edge_p10_applications
-         WHERE status NOT IN ('REJECTED','WITHDRAWN','EXPIRED','COMPLETED')`,
+         WHERE status NOT IN ('REJECTED','WITHDRAWN','EXPIRED','COMPLETED')${
+           verticalId ? ` AND (${vProsp} OR ${vViaProsp})` : ''
+         }`,
       ),
       this.q(
         `SELECT COUNT(*)::int AS c FROM edge_p10_checkout_sessions
-         WHERE status IN ('CREATED','AWAITING_PAYMENT','AUTHORIZED','CAPTURED','HANDOFF_READY')`,
+         WHERE status IN ('CREATED','AWAITING_PAYMENT','AUTHORIZED','CAPTURED','HANDOFF_READY')${
+           verticalId ? ` AND ${vViaProsp}` : ''
+         }`,
       ),
       this.q(
-        `SELECT COUNT(*)::int AS c FROM edge_p10_subscription_handoffs WHERE status = 'REQUESTED'`,
+        `SELECT COUNT(*)::int AS c FROM edge_p10_subscription_handoffs
+         WHERE status = 'REQUESTED'${verticalId ? ` AND ${vViaProsp}` : ''}`,
       ),
     ]);
     return {

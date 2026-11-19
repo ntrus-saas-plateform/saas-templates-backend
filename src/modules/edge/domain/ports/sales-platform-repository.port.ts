@@ -61,6 +61,7 @@ export type SalesExportJob = {
   readonly rowCount: number;
   readonly format: string;
   readonly payload: unknown[];
+  readonly filters: Record<string, unknown>;
   readonly denialReason: string | null;
   readonly createdAt: Date;
 };
@@ -164,6 +165,7 @@ export interface SalesPlatformRepositoryPort {
     periodType?: string;
     periodKey?: string;
     model?: string;
+    verticalId?: string;
   }): Promise<
     {
       id: string;
@@ -207,7 +209,7 @@ export interface SalesPlatformRepositoryPort {
     denialReason?: string | null;
     correlationId?: string | null;
   }): Promise<SalesExportJob>;
-  listExportJobs(actorId: string, limit?: number): Promise<SalesExportJob[]>;
+  listExportJobs(actorId: string, limit?: number, verticalId?: string): Promise<SalesExportJob[]>;
 
   globalSearch(input: {
     q: string;
@@ -215,6 +217,7 @@ export interface SalesPlatformRepositoryPort {
     actorId?: string;
     visibilityMode?: 'OWNED' | 'TEAM' | 'ALL';
     teamIds?: string[];
+    verticalId?: string;
   }): Promise<GlobalSearchHit[]>;
 
   findIdempotentResponse(
@@ -235,9 +238,14 @@ export interface SalesPlatformRepositoryPort {
     granteeAdministratorId?: string | null;
     granteeTeamId?: string | null;
     accessLevel?: string;
+    verticalId?: string | null;
     grantedBy?: string | null;
   }): Promise<void>;
-  listVisibilityGrants(subjectType: string, subjectId: string): Promise<
+  listVisibilityGrants(opts?: {
+    subjectType?: string;
+    subjectId?: string;
+    verticalId?: string;
+  }): Promise<
     {
       id: string;
       granteeAdministratorId: string | null;

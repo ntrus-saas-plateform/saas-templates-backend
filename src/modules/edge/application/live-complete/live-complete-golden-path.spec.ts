@@ -165,6 +165,7 @@ describe('Live-complete golden-path contracts (E2/E3 — not live docker E2E)', 
       new UnavailablePaymentProviderAdapter(),
       httpWebhook,
       sandbox,
+      {} as never, // hyperswitch — jamais appelé en mode 'unavailable'
     );
 
     const customer = await resolving.createCustomer({

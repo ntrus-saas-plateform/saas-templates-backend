@@ -553,6 +553,7 @@ export class PgBillingRepository implements BillingRepositoryPort {
   async listInvoices(input?: {
     billingAccountId?: string;
     status?: string;
+    verticalId?: string;
     limit?: number;
   }): Promise<Invoice[]> {
     const limit = input?.limit ?? 50;
@@ -565,6 +566,16 @@ export class PgBillingRepository implements BillingRepositoryPort {
     if (input?.status) {
       params.push(input.status);
       where.push(`status = $${params.length}`);
+    }
+    if (input?.verticalId) {
+      params.push(input.verticalId);
+      where.push(
+        `subscription_id IN (
+           SELECT s.id FROM edge_subscriptions s
+           JOIN edge_products p ON p.id = s.product_id
+           WHERE p.vertical_id = $${params.length}
+         )`,
+      );
     }
     params.push(limit);
     const sql = `SELECT * FROM edge_invoices ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
@@ -1096,20 +1107,43 @@ export class PgBillingRepository implements BillingRepositoryPort {
     };
   }
 
-  async getBillingOverview(): Promise<BillingOverview> {
+  async getBillingOverview(verticalId?: string): Promise<BillingOverview> {
+    // Workspace switch scope — sans filtre = plateforme, avec verticalId = verticale active.
+    const vParams = verticalId ? [verticalId] : [];
+    const vSub = verticalId
+      ? `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $1)`
+      : null;
+    const vInvoice = verticalId
+      ? `subscription_id IN (SELECT id FROM edge_subscriptions WHERE ${vSub})`
+      : null;
+    const vAccount = verticalId
+      ? `commercial_account_id IN (SELECT account_id FROM edge_subscriptions WHERE ${vSub})`
+      : null;
+    const invoiceScope = vInvoice ? ` AND ${vInvoice}` : '';
+    const accountScope = vAccount ? ` AND ${vAccount}` : '';
     const [accounts, openInvoices, issuedUnpaid, collected, refunded, policy] = await Promise.all([
-      this.q<{ c: string }>(`SELECT COUNT(*)::text AS c FROM edge_billing_accounts WHERE status = 'ACTIVE'`),
       this.q<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM edge_invoices WHERE status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`,
+        `SELECT COUNT(*)::text AS c FROM edge_billing_accounts WHERE status = 'ACTIVE'${accountScope}`,
+        vParams,
+      ),
+      this.q<{ c: string }>(
+        `SELECT COUNT(*)::text AS c FROM edge_invoices WHERE status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')${invoiceScope}`,
+        vParams,
       ),
       this.q<{ t: string }>(
         `SELECT COALESCE(SUM(amount_due),0)::text AS t FROM edge_invoices
-         WHERE status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`,
+         WHERE status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')${invoiceScope}`,
+        vParams,
       ),
       this.q<{ t: string }>(
-        `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_payment_intents WHERE status = 'SUCCEEDED'`,
+        `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_payment_intents WHERE status = 'SUCCEEDED'${
+          verticalId
+            ? ` AND (invoice_id IN (SELECT id FROM edge_invoices WHERE ${vInvoice}) OR billing_account_id IN (SELECT id FROM edge_billing_accounts WHERE ${vAccount}))`
+            : ''
+        }`,
+        vParams,
       ),
-      this.sumSucceededRefunds(),
+      this.sumSucceededRefunds(undefined, verticalId),
       this.getActiveRevenuePolicy(),
     ]);
     const method = (policy?.method ?? 'DEFERRED_MANUAL') as RevenueRecognitionMethod;
@@ -1132,19 +1166,27 @@ export class PgBillingRepository implements BillingRepositoryPort {
     };
   }
 
-  async getBillingAnalytics(currency = 'USD'): Promise<BillingAnalytics> {
+  async getBillingAnalytics(currency = 'USD', verticalId?: string): Promise<BillingAnalytics> {
+    const vParams: unknown[] = [currency];
+    const vInvoice = verticalId
+      ? ` AND subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $2))`
+      : '';
+    if (verticalId) vParams.push(verticalId);
+    const vPayment = verticalId
+      ? ` AND (invoice_id IN (SELECT id FROM edge_invoices WHERE subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $2))) OR billing_account_id IN (SELECT id FROM edge_billing_accounts WHERE commercial_account_id IN (SELECT account_id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $2))))`
+      : '';
     const [billed, collected, refunded, policy] = await Promise.all([
       this.q<{ t: string }>(
         `SELECT COALESCE(SUM(total),0)::text AS t FROM edge_invoices
-         WHERE status IN ('ISSUED','PARTIALLY_PAID','PAID','OVERDUE') AND currency = $1`,
-        [currency],
+         WHERE status IN ('ISSUED','PARTIALLY_PAID','PAID','OVERDUE') AND currency = $1${vInvoice}`,
+        vParams,
       ),
       this.q<{ t: string }>(
         `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_payment_intents
-         WHERE status = 'SUCCEEDED' AND currency = $1`,
-        [currency],
+         WHERE status = 'SUCCEEDED' AND currency = $1${vPayment}`,
+        vParams,
       ),
-      this.sumSucceededRefunds(currency),
+      this.sumSucceededRefunds(currency, verticalId),
       this.getActiveRevenuePolicy(),
     ]);
     const method = (policy?.method ?? 'DEFERRED_MANUAL') as RevenueRecognitionMethod;
@@ -2066,16 +2108,25 @@ export class PgBillingRepository implements BillingRepositoryPort {
     return this.mapRevenuePolicy(rows[0]);
   }
 
-  async sumSucceededRefunds(currency?: string): Promise<string> {
-    const rows = currency
-      ? await this.q<{ t: string }>(
-          `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_refunds
-           WHERE status = 'SUCCEEDED' AND currency = $1`,
-          [currency],
-        )
-      : await this.q<{ t: string }>(
-          `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_refunds WHERE status = 'SUCCEEDED'`,
-        );
+  async sumSucceededRefunds(currency?: string, verticalId?: string): Promise<string> {
+    const clauses = [`status = 'SUCCEEDED'`];
+    const params: unknown[] = [];
+    if (currency) {
+      params.push(currency);
+      clauses.push(`currency = $${params.length}`);
+    }
+    if (verticalId) {
+      params.push(verticalId);
+      const v = `$${params.length}`;
+      clauses.push(
+        `(invoice_id IN (SELECT id FROM edge_invoices WHERE subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = ${v})))
+          OR payment_intent_id IN (SELECT id FROM edge_payment_intents WHERE invoice_id IN (SELECT id FROM edge_invoices WHERE subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = ${v}))))`,
+      );
+    }
+    const rows = await this.q<{ t: string }>(
+      `SELECT COALESCE(SUM(amount),0)::text AS t FROM edge_refunds WHERE ${clauses.join(' AND ')}`,
+      params,
+    );
     return rows[0]?.t ?? '0';
   }
 
@@ -2180,12 +2231,19 @@ export class PgBillingRepository implements BillingRepositoryPort {
     currency?: string;
     periodStart?: Date | null;
     periodEnd?: Date | null;
+    verticalId?: string;
   }): Promise<Invoice[]> {
     const clauses = [`status IN ('ISSUED','PARTIALLY_PAID','PAID','OVERDUE','VOIDED')`];
     const params: unknown[] = [];
     if (input.currency) {
       params.push(input.currency);
       clauses.push(`currency = $${params.length}`);
+    }
+    if (input.verticalId) {
+      params.push(input.verticalId);
+      clauses.push(
+        `subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${params.length}))`,
+      );
     }
     if (input.periodStart) {
       params.push(input.periodStart.toISOString());
@@ -2206,12 +2264,21 @@ export class PgBillingRepository implements BillingRepositoryPort {
     currency?: string;
     periodStart?: Date | null;
     periodEnd?: Date | null;
+    verticalId?: string;
   }): Promise<PaymentIntent[]> {
     const clauses = [`status = 'SUCCEEDED'`];
     const params: unknown[] = [];
     if (input.currency) {
       params.push(input.currency);
       clauses.push(`currency = $${params.length}`);
+    }
+    if (input.verticalId) {
+      params.push(input.verticalId);
+      const v = `$${params.length}`;
+      clauses.push(
+        `(invoice_id IN (SELECT id FROM edge_invoices WHERE subscription_id IN (SELECT id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = ${v})))
+          OR billing_account_id IN (SELECT id FROM edge_billing_accounts WHERE commercial_account_id IN (SELECT account_id FROM edge_subscriptions WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = ${v}))))`,
+      );
     }
     if (input.periodStart) {
       params.push(input.periodStart.toISOString());

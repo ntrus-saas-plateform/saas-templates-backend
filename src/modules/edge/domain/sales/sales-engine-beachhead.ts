@@ -41,7 +41,9 @@ export function scoreLead(input: LeadScoreInput): LeadScoreResult {
     engagement: input.engagementScore ?? null,
     readiness: input.readinessScore ?? null,
   };
-  const measured = Object.values(components).filter((v) => v != null && Number.isFinite(v));
+  const measured = Object.values(components).filter(
+    (v): v is number => v != null && Number.isFinite(v),
+  );
   if (measured.length === 0) {
     return {
       total: null,

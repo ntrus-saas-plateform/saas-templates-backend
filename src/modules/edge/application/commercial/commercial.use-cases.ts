@@ -176,6 +176,9 @@ export class AddPackageCapabilityUseCase {
     packageId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** Quota : `{ numericLimit: 5000 }` — stocké dans restrictions JSONB. */
+    numericLimit?: number | null;
+    restrictions?: Record<string, unknown> | null;
   }) {
     const pkg = await this.commercial.getPackage(input.packageId);
     if (!pkg) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Package not found');
@@ -189,8 +192,24 @@ export class AddPackageCapabilityUseCase {
       },
       input.inclusionType,
     );
-    await this.commercial.addPackageCapability(input);
-    return { packageId: input.packageId, capabilityId: input.capabilityId };
+    const restrictions: Record<string, unknown> = { ...(input.restrictions ?? {}) };
+    if (input.numericLimit != null) {
+      if (!Number.isFinite(input.numericLimit) || input.numericLimit < 0) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'numericLimit must be >= 0');
+      }
+      restrictions.numericLimit = Math.floor(input.numericLimit);
+    }
+    await this.commercial.addPackageCapability({
+      packageId: input.packageId,
+      capabilityId: input.capabilityId,
+      inclusionType: input.inclusionType,
+      restrictions: Object.keys(restrictions).length > 0 ? restrictions : null,
+    });
+    return {
+      packageId: input.packageId,
+      capabilityId: input.capabilityId,
+      restrictions,
+    };
   }
 }
 
@@ -245,6 +264,9 @@ export class AddPlanCapabilityUseCase {
     planId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** Quota : `{ numericLimit: 500 }` — stocké dans restrictions JSONB. */
+    numericLimit?: number | null;
+    restrictions?: Record<string, unknown> | null;
   }) {
     const plan = await this.commercial.getPlan(input.planId);
     if (!plan) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Plan not found');
@@ -258,8 +280,24 @@ export class AddPlanCapabilityUseCase {
       },
       input.inclusionType,
     );
-    await this.commercial.addPlanCapability(input);
-    return { planId: input.planId, capabilityId: input.capabilityId };
+    const restrictions: Record<string, unknown> = { ...(input.restrictions ?? {}) };
+    if (input.numericLimit != null) {
+      if (!Number.isFinite(input.numericLimit) || input.numericLimit < 0) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'numericLimit must be >= 0');
+      }
+      restrictions.numericLimit = Math.floor(input.numericLimit);
+    }
+    await this.commercial.addPlanCapability({
+      planId: input.planId,
+      capabilityId: input.capabilityId,
+      inclusionType: input.inclusionType,
+      restrictions: Object.keys(restrictions).length > 0 ? restrictions : null,
+    });
+    return {
+      planId: input.planId,
+      capabilityId: input.capabilityId,
+      restrictions,
+    };
   }
 }
 
@@ -301,6 +339,9 @@ export class AddAddonCapabilityUseCase {
     addonId: string;
     capabilityId: string;
     inclusionType: CommercialInclusionType;
+    /** Quota : `{ numericLimit: 10000 }` — stocké dans restrictions JSONB (mig 147). */
+    numericLimit?: number | null;
+    restrictions?: Record<string, unknown> | null;
   }) {
     const addon = await this.commercial.getAddon(input.addonId);
     if (!addon) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Add-on not found');
@@ -314,8 +355,20 @@ export class AddAddonCapabilityUseCase {
       },
       input.inclusionType,
     );
-    await this.commercial.addAddonCapability(input);
-    return { addonId: input.addonId, capabilityId: input.capabilityId };
+    const restrictions: Record<string, unknown> = { ...(input.restrictions ?? {}) };
+    if (input.numericLimit != null) {
+      if (!Number.isFinite(input.numericLimit) || input.numericLimit < 0) {
+        throw new DomainError(ErrorCode.VALIDATION_ERROR, 'numericLimit must be >= 0');
+      }
+      restrictions.numericLimit = Math.floor(input.numericLimit);
+    }
+    await this.commercial.addAddonCapability({
+      addonId: input.addonId,
+      capabilityId: input.capabilityId,
+      inclusionType: input.inclusionType,
+      restrictions: Object.keys(restrictions).length > 0 ? restrictions : null,
+    });
+    return { addonId: input.addonId, capabilityId: input.capabilityId, restrictions };
   }
 }
 
@@ -336,6 +389,16 @@ export class GetSolutionPackageUseCase {
     if (!pkg) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Package not found');
     const capabilities = await this.commercial.listPackageCapabilities(id);
     return { ...pkg, capabilities };
+  }
+}
+
+export class GetCommercialAddonUseCase {
+  constructor(private readonly commercial: CommercialRepositoryPort) {}
+  async execute(id: string) {
+    const addon = await this.commercial.getAddon(id);
+    if (!addon) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Add-on not found');
+    const capabilities = await this.commercial.listAddonCapabilities(id);
+    return { ...addon, capabilities };
   }
 }
 
@@ -406,6 +469,11 @@ export class AddPriceBookEntryUseCase {
     amount: string;
     currency?: string;
     billingFrequency?: string | null;
+    /**
+     * Source du prix. Défaut honnête NEEDS_RESEARCH (doc 39 : jamais de prix
+     * inventé) — un price book reste non publiable tant que NEEDS_RESEARCH.
+     */
+    priceSource?: 'MEASURED' | 'ESTIMATED' | 'NEEDS_RESEARCH';
   }) {
     const book = await this.commercial.getPriceBook(input.priceBookId);
     if (!book) throw new DomainError(ErrorCode.RESOURCE_NOT_FOUND, 'Price book not found');
@@ -425,6 +493,14 @@ export class AddPriceBookEntryUseCase {
         context: 'price-book-plan',
       });
     }
+    const priceSource = String(input.priceSource ?? 'NEEDS_RESEARCH').toUpperCase();
+    if (priceSource !== 'MEASURED' && priceSource !== 'ESTIMATED' && priceSource !== 'NEEDS_RESEARCH') {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        "priceSource must be 'MEASURED', 'ESTIMATED' or 'NEEDS_RESEARCH'",
+        [{ priceSource }],
+      );
+    }
     return this.commercial.addPriceBookEntry({
       priceBookId: input.priceBookId,
       commercialItemType: input.commercialItemType,
@@ -432,6 +508,7 @@ export class AddPriceBookEntryUseCase {
       currency,
       amount: input.amount,
       billingFrequency: input.billingFrequency,
+      conditions: { priceSource },
     });
   }
 }
@@ -776,6 +853,23 @@ export class PublishPriceBookUseCase {
       throw new DomainError(
         ErrorCode.VALIDATION_ERROR,
         'Cannot publish a price book without entries',
+      );
+    }
+    // Gate G11#3 (doc 39) — fail-closed : un price book reste DRAFT tant que
+    // ses prix ne sont pas recherchés (priceSource MEASURED/ESTIMATED).
+    // Jamais de prix inventé → jamais de publication depuis NEEDS_RESEARCH.
+    const unresolved = entries.filter((entry) => {
+      const source = String(
+        (entry.conditions as { priceSource?: unknown } | null | undefined)?.priceSource ??
+          'NEEDS_RESEARCH',
+      ).toUpperCase();
+      return source !== 'MEASURED' && source !== 'ESTIMATED';
+    });
+    if (unresolved.length > 0) {
+      throw new DomainError(
+        ErrorCode.VALIDATION_ERROR,
+        `Cannot publish price book: ${unresolved.length} entr${unresolved.length === 1 ? 'y is' : 'ies are'} still NEEDS_RESEARCH (doc 39 G11#3)`,
+        [{ unresolvedEntries: unresolved.map((e) => e.id) }],
       );
     }
     const published = await this.commercial.updatePriceBookStatus(book.id, 'PUBLISHED');
@@ -1237,6 +1331,11 @@ export class EvaluateDiscountApprovalUseCase {
     discountPercent?: number | null;
     actorTier: 'AE' | 'MANAGER' | 'DIRECTOR' | 'CFO';
   }) {
-    return { data: evaluateDiscountApproval(input) };
+    return {
+      data: evaluateDiscountApproval({
+        discountPercent: input.discountPercent ?? null,
+        actorTier: input.actorTier,
+      }),
+    };
   }
 }

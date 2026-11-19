@@ -435,15 +435,22 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
     periodType?: string;
     periodKey?: string;
     model?: string;
+    verticalId?: string;
   }) {
     const rows = await this.q(
       `SELECT * FROM edge_sales_forecast_snapshots
        WHERE ($1::text IS NULL OR period_type = $1)
          AND ($2::text IS NULL OR period_key = $2)
          AND ($3::text IS NULL OR model = $3)
+         AND ($4::uuid IS NULL OR (scope_type = 'VERTICAL' AND scope_id = $4::uuid))
        ORDER BY created_at DESC
        LIMIT 50`,
-      [opts?.periodType ?? null, opts?.periodKey ?? null, opts?.model ?? null],
+      [
+        opts?.periodType ?? null,
+        opts?.periodKey ?? null,
+        opts?.model ?? null,
+        opts?.verticalId ?? null,
+      ],
     );
     return rows.map((r) => ({
       id: String(r.id),
@@ -579,16 +586,19 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
       rowCount: Number(r.row_count),
       format: String(r.format),
       payload: (r.payload as unknown[]) ?? [],
+      filters: (r.filters as Record<string, unknown>) ?? {},
       denialReason: (r.denial_reason as string | null) ?? null,
       createdAt: new Date(String(r.created_at)),
     };
   }
 
-  async listExportJobs(actorId: string, limit = 20): Promise<SalesExportJob[]> {
+  async listExportJobs(actorId: string, limit = 20, verticalId?: string): Promise<SalesExportJob[]> {
     const rows = await this.q(
-      `SELECT * FROM edge_sales_export_jobs WHERE requested_by = $1
+      `SELECT * FROM edge_sales_export_jobs
+       WHERE requested_by = $1
+         AND ($3::text IS NULL OR filters->>'verticalId' = $3)
        ORDER BY created_at DESC LIMIT $2`,
-      [actorId, limit],
+      [actorId, limit, verticalId ?? null],
     );
     return rows.map((r) => ({
       id: String(r.id),
@@ -598,6 +608,7 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
       rowCount: Number(r.row_count),
       format: String(r.format),
       payload: (r.payload as unknown[]) ?? [],
+      filters: (r.filters as Record<string, unknown>) ?? {},
       denialReason: (r.denial_reason as string | null) ?? null,
       createdAt: new Date(String(r.created_at)),
     }));
@@ -609,12 +620,14 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
     actorId?: string;
     visibilityMode?: 'OWNED' | 'TEAM' | 'ALL';
     teamIds?: string[];
+    verticalId?: string;
   }): Promise<GlobalSearchHit[]> {
     const q = `%${input.q.trim().toLowerCase()}%`;
     const limit = input.limit ?? 40;
     const mode = input.visibilityMode ?? 'ALL';
     const actorId = input.actorId ?? null;
     const teamIds = input.teamIds ?? [];
+    const verticalId = input.verticalId ?? null;
 
     const accounts = await this.q(
       `SELECT id, legal_name AS title, account_number AS subtitle, status
@@ -627,35 +640,42 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
            OR ($2 = 'OWNED' AND owner_administrator_id = $3)
            OR ($2 = 'TEAM' AND team_id = ANY($4::uuid[]))
          )
+         AND ($6::uuid IS NULL OR vertical_id = $6)
        LIMIT $5`,
-      [q, mode, actorId, teamIds, limit],
+      [q, mode, actorId, teamIds, limit, verticalId],
     );
     const contacts = await this.q(
       `SELECT id, (first_name || ' ' || last_name) AS title, email_normalized AS subtitle, status
        FROM edge_sales_contacts
-       WHERE lower(first_name || ' ' || last_name) LIKE $1
-          OR lower(COALESCE(email_normalized,'')) LIKE $1
+       WHERE (lower(first_name || ' ' || last_name) LIKE $1
+          OR lower(COALESCE(email_normalized,'')) LIKE $1)
+         AND ($3::uuid IS NULL OR account_id IN
+              (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $3))
        LIMIT $2`,
-      [q, Math.ceil(limit / 2)],
+      [q, Math.ceil(limit / 2), verticalId],
     );
     const opps = await this.q(
       `SELECT id, name AS title, opportunity_number AS subtitle, status
        FROM edge_sales_opportunities
-       WHERE lower(name) LIKE $1 OR lower(opportunity_number) LIKE $1
+       WHERE (lower(name) LIKE $1 OR lower(opportunity_number) LIKE $1)
          AND (
            $2 = 'ALL'
            OR ($2 = 'OWNED' AND owner_administrator_id = $3)
            OR ($2 = 'TEAM' AND team_id = ANY($4::uuid[]))
          )
+         AND ($6::uuid IS NULL OR account_id IN
+              (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $6))
        LIMIT $5`,
-      [q, mode, actorId, teamIds, Math.ceil(limit / 2)],
+      [q, mode, actorId, teamIds, Math.ceil(limit / 2), verticalId],
     );
     const leads = await this.q(
       `SELECT id, marketing_lead_id::text AS title, status::text AS subtitle, status
        FROM edge_sales_leads
-       WHERE marketing_lead_id::text LIKE $1 OR status::text LIKE $1
+       WHERE (marketing_lead_id::text LIKE $1 OR status::text LIKE $1)
+         AND ($3::uuid IS NULL OR marketing_lead_id IN
+              (SELECT id FROM edge_marketing_leads WHERE vertical_id = $3))
        LIMIT $2`,
-      [q, Math.ceil(limit / 3)],
+      [q, Math.ceil(limit / 3), verticalId],
     );
 
     const hits: GlobalSearchHit[] = [
@@ -732,31 +752,53 @@ export class PgSalesPlatformRepository implements SalesPlatformRepositoryPort {
     granteeAdministratorId?: string | null;
     granteeTeamId?: string | null;
     accessLevel?: string;
+    verticalId?: string | null;
     grantedBy?: string | null;
   }): Promise<void> {
     await this.q(
       `INSERT INTO edge_sales_visibility_grants
-         (subject_type, subject_id, grantee_administrator_id, grantee_team_id, access_level, granted_by)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+         (subject_type, subject_id, grantee_administrator_id, grantee_team_id, access_level, vertical_id, granted_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [
         input.subjectType,
         input.subjectId,
         input.granteeAdministratorId ?? null,
         input.granteeTeamId ?? null,
         input.accessLevel ?? 'READ',
+        input.verticalId ?? null,
         input.grantedBy ?? null,
       ],
     );
   }
 
-  async listVisibilityGrants(subjectType: string, subjectId: string) {
+  async listVisibilityGrants(opts?: {
+    subjectType?: string;
+    subjectId?: string;
+    verticalId?: string;
+  }) {
+    const params: unknown[] = [];
+    const clauses: string[] = [];
+    if (opts?.subjectType) {
+      params.push(opts.subjectType);
+      clauses.push(`subject_type = $${params.length}`);
+    }
+    if (opts?.subjectId) {
+      params.push(opts.subjectId);
+      clauses.push(`subject_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      clauses.push(`vertical_id = $${params.length}`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = await this.q(
-      `SELECT * FROM edge_sales_visibility_grants
-       WHERE subject_type = $1 AND subject_id = $2`,
-      [subjectType, subjectId],
+      `SELECT * FROM edge_sales_visibility_grants ${where}`,
+      params,
     );
     return rows.map((r) => ({
       id: String(r.id),
+      subjectType: String(r.subject_type),
+      subjectId: String(r.subject_id),
       granteeAdministratorId: (r.grantee_administrator_id as string | null) ?? null,
       granteeTeamId: (r.grantee_team_id as string | null) ?? null,
       accessLevel: String(r.access_level),

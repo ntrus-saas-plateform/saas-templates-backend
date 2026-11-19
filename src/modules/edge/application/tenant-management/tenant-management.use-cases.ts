@@ -2505,9 +2505,15 @@ export class ListTerminationRequestsUseCase {
 export class GetPortfolioAnalyticsUseCase {
   constructor(private readonly repo: TenantManagementRepositoryPort) {}
 
-  async execute() {
-    const metrics = await this.repo.portfolioMetrics();
-    await this.repo.createAnalyticsSnapshot('portfolio', metrics as unknown as Record<string, unknown>);
+  async execute(verticalId?: string) {
+    const metrics = await this.repo.portfolioMetrics(verticalId);
+    // Snapshot only the platform-wide view — vertical-scoped reads don't pollute the store.
+    if (!verticalId) {
+      await this.repo.createAnalyticsSnapshot(
+        'portfolio',
+        metrics as unknown as Record<string, unknown>,
+      );
+    }
     return metrics;
   }
 }

@@ -465,6 +465,7 @@ export class PgSalesRepository implements SalesRepositoryPort {
     status?: string;
     q?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: CommercialAccount[]; total: number }> {
@@ -479,6 +480,10 @@ export class PgSalesRepository implements SalesRepositoryPort {
     if (opts?.ownerAdministratorId) {
       params.push(opts.ownerAdministratorId);
       where.push(`owner_administrator_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where.push(`vertical_id = $${params.length}`);
     }
     if (opts?.q) {
       params.push(`%${opts.q.toLowerCase()}%`);
@@ -754,6 +759,7 @@ export class PgSalesRepository implements SalesRepositoryPort {
   async listContacts(opts?: {
     accountId?: string;
     q?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesContact[]; total: number }> {
@@ -764,6 +770,12 @@ export class PgSalesRepository implements SalesRepositoryPort {
     if (opts?.accountId) {
       params.push(opts.accountId);
       where.push(`account_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where.push(
+        `account_id IN (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $${params.length})`,
+      );
     }
     if (opts?.q) {
       params.push(`%${opts.q.toLowerCase()}%`);
@@ -848,6 +860,7 @@ export class PgSalesRepository implements SalesRepositoryPort {
   async listSalesLeads(opts?: {
     status?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesLead[]; total: number }> {
@@ -862,6 +875,10 @@ export class PgSalesRepository implements SalesRepositoryPort {
     if (opts?.ownerAdministratorId) {
       params.push(opts.ownerAdministratorId);
       where.push(`owner_administrator_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where.push(`vertical_id = $${params.length}`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const countRows = await this.q<{ c: string }>(
@@ -1106,6 +1123,7 @@ export class PgSalesRepository implements SalesRepositoryPort {
     accountId?: string;
     assigneeId?: string;
     status?: string;
+    verticalId?: string;
   }): Promise<SalesTask[]> {
     const params: unknown[] = [];
     const where: string[] = [];
@@ -1120,6 +1138,12 @@ export class PgSalesRepository implements SalesRepositoryPort {
     if (opts?.status) {
       params.push(opts.status);
       where.push(`status = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where.push(
+        `account_id IN (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $${params.length})`,
+      );
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const rows = await this.q(
@@ -1363,6 +1387,7 @@ export class PgSalesRepository implements SalesRepositoryPort {
     pipelineId?: string;
     stageId?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesOpportunity[]; total: number }> {
@@ -1377,6 +1402,12 @@ export class PgSalesRepository implements SalesRepositoryPort {
     if (opts?.accountId) {
       params.push(opts.accountId);
       where.push(`account_id = $${params.length}`);
+    }
+    if (opts?.verticalId) {
+      params.push(opts.verticalId);
+      where.push(
+        `account_id IN (SELECT id FROM edge_sales_commercial_accounts WHERE vertical_id = $${params.length})`,
+      );
     }
     if (opts?.pipelineId) {
       params.push(opts.pipelineId);

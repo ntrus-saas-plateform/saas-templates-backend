@@ -474,6 +474,8 @@ export type ActivityEventRecord = {
 export type TenantSearchFilter = {
   q?: string;
   productId?: string;
+  /** Workspace switch scope — only tenants whose product belongs to this vertical. */
+  verticalId?: string;
   accountId?: string;
   subscriptionId?: string;
   region?: string;

@@ -27,6 +27,7 @@ export class GetBillingCashTruthUseCase {
     currency?: string;
     periodStart?: Date | string;
     periodEnd?: Date | string;
+    verticalId?: string;
   }): Promise<{ data: BillingCashTruth }> {
     const periodEnd = input?.periodEnd ? new Date(input.periodEnd) : new Date();
     const periodStart = input?.periodStart
@@ -40,12 +41,13 @@ export class GetBillingCashTruthUseCase {
     }
 
     const currency = input?.currency?.trim().toUpperCase();
+    const verticalId = input?.verticalId?.trim() || undefined;
 
     const [invoices, payments, ...subPages] = await Promise.all([
-      this.billing.listInvoicesForExport({ currency, periodStart, periodEnd }),
-      this.billing.listPaymentIntentsForExport({ currency, periodStart, periodEnd }),
+      this.billing.listInvoicesForExport({ currency, periodStart, periodEnd, verticalId }),
+      this.billing.listPaymentIntentsForExport({ currency, periodStart, periodEnd, verticalId }),
       ...CONTRACTED_STATUSES.map((status) =>
-        this.subscriptions.listSubscriptions({ status, limit: 200 }),
+        this.subscriptions.listSubscriptions({ status, verticalId, limit: 200 }),
       ),
     ]);
 

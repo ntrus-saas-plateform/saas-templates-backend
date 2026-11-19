@@ -10,13 +10,13 @@
 
 | Métrique | Valeur |
 |---|---:|
-| Handlers Nest Edge | **921** |
-| Méthodes `edgeApi` | **908** |
+| Handlers Nest Edge | **927** |
+| Méthodes `edgeApi` | **905** |
 | Pages console | **59** |
-| Pages acquisition publique | **5** |
-| Paths BE matchés (heuristique) | 724 / 735 |
-| Paths BE sans client FE | **11** |
-| Paths FE sans match BE | **10** |
+| Pages acquisition publique | **6** |
+| Paths BE matchés (heuristique) | 731 / 741 |
+| Paths BE sans client FE | **10** |
+| Paths FE sans match BE | **2** |
 
 ### Verdict
 
@@ -30,32 +30,31 @@ Le backend Edge est une **control plane complète** (~900 handlers). Le frontend
 |---|---|---:|---|---|
 | Auth / Admins / Security / Workspaces | P0 | 35 | `/edge/administrators`, `/edge/administrators/[id]`, `/edge/audit`, `/edge/login`, `/edge/security`, `/edge/workspace` (+2) | 🟢 Surface large — compléter mutations + e2e |
 | Verticals / Products / Catalog / Backends | P0 | 64 | `/edge`, `/edge/backends`, `/edge/catalog`, `/edge/catalog/[productId]`, `/edge/catalog/new`, `/edge/markets` (+4) | 🟢 Surface large — compléter mutations + e2e |
-| Product Control (BB hub) | P0 | 14 | `/edge/provisioning/product-controls`, `/edge/provisioning/product-controls/endpoints/[id]`, `/edge/provisioning/product-controls/exchanges/[id]` | 🟢 Surface large — compléter mutations + e2e |
+| Product Control (BB hub) | P0 | 19 | `/edge/provisioning/product-controls`, `/edge/provisioning/product-controls/endpoints/[id]`, `/edge/provisioning/product-controls/exchanges/[id]` | 🟢 Surface large — compléter mutations + e2e |
 | Tenants & Provisioning requests | P0 | 63 | `/edge/provisioning-requests`, `/edge/provisioning-requests/[id]`, `/edge/tenants`, `/edge/tenants/[id]` | 🟢 Surface large — compléter mutations + e2e |
 | Subscriptions | P1 | 55 | `/edge/subscriptions`, `/edge/subscriptions/[id]` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Billing | P1 | 70 | `/edge/billing`, `/edge/billing/portal` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Acquisition admin + public | P1 | 65 | `/edge/acquisition` | 🟠 Page(s) présentes — profondeur MVP / partielle |
-| Commercial | P2 | 63 | `/edge/commercial`, `/edge/commercial/plans/[id]` | 🟠 Page(s) présentes — profondeur MVP / partielle |
+| Commercial | P2 | 64 | `/edge/commercial`, `/edge/commercial/plans/[id]` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Marketing | P2 | 52 | `/edge/marketing` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Sales + Partner opportunities | P2 | 103 | `/edge/sales`, `/edge/sales/opportunities/[id]` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Revenue + Customer Success | P2 | 41 | `/edge/revenue` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Platform Operations | P1 | 70 | `/edge/operations` | 🟠 Page(s) présentes — profondeur MVP / partielle |
 | Provisioning depth (Registry→Evidence+KC) | P1 | 225 | `/edge/provisioning-requests`, `/edge/provisioning-requests/[id]`, `/edge/provisioning/agents`, `/edge/provisioning/capacity`, `/edge/provisioning/capacity/decisions/[id]`, `/edge/provisioning/capacity/requests/[id]` (+21) | 🟢 Surface large — compléter mutations + e2e |
 | Workers / M2M / Lab status | P3 | 8 | — | Hors console (M2M/lab) — documenter seulement |
-| Acquisition publique (sites) | P1 | (voir acquisition-public) | `/acquire/[slug]/apply`, `/acquire/[slug]`, `/acquire/checkout/[sessionId]`, `/acquire`, `/acquire/portal` | 🟢 Parcours public — parity admin |
+| Acquisition publique (sites) | P1 | (voir acquisition-public) | `/acquire/[slug]/apply`, `/acquire/[slug]/configure`, `/acquire/[slug]`, `/acquire/checkout/[sessionId]`, `/acquire` | 🟢 Parcours public — parity admin |
 
 ## 2. Écarts path-level
 
 ### 2.1 Backend sans client FE évident
 
-Count: **11**. Prioriser les paths `platform` console ; ignorer workers après annotation.
+Count: **10**. Prioriser les paths `platform` console ; ignorer workers après annotation.
 
 <details><summary>Liste complète BE-only</summary>
 
 | Path normalisé |
 |---|
 | `/edge/billing/webhooks/payments` |
-| `/edge/commission/calculations/:param/approve` |
 | `/edge/integrations/p5/provisioning/revocations` |
 | `/edge/marketing/deliveries/webhooks/resend` |
 | `/edge/marketing/deliveries/webhooks/whatsapp` |
@@ -70,22 +69,14 @@ Count: **11**. Prioriser les paths `platform` console ; ignorer workers après a
 
 ### 2.2 Client FE sans match BE évident
 
-Count: **10** (souvent BFF auth/bootstrap ou alias path).
+Count: **2** (souvent BFF auth/bootstrap ou alias path).
 
 <details><summary>Liste FE-only</summary>
 
 | Path normalisé |
 |---|
-| `/commission/calculations` |
-| `/commission/plans` |
 | `/edge-auth/session` |
 | `/edge-bootstrap` |
-| `/product-controls/credentials` |
-| `/product-controls/endpoints/:param/contracts` |
-| `/product-controls/endpoints/:param/health-checks` |
-| `/product-controls/endpoints/:param/history` |
-| `/product-controls/exchanges` |
-| `/resources/:param/restore` |
 
 </details>
 
@@ -231,7 +222,7 @@ Règles :
 | `sales.controller.ts` | 75 |
 | `billing.controller.ts` | 70 |
 | `platform-operations.controller.ts` | 70 |
-| `commercial.controller.ts` | 63 |
+| `commercial.controller.ts` | 64 |
 | `subscription.controller.ts` | 55 |
 | `acquisition.controller.ts` | 53 |
 | `tenant-management.controller.ts` | 53 |
@@ -244,12 +235,12 @@ Règles :
 | `catalog.controller.ts` | 21 |
 | `configuration.controller.ts` | 20 |
 | `placement.controller.ts` | 20 |
+| `product-control.controller.ts` | 19 |
 | `products.controller.ts` | 18 |
 | `experience.controller.ts` | 17 |
 | `infrastructure.controller.ts` | 17 |
 | `keycloak.controller.ts` | 16 |
 | `reconciliation.controller.ts` | 15 |
-| `product-control.controller.ts` | 14 |
 | `onboarding.controller.ts` | 13 |
 | `acquisition-public.controller.ts` | 12 |
 | `activation.controller.ts` | 11 |

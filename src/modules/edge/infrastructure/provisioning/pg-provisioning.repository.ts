@@ -484,6 +484,12 @@ export class PgProvisioningRepository implements ProvisioningRepositoryPort {
       where.push(`product_id = $${i++}`);
       params.push(filter.productId);
     }
+    if (filter.verticalId) {
+      where.push(
+        `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${i++})`,
+      );
+      params.push(filter.verticalId);
+    }
     if (filter.subscriptionId) {
       where.push(`subscription_id = $${i++}`);
       params.push(filter.subscriptionId);

@@ -180,9 +180,9 @@ export class EdgeSalesController {
     private readonly listHandoffs: ListSalesHandoffsUseCase,
     private readonly getForecast: GetSalesForecastUseCase,
     private readonly getPerformance: GetSalesPerformanceUseCase,
-    private readonly salesEngineBeachhead: GetSalesEngineBeachheadUseCase,
+    private readonly salesEngineBeachheadUC: GetSalesEngineBeachheadUseCase,
     private readonly scoreLead: ScoreLeadUseCase,
-    private readonly evaluateBant: EvaluateBantUseCase,
+    private readonly evaluateBantUC: EvaluateBantUseCase,
   ) {}
 
   private actorId(): string {
@@ -191,14 +191,14 @@ export class EdgeSalesController {
 
   @Get('overview')
   @RequireEdgePermissions('platform:sales:analytics:read')
-  getOverview() {
-    return this.overview.execute();
+  getOverview(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute(verticalId);
   }
 
   @Get('engine/beachhead')
   @RequireEdgePermissions('platform:sales:opportunities:read')
   salesEngineBeachhead() {
-    return this.salesEngineBeachhead.execute();
+    return this.salesEngineBeachheadUC.execute();
   }
 
   @Post('engine/lead-score')
@@ -226,7 +226,7 @@ export class EdgeSalesController {
       timeline?: boolean | null;
     },
   ) {
-    return this.evaluateBant.execute(body);
+    return this.evaluateBantUC.execute(body);
   }
 
   @Get('teams')
@@ -1276,18 +1276,20 @@ export class EdgeSalesController {
     @Query('ownerAdministratorId') ownerAdministratorId?: string,
     @Query('teamId') teamId?: string,
     @Query('productId') productId?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
     return this.getForecast.execute({
       model,
       ownerAdministratorId,
       teamId,
       productId,
+      verticalId,
     });
   }
 
   @Get('analytics/performance')
   @RequireEdgePermissions('platform:sales:analytics:read')
-  getPerformanceApi() {
-    return this.getPerformance.execute();
+  getPerformanceApi(@Query('verticalId') verticalId?: string) {
+    return this.getPerformance.execute(verticalId);
   }
 }

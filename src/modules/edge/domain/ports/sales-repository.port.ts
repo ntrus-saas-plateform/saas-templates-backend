@@ -242,6 +242,7 @@ export interface SalesRepositoryPort {
     status?: string;
     q?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: CommercialAccount[]; total: number }>;
@@ -305,6 +306,7 @@ export interface SalesRepositoryPort {
   listContacts(opts?: {
     accountId?: string;
     q?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesContact[]; total: number }>;
@@ -326,6 +328,7 @@ export interface SalesRepositoryPort {
   listSalesLeads(opts?: {
     status?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesLead[]; total: number }>;
@@ -391,6 +394,7 @@ export interface SalesRepositoryPort {
     accountId?: string;
     assigneeId?: string;
     status?: string;
+    verticalId?: string;
   }): Promise<SalesTask[]>;
   completeTask(id: string): Promise<SalesTask>;
 
@@ -446,6 +450,7 @@ export interface SalesRepositoryPort {
     pipelineId?: string;
     stageId?: string;
     ownerAdministratorId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: SalesOpportunity[]; total: number }>;

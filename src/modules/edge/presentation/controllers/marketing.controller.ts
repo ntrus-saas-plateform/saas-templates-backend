@@ -180,8 +180,11 @@ export class EdgeMarketingController {
 
   @Get('audiences')
   @RequireEdgePermissions('platform:marketing:audience:read')
-  async audiences(@Query('productId') productId?: string) {
-    return { data: await this.listAudiences.execute({ productId }) };
+  async audiences(
+    @Query('productId') productId?: string,
+    @Query('verticalId') verticalId?: string,
+  ) {
+    return { data: await this.listAudiences.execute({ productId, verticalId }) };
   }
 
   @Post('audiences')
@@ -217,8 +220,9 @@ export class EdgeMarketingController {
   async campaigns(
     @Query('productId') productId?: string,
     @Query('status') status?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
-    return { data: await this.listCampaigns.execute({ productId, status }) };
+    return { data: await this.listCampaigns.execute({ productId, status, verticalId }) };
   }
 
   @Get('campaigns/:id')
@@ -310,8 +314,11 @@ export class EdgeMarketingController {
 
   @Get('forms')
   @RequireEdgePermissions('platform:marketing:form:manage')
-  async forms(@Query('productId') productId?: string) {
-    return { data: await this.listForms.execute({ productId }) };
+  async forms(
+    @Query('productId') productId?: string,
+    @Query('verticalId') verticalId?: string,
+  ) {
+    return { data: await this.listForms.execute({ productId, verticalId }) };
   }
 
   @Post('forms')
@@ -327,6 +334,7 @@ export class EdgeMarketingController {
       campaignId?: string | null;
       fields?: unknown[];
       requiredConsents?: unknown[];
+      metadata?: Record<string, unknown>;
     },
   ) {
     const ctx = this.edgeContext.getOrThrow();
@@ -385,8 +393,9 @@ export class EdgeMarketingController {
   async leads(
     @Query('status') status?: string,
     @Query('productId') productId?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
-    return { data: await this.listLeads.execute({ status, productId }) };
+    return { data: await this.listLeads.execute({ status, productId, verticalId }) };
   }
 
   @Get('leads/:id')
@@ -742,8 +751,8 @@ export class EdgeMarketingController {
 
   @Get('journeys')
   @RequireEdgePermissions('platform:marketing:automation:manage')
-  async journeys() {
-    return { data: await this.listJourneys.execute() };
+  async journeys(@Query('verticalId') verticalId?: string) {
+    return { data: await this.listJourneys.execute({ verticalId }) };
   }
 
   @Post('journeys')
@@ -820,14 +829,20 @@ export class EdgeMarketingController {
 
   @Get('analytics/snapshots')
   @RequireEdgePermissions('platform:marketing:analytics:read')
-  async analyticsSnapshots(@Query('scopeType') scopeType?: string) {
-    return { data: await this.listPerfSnapshots.execute({ scopeType }) };
+  async analyticsSnapshots(
+    @Query('scopeType') scopeType?: string,
+    @Query('verticalId') verticalId?: string,
+  ) {
+    return { data: await this.listPerfSnapshots.execute({ scopeType, verticalId }) };
   }
 
   @Get('analytics/summary')
   @RequireEdgePermissions('platform:marketing:analytics:read')
-  async analyticsSummary(@Query('scopeType') scopeType?: string) {
-    return { data: await this.summarizeAnalytics.execute({ scopeType }) };
+  async analyticsSummary(
+    @Query('scopeType') scopeType?: string,
+    @Query('verticalId') verticalId?: string,
+  ) {
+    return { data: await this.summarizeAnalytics.execute({ scopeType, verticalId }) };
   }
 
   @Post('analytics/snapshots')

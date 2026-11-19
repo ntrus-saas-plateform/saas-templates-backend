@@ -8,7 +8,7 @@
 > Exemple : `@Controller('edge/sales')` + `@Get('opportunities')`
 > → `GET /api/v1/edge/sales/opportunities`.
 
-**Total handlers HTTP :** 921
+**Total handlers HTTP :** 927
 **Fichiers contrôleurs :** 39
 **Classes contrôleurs :** 49
 
@@ -24,7 +24,7 @@
 | `billing.controller.ts` | `edge/billing` | 70 |
 | `catalog.controller.ts` | `edge/market-segments` | 21 |
 | `certification.controller.ts` | `(paths on methods)` | 11 |
-| `commercial.controller.ts` | `edge/commercial` | 63 |
+| `commercial.controller.ts` | `edge/commercial` | 64 |
 | `configuration.controller.ts` | `(paths on methods)` | 20 |
 | `connectivity-agent.controller.ts` | `(paths on methods)` | 9 |
 | `customer-success.controller.ts` | `edge/cs` | 6 |
@@ -39,7 +39,7 @@
 | `partner-opportunity.controller.ts` | `edge/partners/opportunities` | 3 |
 | `placement.controller.ts` | `edge/placement` | 20 |
 | `platform-operations.controller.ts` | `(paths on methods)` | 70 |
-| `product-control.controller.ts` | `edge/product-controls` | 14 |
+| `product-control.controller.ts` | `edge/product-controls` | 19 |
 | `products.controller.ts` | `edge/products` | 18 |
 | `provisioning-jobs.controller.ts` | `edge/provisioning-jobs` | 2 |
 | `provisioning.controller.ts` | `edge/provisioning-requests` | 7 |
@@ -75,7 +75,7 @@
 | `EdgeOperatingModelsController` | `edge/operating-models` | 3 | `catalog.controller.ts` |
 | `EdgeReadinessEvaluationsController` | `edge/readiness-evaluations` | 1 | `catalog.controller.ts` |
 | `EdgeCertificationController` | `(empty — full path on method)` | 11 | `certification.controller.ts` |
-| `EdgeCommercialController` | `edge/commercial` | 63 | `commercial.controller.ts` |
+| `EdgeCommercialController` | `edge/commercial` | 64 | `commercial.controller.ts` |
 | `EdgeConfigurationController` | `(empty — full path on method)` | 20 | `configuration.controller.ts` |
 | `EdgeConnectivityAgentController` | `(empty — full path on method)` | 9 | `connectivity-agent.controller.ts` |
 | `EdgeCustomerSuccessController` | `edge/cs` | 6 | `customer-success.controller.ts` |
@@ -91,7 +91,7 @@
 | `EdgeCapacityController` | `edge/capacity` | 7 | `placement.controller.ts` |
 | `EdgePlacementController` | `edge/placement` | 13 | `placement.controller.ts` |
 | `EdgePlatformOperationsController` | `(empty — full path on method)` | 70 | `platform-operations.controller.ts` |
-| `EdgeProductControlController` | `edge/product-controls` | 14 | `product-control.controller.ts` |
+| `EdgeProductControlController` | `edge/product-controls` | 19 | `product-control.controller.ts` |
 | `EdgeProductsController` | `edge/products` | 18 | `products.controller.ts` |
 | `EdgeProvisioningJobsController` | `edge/provisioning-jobs` | 2 | `provisioning-jobs.controller.ts` |
 | `EdgeProvisioningController` | `edge/provisioning-requests` | 7 | `provisioning.controller.ts` |
@@ -366,6 +366,7 @@
 | `POST` | `/api/v1/edge/commercial/plans/:id/readiness` | `evaluatePlan` | `EdgeCommercialController` |
 | `POST` | `/api/v1/edge/commercial/plans/:id/publish` | `publishPlanEndpoint` | `EdgeCommercialController` |
 | `GET` | `/api/v1/edge/commercial/addons` | `addons` | `EdgeCommercialController` |
+| `GET` | `/api/v1/edge/commercial/addons/:id` | `getAddonEndpoint` | `EdgeCommercialController` |
 | `POST` | `/api/v1/edge/commercial/addons` | `createAddonEndpoint` | `EdgeCommercialController` |
 | `POST` | `/api/v1/edge/commercial/addons/:id/plans` | `linkAddonEndpoint` | `EdgeCommercialController` |
 | `POST` | `/api/v1/edge/commercial/addons/:id/capabilities` | `addAddonCap` | `EdgeCommercialController` |
@@ -751,8 +752,13 @@
 | `POST` | `/api/v1/edge/product-controls/endpoints/:id/discover-capabilities` | `runDiscoverCapabilities` | `EdgeProductControlController` |
 | `POST` | `/api/v1/edge/product-controls/endpoints/:id/health-check` | `runHealthCheck` | `EdgeProductControlController` |
 | `POST` | `/api/v1/edge/product-controls/endpoints/:id/quarantine` | `quarantineEndpoint` | `EdgeProductControlController` |
+| `GET` | `/api/v1/edge/product-controls/endpoints/:id/contracts` | `listEndpointContracts` | `EdgeProductControlController` |
+| `GET` | `/api/v1/edge/product-controls/endpoints/:id/health-checks` | `listEndpointHealthChecks` | `EdgeProductControlController` |
+| `GET` | `/api/v1/edge/product-controls/endpoints/:id/history` | `listEndpointHistory` | `EdgeProductControlController` |
 | `GET` | `/api/v1/edge/product-controls/endpoints/:id/exchanges` | `listEndpointExchanges` | `EdgeProductControlController` |
 | `GET` | `/api/v1/edge/product-controls/endpoints/:id/capabilities` | `listCapabilities` | `EdgeProductControlController` |
+| `GET` | `/api/v1/edge/product-controls/exchanges` | `listExchanges` | `EdgeProductControlController` |
+| `GET` | `/api/v1/edge/product-controls/credentials` | `bindings` | `EdgeProductControlController` |
 | `GET` | `/api/v1/edge/product-controls/exchanges/:id` | `getExchange` | `EdgeProductControlController` |
 | `POST` | `/api/v1/edge/product-controls/exchanges/:id/reconcile` | `reconcileExchange` | `EdgeProductControlController` |
 | `POST` | `/api/v1/edge/product-controls/callbacks/:endpointId` | `callback` | `EdgeProductControlController` |

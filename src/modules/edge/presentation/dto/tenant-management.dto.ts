@@ -50,6 +50,12 @@ export class TenantSearchQueryDto {
   @IsUUID()
   productId?: string;
 
+  /** Workspace switch scope — produits de cette verticale uniquement. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  verticalId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

@@ -81,5 +81,13 @@ describe('beachhead plan → BB provision readiness', () => {
     });
     expect(liteBuilt.projection.entitlements.quotas.max_organizations).toBe(1);
     expect(proBuilt.projection.entitlements.quotas.max_organizations).toBeGreaterThan(1);
+    expect(liteBuilt.projection.entitlements.quotas.max_customers).toBe(500);
+    expect(liteBuilt.projection.entitlements.quotas.max_products).toBe(2000);
+    expect(proBuilt.projection.entitlements.quotas.max_customers).toBeGreaterThan(
+      liteBuilt.projection.entitlements.quotas.max_customers,
+    );
+    expect(proBuilt.projection.entitlements.quotas.max_products).toBeGreaterThan(
+      liteBuilt.projection.entitlements.quotas.max_products,
+    );
   });
 });

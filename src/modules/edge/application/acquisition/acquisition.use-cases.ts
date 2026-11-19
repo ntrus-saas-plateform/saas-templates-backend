@@ -3677,9 +3677,10 @@ export class RecordAnalyticsEventUseCase {
 export class GetConversionFunnelUseCase {
   constructor(private readonly repo: AcquisitionRepositoryPort) {}
 
-  async execute(input?: { prospectId?: string; limit?: number }) {
+  async execute(input?: { prospectId?: string; verticalId?: string; limit?: number }) {
     const { items } = await this.repo.listAnalyticsEvents({
       prospectId: input?.prospectId,
+      verticalId: input?.verticalId,
       limit: input?.limit ?? 5000,
     });
     const counts: Record<string, number> = {};
@@ -3697,8 +3698,8 @@ export class GetConversionFunnelUseCase {
 export class GetAcquisitionOverviewUseCase {
   constructor(private readonly repo: AcquisitionRepositoryPort) {}
 
-  execute() {
-    return this.repo.getAcquisitionOverviewCounts();
+  execute(verticalId?: string) {
+    return this.repo.getAcquisitionOverviewCounts(verticalId);
   }
 }
 

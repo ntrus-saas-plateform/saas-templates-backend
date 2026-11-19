@@ -503,6 +503,7 @@ import {
   ListBusinessAlertsUseCase,
   ListBusinessReportsUseCase,
   ListMetricDefinitionsUseCase,
+  ListRevenueForecastsUseCase,
   ListRevenueTargetsUseCase,
   PublishMetricDefinitionUseCase,
   RecordMetricSnapshotUseCase,
@@ -1015,6 +1016,7 @@ import {
   GetCommercialCatalogViewUseCase,
   GetCommercialPlanUseCase,
   GetSolutionPackageUseCase,
+  GetCommercialAddonUseCase,
   ListPriceBookEntriesUseCase,
   ListPublicationSnapshotsUseCase,
   PreviewCommercialPriceUseCase,
@@ -1845,6 +1847,11 @@ export const edgeApplicationProviders: Provider[] = [
   {
     provide: GetSolutionPackageUseCase,
     useFactory: (commercial) => new GetSolutionPackageUseCase(commercial),
+    inject: [COMMERCIAL_REPOSITORY_PORT],
+  },
+  {
+    provide: GetCommercialAddonUseCase,
+    useFactory: (commercial) => new GetCommercialAddonUseCase(commercial),
     inject: [COMMERCIAL_REPOSITORY_PORT],
   },
   {
@@ -3429,18 +3436,19 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: CreateSubscriptionUseCase,
-    useFactory: (s, outbox) => new CreateSubscriptionUseCase(s, outbox),
-    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+    useFactory: (s, outbox, commercial) => new CreateSubscriptionUseCase(s, outbox, commercial),
+    inject: [SUBSCRIPTION_REPOSITORY_PORT, ControlPlaneOutboxTransactionService, COMMERCIAL_REPOSITORY_PORT],
   },
   {
     provide: CreateSubscriptionFromHandoffUseCase,
-    useFactory: (s, c, accept, outbox) =>
-      new CreateSubscriptionFromHandoffUseCase(s, c, accept, outbox),
+    useFactory: (s, c, accept, outbox, commercial) =>
+      new CreateSubscriptionFromHandoffUseCase(s, c, accept, outbox, commercial),
     inject: [
       SUBSCRIPTION_REPOSITORY_PORT,
       SALES_COMMERCE_REPOSITORY_PORT,
       AcceptSalesHandoffUseCase,
       ControlPlaneOutboxTransactionService,
+      COMMERCIAL_REPOSITORY_PORT,
     ],
   },
   {
@@ -3579,13 +3587,14 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: ExecuteChangeRequestUseCase,
-    useFactory: (s, outbox, assoc, publish) =>
-      new ExecuteChangeRequestUseCase(s, outbox, assoc, publish),
+    useFactory: (s, outbox, assoc, publish, commercial) =>
+      new ExecuteChangeRequestUseCase(s, outbox, assoc, publish, commercial),
     inject: [
       SUBSCRIPTION_REPOSITORY_PORT,
       ControlPlaneOutboxTransactionService,
       SUBSCRIPTION_TENANT_ASSOCIATION_PORT,
       PublishEntitlementsUseCase,
+      COMMERCIAL_REPOSITORY_PORT,
     ],
   },
   {
@@ -3639,11 +3648,12 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: RequestProvisioningUseCase,
-    useFactory: (s, p, outbox) => new RequestProvisioningUseCase(s, p, outbox),
+    useFactory: (s, p, outbox, commercial) => new RequestProvisioningUseCase(s, p, outbox, commercial),
     inject: [
       SUBSCRIPTION_REPOSITORY_PORT,
       SUBSCRIPTION_PROVISIONING_COORDINATION_PORT,
       ControlPlaneOutboxTransactionService,
+      COMMERCIAL_REPOSITORY_PORT,
     ],
   },
   {
@@ -7200,8 +7210,8 @@ export const edgeApplicationProviders: Provider[] = [
   },
   {
     provide: GetRevenueOverviewUseCase,
-    useFactory: (repo) => new GetRevenueOverviewUseCase(repo),
-    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
+    useFactory: (repo, projection) => new GetRevenueOverviewUseCase(repo, projection),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, REVENUE_PROJECTION_INPUT_PORT],
   },
   {
     provide: ComputeMrrMovementUseCase,
@@ -7232,6 +7242,11 @@ export const edgeApplicationProviders: Provider[] = [
     provide: CreateRevenueForecastUseCase,
     useFactory: (repo, outbox) => new CreateRevenueForecastUseCase(repo, outbox),
     inject: [REVENUE_OPERATIONS_REPOSITORY_PORT, ControlPlaneOutboxTransactionService],
+  },
+  {
+    provide: ListRevenueForecastsUseCase,
+    useFactory: (repo) => new ListRevenueForecastsUseCase(repo),
+    inject: [REVENUE_OPERATIONS_REPOSITORY_PORT],
   },
   {
     provide: CreateForecastScenarioUseCase,

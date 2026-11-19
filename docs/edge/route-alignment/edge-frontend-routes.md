@@ -8,9 +8,9 @@
 > Client : `lib/api/edge.ts` → `edgeApi.*`
 
 **Pages console :** 59
-**Pages acquisition publique :** 5
+**Pages acquisition publique :** 6
 **Routes BFF :** 6
-**Méthodes `edgeApi` :** 908
+**Méthodes `edgeApi` :** 905
 
 ## Nav shell (groupes accordion)
 
@@ -91,6 +91,7 @@
 | URL | Fichier |
 |---|---|
 | `/acquire/[slug]/apply` | `app/(acquisition-public)/acquire/[slug]/apply/page.tsx` |
+| `/acquire/[slug]/configure` | `app/(acquisition-public)/acquire/[slug]/configure/page.tsx` |
 | `/acquire/[slug]` | `app/(acquisition-public)/acquire/[slug]/page.tsx` |
 | `/acquire/checkout/[sessionId]` | `app/(acquisition-public)/acquire/checkout/[sessionId]/page.tsx` |
 | `/acquire` | `app/(acquisition-public)/acquire/page.tsx` |
@@ -244,7 +245,6 @@
 | `createCommercialAddon` | `POST` | `/api/edge-backend/commercial/addons` |
 | `listPriceBooks` | `GET` | `/api/edge-backend/commercial/price-books${toQuery({ productId })}` |
 | `createPriceBook` | `POST` | `/api/edge-backend/commercial/price-books` |
-| `addPriceBookEntry` | `POST` | `/api/edge-backend/commercial/price-books/${priceBookId}/entries` |
 | `listPricingUnits` | `GET` | `/api/edge-backend/commercial/pricing-units` |
 | `previewCommercialPrice` | `POST` | `/api/edge-backend/commercial/pricing/preview` |
 | `runCommercialOfferWizard` | `POST` | `/api/edge-backend/commercial/offers/wizard` |
@@ -295,6 +295,7 @@
 | `publishPriceBook` | `POST` | `/api/edge-backend/commercial/price-books/${priceBookId}/publish` |
 | `publishCommercialAddon` | `POST` | `/api/edge-backend/commercial/addons/${addonId}/publish` |
 | `getSolutionPackage` | `GET` | `/api/edge-backend/commercial/packages/${id}` |
+| `getCommercialAddon` | `GET` | `/api/edge-backend/commercial/addons/${id}` |
 | `addSolutionPackageCapability` | `POST` | `/api/edge-backend/commercial/packages/${packageId}/capabilities` |
 | `addCommercialPlanCapability` | `POST` | `/api/edge-backend/commercial/plans/${planId}/capabilities` |
 | `linkCommercialAddonPlan` | `POST` | `/api/edge-backend/commercial/addons/${addonId}/plans` |
@@ -512,6 +513,7 @@
 | `listSubscriptions` | `GET` | `/api/edge-backend/subscriptions${toQuery({
         accountId: opts?.accountId,
         productId: opts?.productId,
+        verticalId: opts?.verticalId,
         status: opts?.status,
         limit: opts?.limit,
         offset: opts?.offset,
@@ -591,6 +593,7 @@
 | `listBillingInvoices` | `GET` | `/api/edge-backend/billing/invoices${toQuery({
         billingAccountId: params?.billingAccountId,
         status: params?.status,
+        verticalId: params?.verticalId,
         limit: params?.limit,
       })}` |
 | `getBillingInvoice` | `GET` | `/api/edge-backend/billing/invoices/${id}` |
@@ -674,6 +677,7 @@
         status: opts?.status,
         accountId: opts?.accountId,
         productId: opts?.productId,
+        verticalId: opts?.verticalId,
         subscriptionId: opts?.subscriptionId,
         environmentSlot: opts?.environmentSlot,
         from: opts?.from,
@@ -963,7 +967,6 @@
 | `listResourceHistory` | `GET` | `/api/edge-backend/resources/${id}/history${toQuery({ limit: opts?.limit })}` |
 | `listResourceBackups` | `GET` | `/api/edge-backend/resources/${id}/backups` |
 | `createResourceBackup` | `POST` | `/api/edge-backend/resources/${id}/backups` |
-| `restoreResourceBackup` | `POST` | `/api/edge-backend/resources/${id}/restore` |
 | `deprovisionResource` | `POST` | `/api/edge-backend/resources/${id}/deprovision` |
 | `listKeycloakProviders` | `GET` | `/api/edge-backend/keycloak/providers` |
 | `getKeycloakProvider` | `GET` | `/api/edge-backend/keycloak/providers/${id}` |
@@ -1263,6 +1266,7 @@
 | `listTenants` | `GET` | `/api/edge-backend/tenants${toQuery({
         q: opts?.q,
         productId: opts?.productId,
+        verticalId: opts?.verticalId,
         accountId: opts?.accountId,
         subscriptionId: opts?.subscriptionId,
         region: opts?.region,
@@ -1766,11 +1770,9 @@
 | `createRevenueLeakageCase` | `POST` | `/api/edge-backend/revenue/leakage-cases` |
 | `transitionRevenueLeakageCase` | `POST` | `/api/edge-backend/revenue/leakage-cases/${encodeURIComponent(caseId)}/transition` |
 | `createCommissionPlan` | `POST` | `/api/edge-backend/revenue/commission/plans` |
-| `createCommissionPlanAlias` | `POST` | `/api/edge-backend/commission/plans` |
 | `calculateCommission` | `POST` | `/api/edge-backend/revenue/commission/calculations` |
-| `calculateCommissionAlias` | `POST` | `/api/edge-backend/commission/calculations` |
+| `approveCommissionCalculation` | `POST` | `/api/edge-backend/commission/calculations/${encodeURIComponent(id)}/approve` |
 | `listCommissionPlans` | `GET` | `/api/edge-backend/revenue/commission/plans` |
-| `listCommissionPlansAlias` | `GET` | `/api/edge-backend/commission/plans` |
 | `listBusinessAudit` | `GET` | `/api/edge-backend/business/audit${toQuery({
         aggregateType: params?.aggregateType,
         aggregateId: params?.aggregateId,

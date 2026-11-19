@@ -9,6 +9,7 @@ import type {
   ProductControlEndpointRecord,
   ProductControlEndpointStatus,
   ProductControlHealthCheckRecord,
+  ProductControlHistoryRecord,
   ProductControlReconciliationRecord,
 } from './product-control.types.js';
 
@@ -60,6 +61,7 @@ export interface ProductControlRepositoryPort {
       productId?: string;
       platformId?: string;
       status?: ProductControlEndpointStatus;
+      q?: string;
       limit?: number;
       offset?: number;
     },
@@ -158,6 +160,7 @@ export interface ProductControlRepositoryPort {
     filter: {
       endpointId?: string;
       status?: ControlExchangeStatus;
+      q?: string;
       limit?: number;
       offset?: number;
     },
@@ -234,6 +237,37 @@ export interface ProductControlRepositoryPort {
     credentialRef: string,
     client?: unknown,
   ): Promise<CredentialBindingRecord | null>;
+
+  listCredentialBindings(
+    filter: {
+      endpointId?: string;
+      status?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    },
+    client?: unknown,
+  ): Promise<CredentialBindingRecord[]>;
+
+  listNegotiatedContracts(
+    endpointId: string,
+    client?: unknown,
+  ): Promise<NegotiatedContractRecord[]>;
+
+  listHealthChecks(
+    filter: {
+      endpointId: string;
+      limit?: number;
+      offset?: number;
+    },
+    client?: unknown,
+  ): Promise<ProductControlHealthCheckRecord[]>;
+
+  listEndpointHistory(
+    endpointId: string,
+    filter: { limit?: number; offset?: number },
+    client?: unknown,
+  ): Promise<ProductControlHistoryRecord[]>;
 
   insertHistory(row: ProductControlHistoryInsert, client?: unknown): Promise<void>;
 }

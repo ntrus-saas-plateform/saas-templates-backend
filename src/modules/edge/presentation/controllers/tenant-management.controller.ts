@@ -204,14 +204,14 @@ export class EdgeTenantManagementController {
 
   @Get('edge/tenants/analytics/portfolio')
   @RequireEdgePermissions('platform:tenant_management:analytics:read')
-  async portfolioUnderTenants() {
-    return this.portfolioAnalytics.execute();
+  async portfolioUnderTenants(@Query('verticalId') verticalId?: string) {
+    return this.portfolioAnalytics.execute(verticalId);
   }
 
   @Get('edge/tenant-management/analytics/portfolio')
   @RequireEdgePermissions('platform:tenant_management:analytics:read')
-  async portfolioUnderManagement() {
-    return this.portfolioAnalytics.execute();
+  async portfolioUnderManagement(@Query('verticalId') verticalId?: string) {
+    return this.portfolioAnalytics.execute(verticalId);
   }
 
   @Post('edge/tenants')

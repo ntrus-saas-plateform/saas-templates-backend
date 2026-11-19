@@ -55,7 +55,7 @@ export function evaluateOfferEligibility(input: OfferEligibilityInput): OfferEli
     reasons.push('Scale outside plan headroom — restricted or upsell');
     return { label: 'RESTRICTED', reasons };
   }
-  if (input.fitsScale === true && input.geoAllowed !== false) {
+  if (input.fitsScale === true) {
     reasons.push('Fits published offer and scale');
     return { label: 'RECOMMENDED', reasons };
   }

@@ -94,11 +94,13 @@ export class EdgeSalesPlatformController {
     @Query('q') q: string,
     @Query('visibilityMode') visibilityMode?: 'OWNED' | 'TEAM' | 'ALL',
     @Query('limit') limit?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
     return this.search.execute({
       q: q ?? '',
       actorId: this.actorId(),
       visibilityMode,
+      verticalId,
       limit: limit ? Number(limit) : 40,
     });
   }
@@ -296,6 +298,7 @@ export class EdgeSalesPlatformController {
       entityType: string;
       format?: 'JSON' | 'CSV';
       filters?: Record<string, unknown>;
+      verticalId?: string;
     },
   ) {
     const permissions = this.edgeContext.getOrThrow().permissions ?? [];
@@ -305,6 +308,8 @@ export class EdgeSalesPlatformController {
         p === 'platform:sales:accounts:read' ||
         p.startsWith('platform:sales:'),
     );
+    const filters: Record<string, unknown> = { ...(body.filters ?? {}) };
+    if (body.verticalId && !filters.verticalId) filters.verticalId = body.verticalId;
     return this.idempotency.execute({
       idempotencyKey,
       routeKey: `exports/${body.entityType}`,
@@ -314,7 +319,7 @@ export class EdgeSalesPlatformController {
           actorId: this.actorId(),
           entityType: body.entityType,
           format: body.format,
-          filters: body.filters,
+          filters,
           hasExportPermission,
         })) as unknown as Record<string, unknown>,
     });
@@ -322,8 +327,8 @@ export class EdgeSalesPlatformController {
 
   @Get('exports')
   @RequireEdgePermissions('platform:sales:analytics:read')
-  getExports() {
-    return this.listExports.execute(this.actorId());
+  getExports(@Query('verticalId') verticalId?: string) {
+    return this.listExports.execute(this.actorId(), verticalId);
   }
 
   @Post('visibility/grants')
@@ -336,6 +341,7 @@ export class EdgeSalesPlatformController {
       granteeAdministratorId?: string | null;
       granteeTeamId?: string | null;
       accessLevel?: string;
+      verticalId?: string | null;
     },
   ) {
     return this.grantVisibility.execute({ actorId: this.actorId(), ...body });
@@ -344,10 +350,11 @@ export class EdgeSalesPlatformController {
   @Get('visibility/grants')
   @RequireEdgePermissions('platform:sales:governance:manage')
   getVisibilityGrants(
-    @Query('subjectType') subjectType: string,
-    @Query('subjectId') subjectId: string,
+    @Query('subjectType') subjectType?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
-    return this.listVisibility.execute(subjectType, subjectId);
+    return this.listVisibility.execute({ subjectType, subjectId, verticalId });
   }
 
   @Post('visibility/assert')
@@ -393,11 +400,18 @@ export class EdgeSalesPlatformController {
       model?: 'PIPELINE' | 'WEIGHTED' | 'BEST_CASE' | 'COMMIT' | 'MOST_LIKELY';
       scopeType?: string;
       scopeId?: string | null;
+      verticalId?: string;
     },
   ) {
+    const scopeType = body.verticalId ? 'VERTICAL' : (body.scopeType ?? 'GLOBAL');
+    const scopeId = body.verticalId ? body.verticalId : (body.scopeId ?? null);
     return this.persistForecast.execute({
       actorId: this.actorId(),
-      ...body,
+      periodType: body.periodType,
+      periodKey: body.periodKey,
+      model: body.model,
+      scopeType,
+      scopeId,
     });
   }
 
@@ -407,7 +421,8 @@ export class EdgeSalesPlatformController {
     @Query('periodType') periodType?: string,
     @Query('periodKey') periodKey?: string,
     @Query('model') model?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
-    return this.listForecastSnapshots.execute({ periodType, periodKey, model });
+    return this.listForecastSnapshots.execute({ periodType, periodKey, model, verticalId });
   }
 }

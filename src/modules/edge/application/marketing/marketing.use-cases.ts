@@ -111,7 +111,7 @@ export class CreateMarketingAudienceUseCase {
 
 export class ListMarketingAudiencesUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute(opts?: { productId?: string }) {
+  execute(opts?: { productId?: string; verticalId?: string }) {
     return this.marketing.listAudiences(opts);
   }
 }
@@ -199,7 +199,7 @@ export class CreateMarketingCampaignUseCase {
 
 export class ListMarketingCampaignsUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute(opts?: { productId?: string; status?: string }) {
+  execute(opts?: { productId?: string; status?: string; verticalId?: string }) {
     return this.marketing.listCampaigns(opts);
   }
 }
@@ -321,6 +321,22 @@ export class PublishMarketingCampaignUseCase {
   }
 }
 
+const LEAD_CAPTURE_FORM_TYPES = new Set(['CONTACT', 'DEMO_REQUEST']);
+
+function leadCaptureMetadata(
+  formType: string,
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> {
+  const base = { ...(metadata ?? {}) };
+  if (!LEAD_CAPTURE_FORM_TYPES.has(formType)) return base;
+  return {
+    ...base,
+    publicSubmitMode: 'LEAD',
+    formIntent: typeof base.formIntent === 'string' ? base.formIntent : 'LEAD',
+    formType: typeof base.formType === 'string' ? base.formType : formType,
+  };
+}
+
 export class CreateMarketingFormUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
   execute(input: {
@@ -333,15 +349,20 @@ export class CreateMarketingFormUseCase {
     campaignId?: string | null;
     fields?: unknown[];
     requiredConsents?: unknown[];
+    metadata?: Record<string, unknown>;
   }) {
     assertFormDoesNotProvisionTenant(input.formType);
-    return this.marketing.createForm({ ...input, createdBy: input.actorId });
+    return this.marketing.createForm({
+      ...input,
+      metadata: leadCaptureMetadata(input.formType, input.metadata),
+      createdBy: input.actorId,
+    });
   }
 }
 
 export class ListMarketingFormsUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute(opts?: { productId?: string }) {
+  execute(opts?: { productId?: string; verticalId?: string }) {
     return this.marketing.listForms(opts);
   }
 }
@@ -499,7 +520,7 @@ export class SubmitMarketingFormPublicUseCase {
 
 export class ListMarketingLeadsUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute(opts?: { status?: string; productId?: string; limit?: number }) {
+  execute(opts?: { status?: string; productId?: string; verticalId?: string; limit?: number }) {
     return this.marketing.listLeads(opts);
   }
 }

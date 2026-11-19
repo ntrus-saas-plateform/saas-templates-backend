@@ -12,7 +12,14 @@ import {
 } from './syntix-pharma-catalog.seed.js';
 import { RESTAURANT_CAPABILITIES, RESTAURANT_PLANS } from './okapi-restaurant-catalog.seed.js';
 
-const QUOTA_CODES = new Set(['max_organizations', 'max_users', 'max_warehouses', 'max_pos_terminals']);
+const QUOTA_CODES = new Set([
+  'max_organizations',
+  'max_users',
+  'max_warehouses',
+  'max_pos_terminals',
+  'max_customers',
+  'max_products',
+]);
 
 export function restaurantEntitlementSourcesForPlan(planCode: string): EntitlementSource[] {
   const plan = RESTAURANT_PLANS.find((p) => p.code === planCode);

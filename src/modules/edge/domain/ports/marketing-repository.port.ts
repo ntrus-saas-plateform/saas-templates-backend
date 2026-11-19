@@ -282,7 +282,7 @@ export interface MarketingRepositoryPort {
     verticalId?: string | null;
     createdBy?: string | null;
   }): Promise<MarketingAudience>;
-  listAudiences(opts?: { productId?: string }): Promise<MarketingAudience[]>;
+  listAudiences(opts?: { productId?: string; verticalId?: string }): Promise<MarketingAudience[]>;
   addAudienceRule(input: {
     audienceId: string;
     ruleType: string;
@@ -315,7 +315,7 @@ export interface MarketingRepositoryPort {
     createdBy?: string | null;
   }): Promise<MarketingCampaign>;
   getCampaign(id: string): Promise<MarketingCampaign | null>;
-  listCampaigns(opts?: { productId?: string; status?: string }): Promise<MarketingCampaign[]>;
+  listCampaigns(opts?: { productId?: string; status?: string; verticalId?: string }): Promise<MarketingCampaign[]>;
   updateCampaignStatus(id: string, status: string, bumpVersion?: boolean): Promise<MarketingCampaign>;
   createCampaignApproval(input: {
     campaignId: string;
@@ -336,11 +336,12 @@ export interface MarketingRepositoryPort {
     campaignId?: string | null;
     fields?: unknown[];
     requiredConsents?: unknown[];
+    metadata?: Record<string, unknown>;
     createdBy?: string | null;
   }): Promise<MarketingFormDefinition>;
   getFormBySlug(slug: string): Promise<MarketingFormDefinition | null>;
   getForm(id: string): Promise<MarketingFormDefinition | null>;
-  listForms(opts?: { productId?: string }): Promise<MarketingFormDefinition[]>;
+  listForms(opts?: { productId?: string; verticalId?: string }): Promise<MarketingFormDefinition[]>;
   publishForm(id: string): Promise<MarketingFormDefinition>;
   findSubmissionByIdempotency(
     formId: string,
@@ -372,7 +373,7 @@ export interface MarketingRepositoryPort {
     metadata?: Record<string, unknown>;
   }): Promise<MarketingLead>;
   getLead(id: string): Promise<MarketingLead | null>;
-  listLeads(opts?: { status?: string; productId?: string; limit?: number }): Promise<MarketingLead[]>;
+  listLeads(opts?: { status?: string; productId?: string; verticalId?: string; limit?: number }): Promise<MarketingLead[]>;
   updateLeadStatus(id: string, status: string): Promise<MarketingLead>;
   markLeadDuplicate(id: string, duplicateOfLeadId: string): Promise<MarketingLead>;
   createLeadContact(input: {
@@ -565,7 +566,7 @@ export interface MarketingRepositoryPort {
     definition: Record<string, unknown>;
     createdBy?: string | null;
   }): Promise<MarketingJourney>;
-  listJourneys(): Promise<MarketingJourney[]>;
+  listJourneys(opts?: { verticalId?: string }): Promise<MarketingJourney[]>;
   getJourney(id: string): Promise<MarketingJourney | null>;
   updateJourneyStatus(id: string, status: string): Promise<MarketingJourney>;
   createJourneyExecution(input: {
@@ -621,6 +622,7 @@ export interface MarketingRepositoryPort {
   }): Promise<{ id: string }>;
   listPerformanceSnapshots(opts?: {
     scopeType?: string;
+    verticalId?: string;
   }): Promise<
     {
       id: string;

@@ -41,6 +41,8 @@ export const RETAIL_CAPABILITIES = [
   { code: 'max_organizations', name: 'Max stores', category: 'QUOTA', status: 'AVAILABLE' as const },
   { code: 'max_users', name: 'Max users', category: 'QUOTA', status: 'AVAILABLE' as const },
   { code: 'max_pos_terminals', name: 'Max POS terminals', category: 'QUOTA', status: 'AVAILABLE' as const },
+  { code: 'max_customers', name: 'Max customers', category: 'QUOTA', status: 'PLANNED' as const },
+  { code: 'max_products', name: 'Max products', category: 'QUOTA', status: 'PLANNED' as const },
 ] as const;
 
 export const RETAIL_PACKAGES = [
@@ -59,7 +61,13 @@ export const RETAIL_PLANS = [
     commercialAvailability: 'INTERNAL_ONLY' as const,
     bbProfileCode: 'SUPERMARKET',
     caps: ['identity', 'retail', 'inventory', 'pos'] as const,
-    quotas: { max_organizations: 1, max_users: 10, max_pos_terminals: 4 },
+    quotas: {
+      max_organizations: 1,
+      max_users: 10,
+      max_pos_terminals: 4,
+      max_customers: 2000,
+      max_products: 5000,
+    },
   },
   {
     code: 'OKAPI_RETAIL_PROFESSIONAL',
@@ -69,7 +77,13 @@ export const RETAIL_PLANS = [
     commercialAvailability: 'INTERNAL_ONLY' as const,
     bbProfileCode: 'SUPERMARKET',
     caps: ['identity', 'retail', 'grocery', 'inventory', 'pos', 'purchasing', 'reporting'] as const,
-    quotas: { max_organizations: 3, max_users: 40, max_pos_terminals: 12 },
+    quotas: {
+      max_organizations: 3,
+      max_users: 40,
+      max_pos_terminals: 12,
+      max_customers: 15000,
+      max_products: 25000,
+    },
   },
   {
     code: 'OKAPI_RETAIL_BUSINESS',
@@ -88,7 +102,13 @@ export const RETAIL_PLANS = [
       'reporting',
       'api',
     ] as const,
-    quotas: { max_organizations: 15, max_users: 150, max_pos_terminals: 40 },
+    quotas: {
+      max_organizations: 15,
+      max_users: 150,
+      max_pos_terminals: 40,
+      max_customers: 75000,
+      max_products: 100000,
+    },
   },
   {
     code: 'OKAPI_RETAIL_ENTERPRISE',
@@ -109,13 +129,26 @@ export const RETAIL_PLANS = [
       'analytics',
       'sso',
     ] as const,
-    quotas: { max_organizations: 100, max_users: 1000, max_pos_terminals: 200 },
+    quotas: {
+      max_organizations: 100,
+      max_users: 1000,
+      max_pos_terminals: 200,
+      max_customers: 500000,
+      max_products: 500000,
+    },
   },
 ] as const;
 
 export const RETAIL_ROADMAP_NOTE =
   'G11 PARTIAL — catalog seeded INTERNAL_ONLY; AVAILABLE only after e2e bb_control + marketing + Legal (doc 39 Phase C)';
 
-export function retailPlanHasNoPlannedCaps(): boolean {
-  return RETAIL_CAPABILITIES.every((c) => c.status !== 'PLANNED');
+/**
+ * Contrat honnête : aucune cap FEATURE PLANNED dans le stub retail.
+ * Seuls des quotas roadmap (max_customers / max_products, catégorie QUOTA)
+ * peuvent encore être PLANNED tant que INTERNAL_ONLY.
+ */
+export function retailPlannedCapsAreQuotaOnly(): boolean {
+  return RETAIL_CAPABILITIES.filter((c) => String(c.status) === 'PLANNED').every(
+    (c) => c.category === 'QUOTA',
+  );
 }

@@ -120,5 +120,5 @@ Plan maître : [39](./39-master-improvement-alignment-plan.md) · Architecture s
 |------|--------|
 | Phase A scaffold PLANNED + bindings + jobs | **DONE** |
 | Deferred advance + worker API | **DONE** (fondation H1) |
-| Warm pool / 50k claim | **NOT STARTED** / **FORBIDDEN** sans H3 |
+| Warm pool / 50k claim | H2 **scaffold DONE** (flag OFF) ; claim 50k/s + flotte réelle **FORBIDDEN** sans H3 |
 | CAFE Controlled pack | **SEEDED** (mig 135, DRAFT) |

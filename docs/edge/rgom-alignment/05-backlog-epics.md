@@ -42,7 +42,7 @@ Format ticket suggéré : `RGOM-E{n}.{m}` / `RGOM-X{n}` (cross) / voir BB `RGOM-
 | RGOM-E3.1 | Domain input model + rules | P0 | DONE wizard + configurator |
 | RGOM-E3.2 | Explainability + profile correction | P0 | DONE |
 | RGOM-E3.3 | Snapshot→quote/opportunity/acquisition | P0 | DONE snapshot.linkedTo |
-| RGOM-E3.4 | FE public wizard | P0 | DONE API client + acquire shell |
+| RGOM-E3.4 | FE public configure + console wizard | P0 | DONE acquire `/configure` (plans BFF) ; wizard `offers/wizard` = console auth only |
 | RGOM-E3.5 | FE sales console | P1 | DONE API client |
 | RGOM-E3.6 | Playwright Wholesale golden | P0 | DONE unit golden ; PW EX |
 

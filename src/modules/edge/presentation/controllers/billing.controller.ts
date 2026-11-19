@@ -184,14 +184,14 @@ export class EdgeBillingController {
 
   @Get('overview')
   @RequireEdgePermissions('platform:billing:reports:read')
-  getOverview() {
-    return this.overview.execute();
+  getOverview(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute(verticalId);
   }
 
   @Get('analytics')
   @RequireEdgePermissions('platform:billing:reports:read')
-  getAnalytics(@Query('currency') currency?: string) {
-    return this.analytics.execute(currency);
+  getAnalytics(@Query('currency') currency?: string, @Query('verticalId') verticalId?: string) {
+    return this.analytics.execute(currency, verticalId);
   }
 
   @Get('cash-truth')
@@ -200,8 +200,9 @@ export class EdgeBillingController {
     @Query('currency') currency?: string,
     @Query('periodStart') periodStart?: string,
     @Query('periodEnd') periodEnd?: string,
+    @Query('verticalId') verticalId?: string,
   ) {
-    return this.getCashTruth.execute({ currency, periodStart, periodEnd });
+    return this.getCashTruth.execute({ currency, periodStart, periodEnd, verticalId });
   }
 
   @Get('accounts')
@@ -412,11 +413,13 @@ export class EdgeBillingController {
   listInvoices(
     @Query('billingAccountId') billingAccountId?: string,
     @Query('status') status?: string,
+    @Query('verticalId') verticalId?: string,
     @Query('limit') limit?: string,
   ) {
     return this.listInvoicesUseCase.execute({
       billingAccountId,
       status,
+      verticalId,
       limit: limit ? Number(limit) : undefined,
     });
   }

@@ -44,6 +44,7 @@ import {
   GetCommercialCatalogViewUseCase,
   GetCommercialPlanUseCase,
   GetSolutionPackageUseCase,
+  GetCommercialAddonUseCase,
   LinkAddonToPlanUseCase,
   ListAddonsUseCase,
   ListCommercialMarketsUseCase,
@@ -111,6 +112,7 @@ export class EdgeCommercialController {
     private readonly addAddonCapability: AddAddonCapabilityUseCase,
     private readonly getPlan: GetCommercialPlanUseCase,
     private readonly getPackage: GetSolutionPackageUseCase,
+    private readonly getAddonDetail: GetCommercialAddonUseCase,
     private readonly listPriceBookEntries: ListPriceBookEntriesUseCase,
     private readonly linkAddon: LinkAddonToPlanUseCase,
     private readonly createPriceBook: CreatePriceBookUseCase,
@@ -265,13 +267,21 @@ export class EdgeCommercialController {
   @RequireEdgePermissions('platform:commercial:packages:manage')
   async addPackageCap(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { capabilityId: string; inclusionType?: CommercialInclusionType },
+    @Body()
+    body: {
+      capabilityId: string;
+      inclusionType?: CommercialInclusionType;
+      numericLimit?: number;
+      restrictions?: Record<string, unknown>;
+    },
   ) {
     return {
       data: await this.addPackageCapability.execute({
         packageId: id,
         capabilityId: body.capabilityId,
         inclusionType: body.inclusionType ?? CommercialInclusionType.INCLUDED,
+        numericLimit: body.numericLimit ?? null,
+        restrictions: body.restrictions ?? null,
       }),
     };
   }
@@ -314,13 +324,21 @@ export class EdgeCommercialController {
   @RequireEdgePermissions('platform:commercial:plans:manage')
   async addPlanCap(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { capabilityId: string; inclusionType?: CommercialInclusionType },
+    @Body()
+    body: {
+      capabilityId: string;
+      inclusionType?: CommercialInclusionType;
+      numericLimit?: number;
+      restrictions?: Record<string, unknown>;
+    },
   ) {
     return {
       data: await this.addPlanCapability.execute({
         planId: id,
         capabilityId: body.capabilityId,
         inclusionType: body.inclusionType ?? CommercialInclusionType.INCLUDED,
+        numericLimit: body.numericLimit ?? null,
+        restrictions: body.restrictions ?? null,
       }),
     };
   }
@@ -364,6 +382,13 @@ export class EdgeCommercialController {
     return { data: await this.listAddons.execute(productId) };
   }
 
+  /** Détail add-on + capabilities enrichies (capabilityCode + restrictions/numericLimit). */
+  @Get('addons/:id')
+  @RequireEdgePermissions('platform:commercial:catalog:read')
+  async getAddonEndpoint(@Param('id', ParseUUIDPipe) id: string) {
+    return { data: await this.getAddonDetail.execute(id) };
+  }
+
   @Post('addons')
   @RequireEdgePermissions('platform:commercial:addons:manage')
   async createAddonEndpoint(
@@ -404,13 +429,21 @@ export class EdgeCommercialController {
   @RequireEdgePermissions('platform:commercial:addons:manage')
   async addAddonCap(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { capabilityId: string; inclusionType?: CommercialInclusionType },
+    @Body()
+    body: {
+      capabilityId: string;
+      inclusionType?: CommercialInclusionType;
+      numericLimit?: number;
+      restrictions?: Record<string, unknown>;
+    },
   ) {
     return {
       data: await this.addAddonCapability.execute({
         addonId: id,
         capabilityId: body.capabilityId,
         inclusionType: body.inclusionType ?? CommercialInclusionType.INCLUDED,
+        numericLimit: body.numericLimit ?? null,
+        restrictions: body.restrictions ?? null,
       }),
     };
   }
@@ -459,6 +492,8 @@ export class EdgeCommercialController {
       amount: string;
       currency?: string;
       billingFrequency?: string | null;
+      /** Défaut NEEDS_RESEARCH — price book non publiable tant que non recherché. */
+      priceSource?: 'MEASURED' | 'ESTIMATED' | 'NEEDS_RESEARCH';
     },
   ) {
     return {

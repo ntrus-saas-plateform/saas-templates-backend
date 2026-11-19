@@ -504,11 +504,12 @@ export interface AcquisitionRepositoryPort {
   listAnalyticsEvents(filter?: {
     eventName?: string;
     prospectId?: string;
+    verticalId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: AnalyticsEvent[]; total: number }>;
 
-  getAcquisitionOverviewCounts(): Promise<{
+  getAcquisitionOverviewCounts(verticalId?: string): Promise<{
     presentationsPublished: number;
     prospectsActive: number;
     leadsCaptured: number;

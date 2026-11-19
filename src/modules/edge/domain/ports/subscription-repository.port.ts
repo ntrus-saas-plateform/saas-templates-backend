@@ -302,6 +302,8 @@ export interface SubscriptionRepositoryPort {
   listSubscriptions(opts?: {
     accountId?: string;
     productId?: string;
+    /** Workspace switch scope — only subscriptions of products in this vertical. */
+    verticalId?: string;
     status?: string;
     handoffId?: string;
     limit?: number;
@@ -620,7 +622,7 @@ export interface SubscriptionRepositoryPort {
   cancelScheduledChange(id: string): Promise<ScheduledChange>;
   markScheduledExecuted(id: string): Promise<ScheduledChange>;
 
-  getOverviewStats(): Promise<OverviewStats>;
+  getOverviewStats(verticalId?: string): Promise<OverviewStats>;
 
   beginIdempotency(input: {
     idempotencyKey: string;

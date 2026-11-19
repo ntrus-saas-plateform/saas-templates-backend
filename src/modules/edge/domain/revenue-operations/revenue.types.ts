@@ -165,6 +165,7 @@ export type RevenueForecast = {
   code: string;
   name: string;
   businessUnitId: string | null;
+  verticalId: string | null;
   horizonStart: Date;
   horizonEnd: Date;
   currency: string;
@@ -358,6 +359,7 @@ export type ListFilter = {
   status?: string;
   businessUnitId?: string;
   metricCode?: string;
+  verticalId?: string;
   limit?: number;
   offset?: number;
 };
@@ -368,6 +370,7 @@ export type RevenueCohort = {
   name: string;
   cohortMonth: string;
   businessUnitId: string | null;
+  verticalId: string | null;
   definition: Record<string, unknown>;
   status: string;
   metadata: Record<string, unknown>;

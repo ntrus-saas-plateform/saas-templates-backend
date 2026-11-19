@@ -473,5 +473,5 @@ export interface ServiceOperationsRepositoryPort {
 
   listReleases(filter?: ListFilter): Promise<{ items: ReleaseRecord[]; total: number }>;
 
-  getOperationsAnalytics(): Promise<OperationsOverviewAggregate>;
+  getOperationsAnalytics(opts?: { verticalId?: string }): Promise<OperationsOverviewAggregate>;
 }

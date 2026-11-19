@@ -456,8 +456,8 @@ export class CreateMarketingJourneyUseCase {
 
 export class ListMarketingJourneysUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute() {
-    return this.marketing.listJourneys();
+  execute(opts?: { verticalId?: string }) {
+    return this.marketing.listJourneys(opts);
   }
 }
 
@@ -695,7 +695,7 @@ export class CreateMarketingPerformanceSnapshotUseCase {
 
 export class ListMarketingPerformanceSnapshotsUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  execute(opts?: { scopeType?: string }) {
+  execute(opts?: { scopeType?: string; verticalId?: string }) {
     return this.marketing.listPerformanceSnapshots(opts);
   }
 }
@@ -703,7 +703,7 @@ export class ListMarketingPerformanceSnapshotsUseCase {
 /** Aggregate snapshot qualities — never invents CAC/ROAS. */
 export class SummarizeMarketingAnalyticsUseCase {
   constructor(private readonly marketing: MarketingRepositoryPort) {}
-  async execute(opts?: { scopeType?: string }) {
+  async execute(opts?: { scopeType?: string; verticalId?: string }) {
     const snapshots = await this.marketing.listPerformanceSnapshots(opts);
     const qualityCounts = { MEASURED: 0, ESTIMATED: 0, UNAVAILABLE: 0 };
     const metricKeys = new Set<string>();

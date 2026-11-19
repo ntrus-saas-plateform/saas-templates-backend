@@ -1,6 +1,7 @@
 /**
- * Extensible commercial plan → entitlements registry (doc 39 W1).
- * Beachhead (Syntix + Restaurant) today; Retail/Hospitality attach after G11 seeds.
+ * Catalogue commercial universel — Pharmacy / Restaurant / Café / Retail / Hospitality
+ * (et futurs verticaux) : même mécanisme attach/publish. Seule la config
+ * (caps plan/package + quotas) diffère — pas de chemin beachhead-only.
  */
 
 import { EntitlementCapabilityKind, type EntitlementSource } from '../subscription/subscription.entity.js';
@@ -12,7 +13,12 @@ import {
 } from './beachhead-plan-entitlements.js';
 import { HOSPITALITY_CAPABILITIES, HOSPITALITY_PLANS } from './okapi-hospitality-catalog.seed.js';
 import { RETAIL_CAPABILITIES, RETAIL_PLANS } from './okapi-retail-catalog.seed.js';
-import { RESTAURANT_CAPABILITIES, RESTAURANT_PLANS } from './okapi-restaurant-catalog.seed.js';
+import {
+  RESTAURANT_CAPABILITIES,
+  RESTAURANT_CAFE_CONTROLLED_PACK,
+  RESTAURANT_CAFE_CONTROLLED_PLAN,
+  RESTAURANT_PLANS,
+} from './okapi-restaurant-catalog.seed.js';
 import {
   SYNTIX_CAPABILITIES,
   SYNTIX_PLANS,
@@ -28,7 +34,16 @@ export type CommercialPlanEntitlementSnapshot = {
   productCode: string;
   profileCode: string | null;
   capabilities: EntitlementSource[];
-  roadmapStatus: 'BEACHHEAD' | 'PLANNED_STUB';
+  roadmapStatus: 'BEACHHEAD' | 'PLANNED_STUB' | 'CONTROLLED_ROLLOUT';
+  sellable: boolean;
+};
+
+export type CommercialPackageEntitlementSnapshot = {
+  packageCode: string;
+  productFamily: string;
+  productCode: string;
+  profileCode: string | null;
+  capabilities: EntitlementSource[];
   sellable: boolean;
 };
 
@@ -80,6 +95,8 @@ const QUOTA_CAPABILITY_CODES = new Set([
   'max_users',
   'max_warehouses',
   'max_pos_terminals',
+  'max_customers',
+  'max_products',
 ]);
 
 function splitModuleAndQuotaCodes(sources: readonly EntitlementSource[]): {
@@ -110,7 +127,7 @@ function capabilityCatalogIsPlanned(productFamily: string, code: string): boolea
     }
     case 'OKAPI_RESTAURANT': {
       const row = RESTAURANT_CAPABILITIES.find((c) => c.code === code);
-      return !row || row.status === 'PLANNED';
+      return !row || String(row.status) === 'PLANNED';
     }
     case 'OKAPI_RETAIL': {
       const row = RETAIL_CAPABILITIES.find((c) => c.code === code);
@@ -143,11 +160,12 @@ function capabilityCatalogHasCode(productFamily: string, code: string): boolean 
   return !capabilityCatalogIsPlanned(productFamily, code);
 }
 
-/** Machine-readable plan → commercial cap codes (Pharma / Restaurant / Retail / Hospitality). */
+/** Machine-readable plan → commercial cap codes (Pharma / Restaurant / Café / Retail / Hospitality). */
 export function commercialPlanCapabilityMatrix(): readonly CommercialPlanCapabilityRow[] {
   const planCodes = [
     ...SYNTIX_PLANS.map((p) => p.code),
     ...RESTAURANT_PLANS.map((p) => p.code),
+    RESTAURANT_CAFE_CONTROLLED_PLAN.code,
     ...RETAIL_PLANS.map((p) => p.code),
     ...HOSPITALITY_PLANS.map((p) => p.code),
   ];
@@ -200,22 +218,23 @@ export function assertPlanCapsAlignCapabilityCatalog(planCode: string): void {
   }
 }
 
-function stubSources(
-  planCode: string,
+function catalogSources(
+  sourceType: EntitlementSource['sourceType'],
+  sourceRef: string,
   caps: readonly string[],
   quotas: Record<string, number>,
 ): EntitlementSource[] {
   const sources: EntitlementSource[] = caps.map((capabilityCode) => ({
-    sourceType: 'PLAN',
-    sourceRef: planCode,
+    sourceType,
+    sourceRef,
     capabilityCode,
     kind: EntitlementCapabilityKind.FEATURE_FLAG,
     enabled: true,
   }));
   for (const [capabilityCode, numericLimit] of Object.entries(quotas)) {
     sources.push({
-      sourceType: 'PLAN',
-      sourceRef: planCode,
+      sourceType,
+      sourceRef,
       capabilityCode,
       kind: EntitlementCapabilityKind.QUOTA,
       enabled: true,
@@ -225,10 +244,38 @@ function stubSources(
   return sources;
 }
 
+function stubSources(
+  planCode: string,
+  caps: readonly string[],
+  quotas: Record<string, number>,
+): EntitlementSource[] {
+  return catalogSources('PLAN', planCode, caps, quotas);
+}
+
 export function commercialPlanEntitlementSnapshot(
   planCode: string | null | undefined,
 ): CommercialPlanEntitlementSnapshot | null {
-  const beachhead = beachheadPlanEntitlementSnapshot(planCode);
+  const code = planCode?.trim();
+  if (!code) return null;
+
+  // Café contrôlé — plan réel, même forme que beachhead/stubs (pas de chemin spécial).
+  if (code === RESTAURANT_CAFE_CONTROLLED_PLAN.code) {
+    return {
+      planCode: RESTAURANT_CAFE_CONTROLLED_PLAN.code,
+      productFamily: 'OKAPI_RESTAURANT',
+      productCode: 'OKAPI_RESTAURANT',
+      profileCode: RESTAURANT_CAFE_CONTROLLED_PLAN.bbProfileCode,
+      capabilities: stubSources(
+        RESTAURANT_CAFE_CONTROLLED_PLAN.code,
+        RESTAURANT_CAFE_CONTROLLED_PLAN.caps,
+        RESTAURANT_CAFE_CONTROLLED_PLAN.quotas,
+      ),
+      roadmapStatus: 'CONTROLLED_ROLLOUT',
+      sellable: false,
+    };
+  }
+
+  const beachhead = beachheadPlanEntitlementSnapshot(code);
   if (beachhead) {
     const productCode =
       beachhead.productFamily === 'SYNTIX_PHARMA' ? 'SYNTIX_PHARMA' : 'OKAPI_RESTAURANT';
@@ -244,9 +291,6 @@ export function commercialPlanEntitlementSnapshot(
       sellable: true,
     };
   }
-
-  const code = planCode?.trim();
-  if (!code) return null;
 
   const retail = RETAIL_PLANS.find((p) => p.code === code);
   if (retail) {
@@ -277,12 +321,42 @@ export function commercialPlanEntitlementSnapshot(
   return null;
 }
 
+/** Snapshot package — même EntitlementSource[] que les plans (ex. PKG_REST_CAFE_CONTROLLED). */
+export function commercialPackageEntitlementSnapshot(
+  packageCode: string | null | undefined,
+): CommercialPackageEntitlementSnapshot | null {
+  const code = packageCode?.trim();
+  if (!code) return null;
+
+  if (code === RESTAURANT_CAFE_CONTROLLED_PACK.code) {
+    return {
+      packageCode: code,
+      productFamily: 'OKAPI_RESTAURANT',
+      productCode: 'OKAPI_RESTAURANT',
+      profileCode: RESTAURANT_CAFE_CONTROLLED_PACK.bbProfileCode,
+      capabilities: catalogSources(
+        'PACKAGE',
+        code,
+        RESTAURANT_CAFE_CONTROLLED_PACK.caps,
+        RESTAURANT_CAFE_CONTROLLED_PACK.quotas,
+      ),
+      sellable: false,
+    };
+  }
+
+  return null;
+}
+
 export function entitlementSourcesForCommercialPlan(planCode: string): EntitlementSource[] {
   const snap = commercialPlanEntitlementSnapshot(planCode);
   if (snap) return snap.capabilities;
   return entitlementSourcesForBeachheadPlan(planCode);
 }
 
+/**
+ * Extrait un code plan commercial (beachhead + stubs Retail/Hosp + Café contrôlé).
+ * Enveloppe extractBeachheadPlanCode puis accepte tout code connu de commercialPlanEntitlementSnapshot.
+ */
 export function extractCommercialPlanCode(
   ...blobs: Array<Record<string, unknown> | null | undefined>
 ): string | null {
@@ -296,11 +370,16 @@ export function extractCommercialPlanCode(
         return v.trim();
       }
     }
+    const nested = blob.offerConfiguration;
+    if (nested && typeof nested === 'object') {
+      const found = extractCommercialPlanCode(nested as Record<string, unknown>);
+      if (found) return found;
+    }
   }
   return null;
 }
 
-/** Fail-closed: roadmap stubs must not be sold publicly. */
+/** Fail-closed: roadmap stubs / controlled must not be sold publicly. */
 export function assertCommercialPlanSellableOrThrow(planCode: string): void {
   const snap = commercialPlanEntitlementSnapshot(planCode);
   if (!snap) {
@@ -308,7 +387,7 @@ export function assertCommercialPlanSellableOrThrow(planCode: string): void {
   }
   if (!snap.sellable) {
     throw new Error(
-      `PRODUCT_NOT_SELLABLE: ${planCode} is ${snap.roadmapStatus} (INTERNAL_ONLY until G11 PASS, doc 39).`,
+      `PRODUCT_NOT_SELLABLE: ${planCode} is ${snap.roadmapStatus} (INTERNAL_ONLY / CONTROLLED until G11 PASS, doc 39).`,
     );
   }
 }

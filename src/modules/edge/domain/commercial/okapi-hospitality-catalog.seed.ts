@@ -38,6 +38,8 @@ export const HOSPITALITY_CAPABILITIES = [
   { code: 'sso', name: 'SSO / IAM enterprise', category: 'SECURITY', status: 'AVAILABLE' as const },
   { code: 'max_organizations', name: 'Max properties', category: 'QUOTA', status: 'AVAILABLE' as const },
   { code: 'max_users', name: 'Max users', category: 'QUOTA', status: 'AVAILABLE' as const },
+  { code: 'max_customers', name: 'Max guests / customers', category: 'QUOTA', status: 'PLANNED' as const },
+  { code: 'max_products', name: 'Max products / services', category: 'QUOTA', status: 'PLANNED' as const },
 ] as const;
 
 export const HOSPITALITY_PACKAGES = [
@@ -54,7 +56,7 @@ export const HOSPITALITY_PLANS = [
     commercialAvailability: 'INTERNAL_ONLY' as const,
     bbProfileCode: 'HOTEL_HOSPITALITY',
     caps: ['identity', 'hospitality', 'front_desk'] as const,
-    quotas: { max_organizations: 1, max_users: 15 },
+    quotas: { max_organizations: 1, max_users: 15, max_customers: 3000, max_products: 500 },
   },
   {
     code: 'OKAPI_HOSP_PROFESSIONAL',
@@ -64,7 +66,7 @@ export const HOSPITALITY_PLANS = [
     commercialAvailability: 'INTERNAL_ONLY' as const,
     bbProfileCode: 'HOTEL_HOSPITALITY',
     caps: ['identity', 'hospitality', 'front_desk', 'housekeeping', 'reporting'] as const,
-    quotas: { max_organizations: 1, max_users: 40 },
+    quotas: { max_organizations: 1, max_users: 40, max_customers: 15000, max_products: 2000 },
   },
   {
     code: 'OKAPI_HOSP_BUSINESS',
@@ -81,7 +83,7 @@ export const HOSPITALITY_PLANS = [
       'reporting',
       'api',
     ] as const,
-    quotas: { max_organizations: 10, max_users: 120 },
+    quotas: { max_organizations: 10, max_users: 120, max_customers: 75000, max_products: 5000 },
   },
   {
     code: 'OKAPI_HOSP_ENTERPRISE',
@@ -100,13 +102,20 @@ export const HOSPITALITY_PLANS = [
       'analytics',
       'sso',
     ] as const,
-    quotas: { max_organizations: 50, max_users: 500 },
+    quotas: { max_organizations: 50, max_users: 500, max_customers: 250000, max_products: 20000 },
   },
 ] as const;
 
 export const HOSPITALITY_ROADMAP_NOTE =
   'G11 PARTIAL — catalog seeded INTERNAL_ONLY; AVAILABLE only after e2e bb_control + marketing + Legal (doc 39 Phase D)';
 
-export function hospitalityPlanHasNoPlannedCaps(): boolean {
-  return HOSPITALITY_CAPABILITIES.every((c) => c.status !== 'PLANNED');
+/**
+ * Contrat honnête : aucune cap FEATURE PLANNED dans le stub hospitality.
+ * Seuls des quotas roadmap (max_customers / max_products, catégorie QUOTA)
+ * peuvent encore être PLANNED tant que INTERNAL_ONLY.
+ */
+export function hospitalityPlannedCapsAreQuotaOnly(): boolean {
+  return HOSPITALITY_CAPABILITIES.filter((c) => String(c.status) === 'PLANNED').every(
+    (c) => c.category === 'QUOTA',
+  );
 }

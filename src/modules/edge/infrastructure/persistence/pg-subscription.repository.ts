@@ -418,6 +418,12 @@ export class PgSubscriptionRepository implements SubscriptionRepositoryPort {
       clauses.push(`product_id = $${idx++}`);
       params.push(opts.productId);
     }
+    if (opts?.verticalId) {
+      clauses.push(
+        `product_id IN (SELECT id FROM edge_products WHERE vertical_id = $${idx++})`,
+      );
+      params.push(opts.verticalId);
+    }
     if (opts?.status) {
       clauses.push(`status = $${idx++}`);
       params.push(opts.status);
@@ -1292,18 +1298,31 @@ export class PgSubscriptionRepository implements SubscriptionRepositoryPort {
     return this.mapScheduledChange(rows[0]!);
   }
 
-  async getOverviewStats(): Promise<OverviewStats> {
+  async getOverviewStats(verticalId?: string): Promise<OverviewStats> {
+    // Workspace switch scope — produits de cette verticale uniquement (sans filtre = plateforme).
+    const subScope = verticalId
+      ? `WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $1)`
+      : '';
+    const subParams = verticalId ? [verticalId] : [];
+    const trialScope = verticalId
+      ? `WHERE product_id IN (SELECT id FROM edge_products WHERE vertical_id = $1)`
+      : '';
+    const trialParams = verticalId ? [verticalId] : [];
     const totalRows = await this.q<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM edge_subscriptions`,
+      `SELECT COUNT(*)::text AS count FROM edge_subscriptions ${subScope}`,
+      subParams,
     );
     const byStatus = await this.q<{ status: string; count: string }>(
-      `SELECT status, COUNT(*)::text AS count FROM edge_subscriptions GROUP BY status`,
+      `SELECT status, COUNT(*)::text AS count FROM edge_subscriptions ${subScope} GROUP BY status`,
+      subParams,
     );
     const trials = await this.q<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM edge_subscription_trials WHERE status = 'ACTIVE'`,
+      `SELECT COUNT(*)::text AS count FROM edge_subscription_trials ${trialScope ? `${trialScope} AND status = 'ACTIVE'` : `WHERE status = 'ACTIVE'`}`,
+      trialParams,
     );
     const pendingAct = await this.q<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM edge_subscriptions WHERE status IN ('PENDING_ACTIVATION', 'PENDING_PROVISIONING')`,
+      `SELECT COUNT(*)::text AS count FROM edge_subscriptions ${subScope ? `${subScope} AND status IN ('PENDING_ACTIVATION', 'PENDING_PROVISIONING')` : `WHERE status IN ('PENDING_ACTIVATION', 'PENDING_PROVISIONING')`}`,
+      subParams,
     );
     const byStatusMap: Record<string, number> = {};
     for (const row of byStatus) {

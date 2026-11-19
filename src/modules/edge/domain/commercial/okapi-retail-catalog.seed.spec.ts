@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   RETAIL_PLANS,
   RETAIL_PRODUCT_CODE,
-  retailPlanHasNoPlannedCaps,
+  retailPlannedCapsAreQuotaOnly,
 } from './okapi-retail-catalog.seed.js';
 import { bindingForProductCode } from './product-family-bindings.js';
 
@@ -21,6 +21,6 @@ describe('okapi-retail-catalog', () => {
       'ENTERPRISE',
     ]);
     expect(RETAIL_PLANS.every((p) => p.bbProfileCode === 'SUPERMARKET')).toBe(true);
-    expect(retailPlanHasNoPlannedCaps()).toBe(true);
+    expect(retailPlannedCapsAreQuotaOnly()).toBe(true);
   });
 });

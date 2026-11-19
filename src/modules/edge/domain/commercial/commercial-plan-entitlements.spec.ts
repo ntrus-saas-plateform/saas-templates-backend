@@ -36,6 +36,8 @@ describe('commercial-plan-entitlements', () => {
   it('keeps CAFE pack controlled under restaurant tenant', () => {
     expect(RESTAURANT_CAFE_CONTROLLED_PACK.bbProfileCode).toBe('CAFE');
     expect(RESTAURANT_CAFE_CONTROLLED_PACK.commercialAvailability).toBe('CONTROLLED_ROLLOUT');
+    expect(RESTAURANT_CAFE_CONTROLLED_PACK.quotas.max_customers).toBe(5000);
+    expect(RESTAURANT_CAFE_CONTROLLED_PACK.quotas.max_products).toBe(800);
   });
 
   it('resolves retail/hospitality stubs as non-sellable', () => {

@@ -227,7 +227,7 @@ export class PersistSalesForecastSnapshotUseCase {
 
 export class ListSalesForecastSnapshotsUseCase {
   constructor(private readonly platform: SalesPlatformRepositoryPort) {}
-  execute(opts?: { periodType?: string; periodKey?: string; model?: string }) {
+  execute(opts?: { periodType?: string; periodKey?: string; model?: string; verticalId?: string }) {
     return this.platform.listForecastSnapshots(opts);
   }
 }
@@ -239,6 +239,7 @@ export class GlobalSalesSearchUseCase {
     actorId: string;
     visibilityMode?: 'OWNED' | 'TEAM' | 'ALL';
     teamIds?: string[];
+    verticalId?: string;
     limit?: number;
   }) {
     if (!input.q.trim()) {
@@ -315,24 +316,28 @@ export class ExportSalesEntitiesUseCase {
       });
     }
     let payload: unknown[] = [];
+    const verticalId =
+      typeof input.filters?.verticalId === 'string' && input.filters.verticalId
+        ? input.filters.verticalId
+        : undefined;
     switch (input.entityType) {
       case 'ACCOUNT':
-        payload = (await this.sales.listAccounts({ limit: 500 })).items;
+        payload = (await this.sales.listAccounts({ limit: 500, verticalId })).items;
         break;
       case 'CONTACT':
-        payload = (await this.sales.listContacts({ limit: 500 })).items;
+        payload = (await this.sales.listContacts({ limit: 500, verticalId })).items;
         break;
       case 'LEAD':
-        payload = (await this.sales.listSalesLeads({ limit: 500 })).items;
+        payload = (await this.sales.listSalesLeads({ limit: 500, verticalId })).items;
         break;
       case 'OPPORTUNITY':
-        payload = (await this.sales.listOpportunities({ limit: 500 })).items;
+        payload = (await this.sales.listOpportunities({ limit: 500, verticalId })).items;
         break;
       case 'QUOTE':
-        payload = await this.commerce.listQuotes({ limit: 500 });
+        payload = await this.commerce.listQuotes({ limit: 500, verticalId });
         break;
       case 'CONTRACT':
-        payload = await this.commerce.listContracts({});
+        payload = await this.commerce.listContracts({ verticalId });
         break;
       default:
         throw new DomainError(ErrorCode.VALIDATION_ERROR, `Unsupported export type ${input.entityType}`);
@@ -352,8 +357,8 @@ export class ExportSalesEntitiesUseCase {
 
 export class ListSalesExportJobsUseCase {
   constructor(private readonly platform: SalesPlatformRepositoryPort) {}
-  execute(actorId: string) {
-    return this.platform.listExportJobs(actorId);
+  execute(actorId: string, verticalId?: string) {
+    return this.platform.listExportJobs(actorId, undefined, verticalId);
   }
 }
 
@@ -366,6 +371,7 @@ export class GrantSalesVisibilityUseCase {
     granteeAdministratorId?: string | null;
     granteeTeamId?: string | null;
     accessLevel?: string;
+    verticalId?: string | null;
   }) {
     return this.platform.grantVisibility({
       ...input,
@@ -376,8 +382,8 @@ export class GrantSalesVisibilityUseCase {
 
 export class ListSalesVisibilityGrantsUseCase {
   constructor(private readonly platform: SalesPlatformRepositoryPort) {}
-  execute(subjectType: string, subjectId: string) {
-    return this.platform.listVisibilityGrants(subjectType, subjectId);
+  execute(opts?: { subjectType?: string; subjectId?: string; verticalId?: string }) {
+    return this.platform.listVisibilityGrants(opts);
   }
 }
 

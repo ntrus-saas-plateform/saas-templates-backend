@@ -353,7 +353,7 @@ export interface TenantManagementRepositoryPort {
     offset?: number;
   }): Promise<{ items: ActivityEventRecord[]; total: number }>;
 
-  portfolioMetrics(): Promise<TenantPortfolioMetrics>;
+  portfolioMetrics(verticalId?: string): Promise<TenantPortfolioMetrics>;
 
   /** Projection helpers for reconciliation / sync */
   listDistinctProductTenantIdsFromP7(): Promise<

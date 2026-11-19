@@ -181,8 +181,8 @@ export class AcquisitionController {
   @Get('edge/acquisition/overview')
   @RequireEdgePermissions('platform:acquisition:read')
   @ApiOperation({ summary: 'Acquisition CX overview counts' })
-  async acquisitionOverview() {
-    return this.overview.execute();
+  async acquisitionOverview(@Query('verticalId') verticalId?: string) {
+    return this.overview.execute(verticalId);
   }
 
   @Get('edge/acquisition/products')
@@ -823,6 +823,10 @@ export class AcquisitionController {
   @Get('edge/acquisition/analytics/funnel')
   @RequireEdgePermissions('platform:acquisition:analytics:read')
   async getFunnel(@Query() query: FunnelQueryDto) {
-    return this.funnel.execute(query);
+    return this.funnel.execute({
+      prospectId: query.prospectId,
+      verticalId: query.verticalId,
+      limit: query.limit,
+    });
   }
 }

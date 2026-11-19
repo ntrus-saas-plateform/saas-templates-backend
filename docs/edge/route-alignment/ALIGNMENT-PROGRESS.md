@@ -3,11 +3,9 @@
 Dernière mise à jour : 2026-11-18
 
 > **Statut vague routes BE↔FE :** **CLOSED** (2026-11-18).  
-> **Audit** : voir [`ALIGNMENT-AUDIT-2026-11-18.md`](./ALIGNMENT-AUDIT-2026-11-18.md).  
-> Mesure `--diff` (exact-first) : **`uncoveredConsole: 0`**, `beOnly: 10` (tous OOS), `feOnly: 9`.  
-> Inventaire regen + CI `edge:routes:check` **fail-closed** + `--strict` OK.  
-> Anti-MVP : `ListOrUuidField` select-first branché (sales + billing/portal/subs/acq/ops/recon/tenants/onboarding/commercial/marketing/catalog).  
-> Lab : `lab:golden:handshake` + doc 44 retail/hospitality **PASS**.
+> **Repasse audit** : [`ALIGNMENT-AUDIT-2026-11-18-repass.md`](./ALIGNMENT-AUDIT-2026-11-18-repass.md) — couverture **A**, profondeur UX **B/B+** (studio sur domaines migrés EdgeStudioShell ; Auth/Catalog/Verticals/BB + agents/cert/recon encore partial).  
+> Mesure `--diff` : **`uncoveredConsole: 0`**, `beOnly: 10` (OOS), `feOnly: 9`, pages extract **71**.  
+> Inventaire CI fail-closed + `--strict` OK. Lab golden + doc 44 **PASS**.
 
 ## Fait (vague P0 — clôturée)
 
@@ -125,3 +123,8 @@ Dernière mise à jour : 2026-11-18
 - [x] SSR /acquire via BFF publicAcquisitionFetch + CTA checkout plan PUBLISHED
 - [x] Mig **143** hospitality segments/profiles PLANNED
 - [x] Quotas Edge max_users invitations/memberships (fail-closed)
+- [x] `/acquire/[slug]/apply` → `postPublicAcquisitionApplication` (BFF, fail-closed `applicationId`)
+- [x] `/acquire/[slug]/configure` — plans BFF, apply avec `planPresentationId`, checkout si PUBLISHED
+- [x] Quotas Edge max_customers / max_products fail-closed (CreateCustomer + CreateProduct) + seeds plans + mig **144**
+- [x] Apply `file_upload` honnête ; CONTACT/DEMO metadata LEAD ; specs intent/client public
+- [x] Mig **145** CAFE pack caps+quotas ; wizard console Commercial ; e2e configure shell ; UC quota specs customer/product

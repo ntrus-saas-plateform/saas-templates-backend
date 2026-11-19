@@ -68,6 +68,8 @@ export const RESTAURANT_CAPABILITIES = [
   { code: 'max_organizations', name: 'Max sites (organizations)', category: 'QUOTA', status: 'AVAILABLE' as const },
   { code: 'max_users', name: 'Max users', category: 'QUOTA', status: 'AVAILABLE' as const },
   { code: 'max_pos_terminals', name: 'Max POS terminals', category: 'QUOTA', status: 'AVAILABLE' as const },
+  { code: 'max_customers', name: 'Max customers', category: 'QUOTA', status: 'AVAILABLE' as const },
+  { code: 'max_products', name: 'Max products / menu items', category: 'QUOTA', status: 'AVAILABLE' as const },
 ] as const;
 
 export const RESTAURANT_PACKAGES = [
@@ -84,7 +86,13 @@ export const RESTAURANT_PLANS = [
     tier: 'LITE',
     packageCode: 'PKG_REST_INDEPENDENT',
     caps: ['identity', 'restaurant', 'menu', 'pos', 'tables'],
-    quotas: { max_organizations: 1, max_users: 8, max_pos_terminals: 2 },
+    quotas: {
+      max_organizations: 1,
+      max_users: 8,
+      max_pos_terminals: 2,
+      max_customers: 2000,
+      max_products: 500,
+    },
   },
   {
     code: 'OKAPI_REST_GROWTH',
@@ -92,7 +100,13 @@ export const RESTAURANT_PLANS = [
     tier: 'PROFESSIONAL',
     packageCode: 'PKG_REST_INDEPENDENT',
     caps: ['identity', 'restaurant', 'menu', 'pos', 'tables', 'inventory', 'kitchen', 'reporting'],
-    quotas: { max_organizations: 1, max_users: 25, max_pos_terminals: 5 },
+    quotas: {
+      max_organizations: 1,
+      max_users: 25,
+      max_pos_terminals: 5,
+      max_customers: 10000,
+      max_products: 2000,
+    },
   },
   {
     code: 'OKAPI_REST_MULTI',
@@ -111,7 +125,13 @@ export const RESTAURANT_PLANS = [
       'reporting',
       'api',
     ],
-    quotas: { max_organizations: 10, max_users: 80, max_pos_terminals: 20 },
+    quotas: {
+      max_organizations: 10,
+      max_users: 80,
+      max_pos_terminals: 20,
+      max_customers: 50000,
+      max_products: 5000,
+    },
   },
   {
     code: 'OKAPI_REST_ENTERPRISE',
@@ -132,12 +152,18 @@ export const RESTAURANT_PLANS = [
       'analytics',
       'sso',
     ],
-    quotas: { max_organizations: 50, max_users: 500, max_pos_terminals: 100 },
+    quotas: {
+      max_organizations: 50,
+      max_users: 500,
+      max_pos_terminals: 100,
+      max_customers: 200000,
+      max_products: 20000,
+    },
   },
 ] as const;
 
 export function restaurantPlanHasNoPlannedCaps(): boolean {
-  return RESTAURANT_CAPABILITIES.every((c) => c.status !== 'PLANNED');
+  return RESTAURANT_CAPABILITIES.every((c) => String(c.status) !== 'PLANNED');
 }
 
 /**
@@ -151,6 +177,28 @@ export const RESTAURANT_CAFE_CONTROLLED_PACK = {
   bbProfileCode: 'CAFE',
   commercialAvailability: 'CONTROLLED_ROLLOUT' as const,
   caps: ['identity', 'restaurant', 'menu', 'pos', 'inventory', 'kitchen', 'reporting'] as const,
-  quotas: { max_organizations: 1, max_users: 15, max_pos_terminals: 4 },
+  quotas: {
+    max_organizations: 1,
+    max_users: 15,
+    max_pos_terminals: 4,
+    max_customers: 5000,
+    max_products: 800,
+  },
   note: 'G11 Controlled rollout — same tenant family OKAPI_RESTAURANT (doc 39 Phase B)',
+} as const;
+
+/**
+ * Plan Café contrôlé — même mécanisme d’attach que les autres plans (pas de chemin spécial).
+ * DRAFT / CONTROLLED_ROLLOUT — pas AVAILABLE, pas de prix inventés.
+ */
+export const RESTAURANT_CAFE_CONTROLLED_PLAN = {
+  code: 'OKAPI_REST_CAFE_CONTROLLED',
+  name: 'Okapi Cafe Controlled',
+  tier: 'LITE' as const,
+  packageCode: RESTAURANT_CAFE_CONTROLLED_PACK.code,
+  bbProfileCode: RESTAURANT_CAFE_CONTROLLED_PACK.bbProfileCode,
+  commercialAvailability: RESTAURANT_CAFE_CONTROLLED_PACK.commercialAvailability,
+  caps: RESTAURANT_CAFE_CONTROLLED_PACK.caps,
+  quotas: RESTAURANT_CAFE_CONTROLLED_PACK.quotas,
+  note: RESTAURANT_CAFE_CONTROLLED_PACK.note,
 } as const;

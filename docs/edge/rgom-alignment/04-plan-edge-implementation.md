@@ -109,7 +109,7 @@ Wholesale 3 WH / 45 users → config + prix price-book reproductible.
 - [x] Modes : MANUAL / RULE_BASED / GUIDED
 - [x] Snapshot lié Opportunity / Quote / Acquisition application (snapshot.linkedTo)
 - [x] Invariant test : `grantsEntitlements === false`
-- [x] FE public `/acquire/.../configure` (P10 acquire shell + wizard API client)
+- [x] FE public `/acquire/.../configure` (P10 acquire shell : plans BFF → apply/checkout PUBLISHED ; wizard SMB `POST …/offers/wizard` **non branché** sur configure — console commercial seulement)
 - [x] FE console sales configurator (API client wizard + configure existants)
 - [x] Golden scenario Playwright Wholesale (unit golden 3 WH / 45 users ; PW live = EX-E12-PW)
 

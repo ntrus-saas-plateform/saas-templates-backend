@@ -21,6 +21,7 @@ import {
   type ProductControlCapabilityRecord,
   type ProductControlEndpointRecord,
   type ProductControlHealthCheckRecord,
+  type ProductControlHistoryRecord,
   type ProductControlReconciliationRecord,
 } from '../../domain/product-control/product-control.types.js';
 
@@ -260,6 +261,7 @@ export class PgProductControlRepository implements ProductControlRepositoryPort 
       productId?: string;
       platformId?: string;
       status?: ProductControlEndpointStatus;
+      q?: string;
       limit?: number;
       offset?: number;
     },
@@ -280,6 +282,10 @@ export class PgProductControlRepository implements ProductControlRepositoryPort 
     if (filter.status) {
       params.push(filter.status);
       where.push(`status = $${params.length}`);
+    }
+    if (filter.q) {
+      params.push(`%${filter.q}%`);
+      where.push(`(code ILIKE $${params.length} OR base_url ILIKE $${params.length})`);
     }
     const wh = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
@@ -605,6 +611,7 @@ export class PgProductControlRepository implements ProductControlRepositoryPort 
     filter: {
       endpointId?: string;
       status?: ControlExchangeStatus;
+      q?: string;
       limit?: number;
       offset?: number;
     },
@@ -621,6 +628,14 @@ export class PgProductControlRepository implements ProductControlRepositoryPort 
     if (filter.status) {
       params.push(filter.status);
       where.push(`status = $${params.length}`);
+    }
+    if (filter.q) {
+      params.push(`%${filter.q}%`);
+      where.push(
+        `(operation_code ILIKE $${params.length}
+          OR request_id ILIKE $${params.length}
+          OR idempotency_key ILIKE $${params.length})`,
+      );
     }
     const wh = where.length ? `WHERE ${where.join(' AND ')}` : '';
     params.push(limit, offset);
@@ -905,5 +920,102 @@ export class PgProductControlRepository implements ProductControlRepositoryPort 
       ],
       client,
     );
+  }
+
+  async listCredentialBindings(
+    filter: {
+      endpointId?: string;
+      status?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    },
+    client?: unknown,
+  ) {
+    const limit = Math.min(filter.limit ?? 20, 100);
+    const offset = filter.offset ?? 0;
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (filter.endpointId) {
+      params.push(filter.endpointId);
+      where.push(`endpoint_id = $${params.length}`);
+    }
+    if (filter.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    if (filter.q) {
+      params.push(`%${filter.q}%`);
+      where.push(
+        `(credential_ref ILIKE $${params.length} OR auth_profile ILIKE $${params.length})`,
+      );
+    }
+    const wh = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    params.push(limit, offset);
+    const rows = await this.q(
+      `SELECT * FROM edge_p7_product_control_credential_bindings ${wh}
+       ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+      client,
+    );
+    return rows.map((r) => this.mapCredential(r));
+  }
+
+  async listNegotiatedContracts(endpointId: string, client?: unknown) {
+    const rows = await this.q(
+      `SELECT * FROM edge_p7_product_control_negotiated_contracts
+       WHERE endpoint_id = $1 ORDER BY created_at DESC`,
+      [endpointId],
+      client,
+    );
+    return rows.map((r) => this.mapContract(r));
+  }
+
+  async listHealthChecks(
+    filter: { endpointId: string; limit?: number; offset?: number },
+    client?: unknown,
+  ) {
+    const limit = Math.min(filter.limit ?? 20, 100);
+    const offset = filter.offset ?? 0;
+    const rows = await this.q(
+      `SELECT * FROM edge_p7_product_control_health_checks
+       WHERE endpoint_id = $1
+       ORDER BY checked_at DESC LIMIT $2 OFFSET $3`,
+      [filter.endpointId, limit, offset],
+      client,
+    );
+    return rows.map((r) => this.mapHealth(r));
+  }
+
+  async listEndpointHistory(
+    endpointId: string,
+    filter: { limit?: number; offset?: number },
+    client?: unknown,
+  ) {
+    const limit = Math.min(filter.limit ?? 20, 100);
+    const offset = filter.offset ?? 0;
+    const rows = await this.q(
+      `SELECT * FROM edge_p7_product_control_history
+       WHERE resource_type = 'ENDPOINT' AND resource_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [endpointId, limit, offset],
+      client,
+    );
+    return rows.map((r) => this.mapHistory(r));
+  }
+
+  private mapHistory(r: Row): ProductControlHistoryRecord {
+    return {
+      id: String(r.id),
+      resourceType: String(r.resource_type),
+      resourceId: String(r.resource_id),
+      fromStatus: r.from_status == null ? null : String(r.from_status),
+      toStatus: r.to_status == null ? null : String(r.to_status),
+      action: String(r.action),
+      reason: r.reason == null ? null : String(r.reason),
+      actorId: String(r.actor_id),
+      details: asJson<Record<string, unknown>>(r.details, {}),
+      createdAt: asDate(r.created_at),
+    };
   }
 }
